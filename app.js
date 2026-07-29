@@ -1,0 +1,3854 @@
+const DEFAULT_DAILY_TARGET = 20;
+const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
+const ACCOUNT_STORAGE_PREFIX = `${STORAGE_KEY}:account:`;
+const DATA_VERSION = 9;
+const ROOT_STATE_VERSION = 2;
+const DEFAULT_BOOK_ID = "kaoyan";
+const FAST_CALENDAR_LAST_VERSION = 5;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const TUTORIAL_STORAGE_PREFIX = "sense-vocab-tutorial-complete-v1:";
+const TUTORIAL_WAIT_MS = Number.isFinite(window.__SENSE_VOCAB_TUTORIAL_WAIT_MS__)
+  ? Math.max(0, window.__SENSE_VOCAB_TUTORIAL_WAIT_MS__)
+  : 5000;
+const TUTORIAL_HER_PROMPT_DELAY_MS = Number.isFinite(
+  window.__SENSE_VOCAB_TUTORIAL_HER_PROMPT_DELAY_MS__,
+)
+  ? Math.max(0, window.__SENSE_VOCAB_TUTORIAL_HER_PROMPT_DELAY_MS__)
+  : 1000;
+const TUTORIAL_NON_INTERACTIVE_STEPS = new Set([
+  "recall-wait",
+  "examples-wait",
+  "her-wait",
+]);
+const LOCAL_HISTORY_NEW_COUNT_CORRECTIONS = Object.freeze({
+  "2026-07-18": 40,
+  "2026-07-19": 0,
+  "2026-07-21": 40,
+  "2026-07-22": 40,
+  "2026-07-23": 40,
+  "2026-07-24": 40,
+});
+const LOCAL_JULY_NEW_HISTORY = Object.freeze({
+  "2026-07-16": 0,
+  "2026-07-17": 79,
+  "2026-07-18": 40,
+  "2026-07-19": 40,
+  "2026-07-20": 40,
+  "2026-07-21": 40,
+  "2026-07-22": 40,
+  "2026-07-23": 40,
+  "2026-07-24": 40,
+  "2026-07-25": 0,
+});
+const SENSE_STATUS = Object.freeze({
+  NEW: "new",
+  REINFORCE: "reinforce",
+  REVIEW: "review",
+  MASTERED: "mastered",
+});
+
+function updateAppViewportHeight() {
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  if (!Number.isFinite(viewportHeight) || viewportHeight <= 0) return;
+  document.documentElement.style.setProperty(
+    "--app-viewport-height",
+    `${Math.round(viewportHeight)}px`,
+  );
+}
+
+updateAppViewportHeight();
+
+const FALLBACK_WORDS = [
+  {
+    id: "charge",
+    word: "charge",
+    senses: [
+      { id: "fee", pos: "v.", meaning: "收费，索价", importance: 100 },
+      { id: "accuse", pos: "v.", meaning: "指控，控告", importance: 92 },
+      { id: "power", pos: "v.", meaning: "充电", importance: 84 },
+      { id: "attack", pos: "v.", meaning: "冲锋", importance: 62 },
+      { id: "responsible", pos: "v.", meaning: "负责，掌管", importance: 58 },
+      { id: "electric", pos: "n.", meaning: "电荷", importance: 46 },
+    ],
+  },
+  {
+    id: "issue",
+    word: "issue",
+    senses: [
+      { id: "topic", pos: "n.", meaning: "问题，议题", importance: 100 },
+      { id: "publish", pos: "v.", meaning: "发行，发布", importance: 88 },
+      { id: "edition", pos: "n.", meaning: "期号，一期", importance: 72 },
+      { id: "flow", pos: "v.", meaning: "发出，流出", importance: 45 },
+      { id: "offspring", pos: "n.", meaning: "子女，后代", importance: 24 },
+    ],
+  },
+];
+
+const homePanel = document.querySelector("#homePanel");
+const studyPanel = document.querySelector("#studyPanel");
+const studyTopbar = studyPanel.querySelector(".topbar");
+const studyProgressRow = studyPanel.querySelector(".study-progress-row");
+const homeCompletedWords = document.querySelector("#homeCompletedWords");
+const homeRemainingWords = document.querySelector("#homeRemainingWords");
+const homeCompletionDate = document.querySelector("#homeCompletionDate");
+const todayNewCount = document.querySelector("#todayNewCount");
+const todayReinforceCount = document.querySelector("#todayReinforceCount");
+const todayReviewCount = document.querySelector("#todayReviewCount");
+const homePlanMeta = document.querySelector("#homePlanMeta");
+const progressCompare = document.querySelector("#progressCompare");
+const heatmapTooltip = document.querySelector("#heatmapTooltip");
+const heatmapScroll = document.querySelector(".heatmap-scroll");
+const heatmapMonths = document.querySelector("#heatmapMonths");
+const heatmapGrid = document.querySelector("#heatmapGrid");
+const planButton = document.querySelector("#planButton");
+const advanceStudyButton = document.querySelector("#advanceStudyButton");
+const wordListButton = document.querySelector("#wordListButton");
+const startStudyButton = document.querySelector("#startStudyButton");
+const moreButton = document.querySelector("#moreButton");
+const moreDialog = document.querySelector("#moreDialog");
+const closeMoreButton = document.querySelector("#closeMoreButton");
+const homeFeedbackButton = document.querySelector("#homeFeedbackButton");
+const replayTutorialButton = document.querySelector("#replayTutorialButton");
+
+const wordListPanel = document.querySelector("#wordListPanel");
+const wordSortSelect = document.querySelector("#wordSortSelect");
+const wordSearchInput = document.querySelector("#wordSearchInput");
+const wordListEmpty = document.querySelector("#wordListEmpty");
+const wordList = document.querySelector("#wordList");
+const wordListBackButton = document.querySelector("#wordListBackButton");
+
+const wordText = document.querySelector("#wordText");
+const revealButton = document.querySelector("#revealButton");
+const audioButton = document.querySelector("#audioButton");
+const senseArea = document.querySelector("#senseArea");
+const morphologyPanel = document.querySelector("#morphologyPanel");
+const senseHint = document.querySelector("#senseHint");
+const senseList = document.querySelector("#senseList");
+const nextButton = document.querySelector("#nextButton");
+const studyFeedbackButton = document.querySelector("#studyFeedbackButton");
+const exitStudyButton = document.querySelector("#exitStudyButton");
+const resetButton = document.querySelector("#resetButton");
+const reviewCount = document.querySelector("#reviewCount");
+const newCount = document.querySelector("#newCount");
+const learningCount = document.querySelector("#learningCount");
+const queueProgress = document.querySelector("#queueProgress");
+const cardMode = document.querySelector("#cardMode");
+
+const planDialog = document.querySelector("#planDialog");
+const planTitle = document.querySelector("#planTitle");
+const bookSelect = document.querySelector("#bookSelect");
+const dailyTargetInput = document.querySelector("#dailyTargetInput");
+const planPreview = document.querySelector("#planPreview");
+const savePlanButton = document.querySelector("#savePlanButton");
+const cancelPlanButton = document.querySelector("#cancelPlanButton");
+const planForm = document.querySelector("#planForm");
+const resetAllPlanButton = document.querySelector("#resetAllPlanButton");
+const planResetConfirm = document.querySelector("#planResetConfirm");
+const confirmResetAllPlanButton = document.querySelector("#confirmResetAllPlanButton");
+const backPlanResetButton = document.querySelector("#backPlanResetButton");
+const planResetBookName = document.querySelector("#planResetBookName");
+const homeBookName = document.querySelector("#homeBookName");
+const wordListBookName = document.querySelector("#wordListBookName");
+
+const resetDialog = document.querySelector("#resetDialog");
+const resetOptions = document.querySelector("#resetOptions");
+const resetConfirm = document.querySelector("#resetConfirm");
+const resetMarkingButton = document.querySelector("#resetMarkingButton");
+const relearnWordButton = document.querySelector("#relearnWordButton");
+const confirmResetButton = document.querySelector("#confirmResetButton");
+const backResetButton = document.querySelector("#backResetButton");
+const cancelResetButton = document.querySelector("#cancelResetButton");
+const resetWordLabel = document.querySelector("#resetWordLabel");
+const resetConfirmTitle = document.querySelector("#resetConfirmTitle");
+const resetConfirmCopy = document.querySelector("#resetConfirmCopy");
+
+const returnDialog = document.querySelector("#returnDialog");
+const returnTitle = document.querySelector("#returnTitle");
+const returnOptions = document.querySelector("#returnOptions");
+const returnCrossDayWarning = document.querySelector("#returnCrossDayWarning");
+const previousWordButton = document.querySelector("#previousWordButton");
+const returnHomeButton = document.querySelector("#returnHomeButton");
+const cancelReturnButton = document.querySelector("#cancelReturnButton");
+
+const tutorialOverlay = document.querySelector("#tutorialOverlay");
+const tutorialSpotlight = document.querySelector("#tutorialSpotlight");
+const tutorialTip = document.querySelector("#tutorialTip");
+const tutorialMasks = Object.fromEntries(
+  [...tutorialOverlay.querySelectorAll("[data-mask]")].map((mask) => [
+    mask.dataset.mask,
+    mask,
+  ]),
+);
+const tutorialDoneDialog = document.querySelector("#tutorialDoneDialog");
+const finishTutorialButton = document.querySelector("#finishTutorialButton");
+
+let words = [];
+let wordById = new Map();
+let state = null;
+let rootState = null;
+let vocabularyBundle = null;
+let bookById = new Map();
+let poolWordById = new Map();
+let activeStorageKey = STORAGE_KEY;
+let wordDeepLinkReturnView = null;
+let pendingResetType = null;
+let activeAudio = null;
+let audioPlaybackGeneration = 0;
+let lastAutoPlayedCardKey = null;
+let soundContext = null;
+let wordFitFrame = null;
+let pendingCrossDayReturn = false;
+let midnightRefreshTimer = null;
+let wordListQuery = "";
+let heatmapPositionedBookId = null;
+let tutorialRuntime = null;
+let tutorialAutoScheduledScope = null;
+let membershipAccess = {
+  loggedIn: false,
+  active: true,
+  pending: false,
+  expiresAt: null,
+};
+
+async function loadVocabularyBundle() {
+  const response = await fetch("./data/vocabulary-bundle.json", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Vocabulary bundle failed to load: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!Array.isArray(data?.words) || !Array.isArray(data?.books)) {
+    throw new Error("Vocabulary bundle has an invalid schema.");
+  }
+  return data;
+}
+
+function normalizeWordList(data) {
+  const merged = new Map();
+
+  data.forEach((entry) => {
+    if (!entry?.word || !Array.isArray(entry.senses)) return;
+
+    const id = entry.id || entry.word.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    const wordId = id.replace(/^-+|-+$/g, "");
+    if (!wordId) return;
+
+    if (!merged.has(wordId)) {
+      merged.set(wordId, {
+        id: wordId,
+        word: entry.word,
+        morphology: entry.morphology || null,
+        senses: [],
+        seenSenses: new Set(),
+      });
+    }
+
+    const target = merged.get(wordId);
+    if (!target.morphology && entry.morphology) {
+      target.morphology = entry.morphology;
+    }
+    entry.senses.forEach((sense) => {
+      if (!sense?.pos || !sense?.meaning) return;
+
+      const dedupeKey = `${sense.pos}|${sense.meaning}`.toLowerCase();
+      if (target.seenSenses.has(dedupeKey)) return;
+
+      target.seenSenses.add(dedupeKey);
+      target.senses.push({
+        id: sense.id || `${sense.pos.replace(/\.$/, "")}-${target.senses.length + 1}`,
+        pos: sense.pos,
+        meaning: sense.meaning,
+        definitionSentence: sense.definitionSentence,
+        definitionZh: sense.definitionZh,
+        example: sense.example,
+        exampleZh: sense.exampleZh,
+        ipa: sense.ipa,
+        audio: sense.audio,
+        audioAuthor: sense.audioAuthor,
+        audioLicense: sense.audioLicense,
+        audioSourcePage: sense.audioSourcePage,
+        exampleSource: sense.exampleSource,
+        exampleSourceId: sense.exampleSourceId,
+        exampleOwner: sense.exampleOwner,
+        exampleLicense: sense.exampleLicense,
+        importance: Math.max(1, 100 - target.senses.length * 3),
+      });
+    });
+  });
+
+  return Array.from(merged.values())
+    .filter((word) => word.senses.length > 0)
+    .map(({ seenSenses, ...word }) => word);
+}
+
+function activeBookId() {
+  return rootState?.activeBookId ?? DEFAULT_BOOK_ID;
+}
+
+function activeBook() {
+  return bookById.get(activeBookId()) ?? bookById.get(DEFAULT_BOOK_ID);
+}
+
+function bookDisplayName(bookId = activeBookId()) {
+  const book = bookById.get(bookId);
+  return String(book?.displayName ?? book?.name ?? "考研词汇")
+    .replace(/[《》]/g, "");
+}
+
+function wordsForBook(bookId) {
+  const book = bookById.get(bookId);
+  if (!book) return [];
+  return book.entries.map((entry) => {
+    const pooled = poolWordById.get(entry.wordId);
+    if (!pooled) return null;
+    const selected = new Set(entry.senseIds ?? []);
+    return {
+      ...pooled,
+      senses: pooled.senses.filter((sense) => selected.has(sense.id)),
+    };
+  }).filter((entry) => entry?.senses?.length);
+}
+
+function activateBookScope(bookId, options = {}) {
+  const targetId = bookById.has(bookId) ? bookId : DEFAULT_BOOK_ID;
+  rootState.activeBookId = targetId;
+  if (!rootState.bookStates[targetId]) {
+    rootState.bookStates[targetId] = createState();
+  }
+  state = rootState.bookStates[targetId];
+  words = wordsForBook(targetId);
+  wordById = new Map(words.map((word) => [word.id, word]));
+  if (options.sanitize !== false) {
+    sanitizeState();
+    ensureTodaySession();
+  }
+}
+
+function todayKey() {
+  const now = new Date();
+  return formatDate(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
+}
+
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseDate(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function addDays(dateKey, days) {
+  return formatDate(new Date(parseDate(dateKey).getTime() + days * DAY_MS));
+}
+
+function daysBetween(startDate, endDate) {
+  return Math.max(0, Math.round((parseDate(endDate) - parseDate(startDate)) / DAY_MS));
+}
+
+function senseKey(wordId, senseId) {
+  return `${wordId}:${senseId}`;
+}
+
+function splitSenseKey(key) {
+  const [wordId, senseId] = key.split(":");
+  return { wordId, senseId };
+}
+
+function getSense(key) {
+  const { wordId, senseId } = splitSenseKey(key);
+  const word = wordById.get(wordId);
+  const sense = word?.senses.find((item) => item.id === senseId);
+  return { word, sense };
+}
+
+function isKnownSenseKey(key) {
+  const { word, sense } = getSense(key);
+  return Boolean(word && sense);
+}
+
+function allSenseKeysForWord(word) {
+  return word.senses.map((sense) => senseKey(word.id, sense.id));
+}
+
+function cloneProgress(value) {
+  return value ? JSON.parse(JSON.stringify(value)) : null;
+}
+
+function masteredSenseKeysForWord(wordId) {
+  const word = wordById.get(wordId);
+  if (!word) return [];
+  return allSenseKeysForWord(word).filter((key) => {
+    return state.progress[key]?.status === SENSE_STATUS.MASTERED;
+  });
+}
+
+function isWordFullyMastered(wordId) {
+  const word = wordById.get(wordId);
+  if (!word || word.senses.length === 0) return false;
+  return allSenseKeysForWord(word).every((key) => {
+    return state.progress[key]?.status === SENSE_STATUS.MASTERED;
+  });
+}
+
+function activeSenseKeysForCard(card) {
+  const source = Array.isArray(card?.activeSenseKeys)
+    ? card.activeSenseKeys
+    : card?.senseKeys ?? [];
+  return sortSenseKeysByImportance(source);
+}
+
+function refreshCardDisplayKeys(card) {
+  const displayKeys = [
+    ...activeSenseKeysForCard(card),
+    ...masteredSenseKeysForWord(card.wordId),
+  ];
+  card.senseKeys = sortSenseKeysByImportance([...new Set(displayKeys)]);
+  return card;
+}
+
+function createEncounterSnapshot(wordId) {
+  const word = wordById.get(wordId);
+  const progress = {};
+  allSenseKeysForWord(word).forEach((key) => {
+    progress[key] = cloneProgress(state.progress[key]);
+  });
+  return {
+    progress,
+    introduced: state.introducedWords.includes(wordId),
+    reinforcedKeys: ensureTodaySession().reinforcedKeys.filter((key) => {
+      return splitSenseKey(key).wordId === wordId;
+    }),
+    activity: cloneProgress(state.activityLog[currentActivityDate()]),
+  };
+}
+
+function ensureEncounterSnapshot(card) {
+  if (!card || card.encounterSnapshot) return;
+  card.encounterSnapshot = createEncounterSnapshot(card.wordId);
+}
+
+function createStudyCard(type, wordId, activeKeys) {
+  const card = {
+    type,
+    wordId,
+    activeSenseKeys: sortSenseKeysByImportance(activeKeys),
+    senseKeys: [],
+    confirmedKeys: [],
+    expandedMasteredKeys: [],
+  };
+  return refreshCardDisplayKeys(card);
+}
+
+function createState() {
+  return {
+    view: "home",
+    plan: null,
+    session: null,
+    introducedWords: [],
+    progress: {},
+    activityLog: {},
+    studyWindows: [],
+    learningDayCounter: 0,
+    wordListSort: "mastery",
+    wordBrowse: null,
+    dataVersion: DATA_VERSION,
+    _sync: { version: 1 },
+  };
+}
+
+function createRootState() {
+  return {
+    schemaVersion: ROOT_STATE_VERSION,
+    activeBookId: DEFAULT_BOOK_ID,
+    bookStates: {
+      [DEFAULT_BOOK_ID]: createState(),
+      ielts: createState(),
+    },
+  };
+}
+
+function normalizeLoadedState(saved) {
+  if (!saved || typeof saved !== "object") return createState();
+
+  return {
+    ...createState(),
+    ...saved,
+    view: "home",
+    plan: saved.plan && typeof saved.plan === "object" ? saved.plan : null,
+    session: saved.session && typeof saved.session === "object" ? saved.session : null,
+    introducedWords: Array.isArray(saved.introducedWords)
+      ? saved.introducedWords
+      : [],
+    progress: saved.progress && typeof saved.progress === "object"
+      ? saved.progress
+      : {},
+    activityLog: saved.activityLog && typeof saved.activityLog === "object"
+      ? saved.activityLog
+      : {},
+    studyWindows: Array.isArray(saved.studyWindows) ? saved.studyWindows : [],
+    learningDayCounter: Number.isFinite(saved.learningDayCounter)
+      ? saved.learningDayCounter
+      : 0,
+    wordListSort: typeof saved.wordListSort === "string"
+      ? saved.wordListSort
+      : "mastery",
+    wordBrowse: null,
+    dataVersion: Number.isFinite(saved.dataVersion) ? saved.dataVersion : 0,
+  };
+}
+
+function normalizeRootState(saved) {
+  if (saved?.bookStates && typeof saved.bookStates === "object") {
+    const normalized = createRootState();
+    normalized.schemaVersion = ROOT_STATE_VERSION;
+    normalized.activeBookId = bookById.has(saved.activeBookId)
+      ? saved.activeBookId
+      : DEFAULT_BOOK_ID;
+    Object.keys(normalized.bookStates).forEach((bookId) => {
+      normalized.bookStates[bookId] = normalizeLoadedState(
+        saved.bookStates[bookId],
+      );
+    });
+    Object.entries(saved.bookStates).forEach(([bookId, bookState]) => {
+      if (!normalized.bookStates[bookId] && bookById.has(bookId)) {
+        normalized.bookStates[bookId] = normalizeLoadedState(bookState);
+      }
+    });
+    // Releases before multi-book support, test fixtures, and Supabase's
+    // normalized tables all read/write a top-level scope.  When that mirror is
+    // present, apply it to the active book so an older client cannot lose an
+    // update merely because it does not know about bookStates yet.
+    const mirroredKeys = [
+      "view",
+      "plan",
+      "session",
+      "introducedWords",
+      "progress",
+      "activityLog",
+      "studyWindows",
+      "learningDayCounter",
+      "wordListSort",
+      "wordBrowse",
+      "dataVersion",
+      "_sync",
+    ];
+    if (mirroredKeys.some((key) => Object.prototype.hasOwnProperty.call(saved, key))) {
+      const mirrored = Object.fromEntries(
+        mirroredKeys
+          .filter((key) => Object.prototype.hasOwnProperty.call(saved, key))
+          .map((key) => [key, saved[key]]),
+      );
+      normalized.bookStates[normalized.activeBookId] = normalizeLoadedState({
+        ...normalized.bookStates[normalized.activeBookId],
+        ...mirrored,
+      });
+    }
+    return normalized;
+  }
+
+  const migrated = createRootState();
+  migrated.bookStates[DEFAULT_BOOK_ID] = normalizeLoadedState(saved);
+  return migrated;
+}
+
+function loadState(storageKey = activeStorageKey) {
+  try {
+    return normalizeRootState(JSON.parse(localStorage.getItem(storageKey)));
+  } catch {
+    return createRootState();
+  }
+}
+
+function saveState(options = {}) {
+  if (tutorialRuntime?.active) return;
+  const notify = options.notify !== false;
+  try {
+    rootState.bookStates[activeBookId()] = state;
+    const storedState = cloneSerializable(rootState);
+    if (state.wordBrowse && requestedWordId()) {
+      storedState.bookStates[activeBookId()] = {
+        ...storedState.bookStates[activeBookId()],
+        view: wordDeepLinkReturnView ?? "home",
+        wordBrowse: null,
+      };
+    }
+    Object.assign(storedState, storedState.bookStates[activeBookId()]);
+    let previousStoredState = null;
+    try {
+      previousStoredState = JSON.parse(localStorage.getItem(activeStorageKey));
+    } catch {
+      previousStoredState = null;
+    }
+    if (window.SenseVocabSync) {
+      if (options.stampSync === false) {
+        window.SenseVocabSync.ensureMetadata(storedState);
+      } else {
+        window.SenseVocabSync.stampChanges(
+          storedState,
+          previousStoredState,
+        );
+      }
+      Object.entries(storedState.bookStates ?? {}).forEach(([bookId, bookState]) => {
+        if (rootState.bookStates[bookId] && bookState?._sync) {
+          rootState.bookStates[bookId]._sync = cloneSerializable(bookState._sync);
+        }
+      });
+      state = rootState.bookStates[activeBookId()];
+    }
+    localStorage.setItem(activeStorageKey, JSON.stringify(storedState));
+  } catch (error) {
+    window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
+      detail: { error },
+    }));
+    throw error;
+  }
+
+  if (notify) {
+    window.dispatchEvent(new CustomEvent("sensevocab:state-saved", {
+      detail: { storageKey: activeStorageKey },
+    }));
+  }
+}
+
+function normalizeActivityEntry(entry = {}) {
+  const uniqueKnownWords = (value) => {
+    return [...new Set(Array.isArray(value) ? value : [])].filter((wordId) => {
+      return wordById.has(wordId);
+    });
+  };
+
+  const newWords = uniqueKnownWords(entry.newWords);
+  const reviewWords = uniqueKnownWords(entry.reviewWords);
+  const target = Number.isFinite(entry.target) ? Math.max(0, entry.target) : null;
+  const completedFloor = entry.baseCompleted && target ? target : 0;
+  const lockedNewCount = Boolean(entry.newCountLocked) &&
+    Number.isFinite(entry.newCount);
+
+  return {
+    newWords,
+    reviewWords,
+    newCount: lockedNewCount
+      ? Math.max(0, entry.newCount)
+      : Math.max(
+        newWords.length,
+        Number.isFinite(entry.newCount) ? Math.max(0, entry.newCount) : 0,
+        completedFloor,
+      ),
+    newCountLocked: lockedNewCount,
+    reviewCount: Math.max(
+      reviewWords.length,
+      Number.isFinite(entry.reviewCount) ? Math.max(0, entry.reviewCount) : 0,
+    ),
+    baseCompleted: Boolean(entry.baseCompleted),
+    overtime: Boolean(entry.overtime),
+    target,
+    learningDays: [...new Set(Array.isArray(entry.learningDays) ? entry.learningDays : [])]
+      .filter(Number.isFinite),
+  };
+}
+
+function activeStudyWindow() {
+  if (!Array.isArray(state?.studyWindows)) return null;
+  return [...state.studyWindows].reverse().find((window) => {
+    return window && !window.endedAt;
+  }) ?? null;
+}
+
+function currentActivityDate() {
+  const studyWindow = activeStudyWindow();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(studyWindow?.activityDate ?? "")) {
+    return studyWindow.activityDate;
+  }
+  if (
+    state?.view === "study" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(state.session?.date ?? "")
+  ) {
+    return state.session.date;
+  }
+  return currentDate();
+}
+
+function finishStudyWindow(reason) {
+  const studyWindow = activeStudyWindow();
+  if (!studyWindow) return null;
+  studyWindow.endedAt = new Date().toISOString();
+  studyWindow.endedDate = currentDate();
+  studyWindow.endedReason = reason;
+  studyWindow.crossedMidnight = studyWindow.activityDate !== studyWindow.endedDate;
+  return studyWindow;
+}
+
+function startStudyWindow() {
+  finishStudyWindow("new-entry");
+  const startedAt = new Date().toISOString();
+  const activityDate = currentDate();
+  const studyWindow = {
+    id: `${Date.now()}-${state.studyWindows.length + 1}`,
+    startedAt,
+    endedAt: null,
+    activityDate,
+    endedDate: null,
+    endedReason: null,
+    crossedMidnight: false,
+  };
+  state.studyWindows.push(studyWindow);
+  state.studyWindows = state.studyWindows.slice(-500);
+  return studyWindow;
+}
+
+function isCrossDayStudy() {
+  const sessionDate = ensureTodaySession().date;
+  return /^\d{4}-\d{2}-\d{2}$/.test(sessionDate) &&
+    sessionDate < currentDate();
+}
+
+function activityForDate(date = currentActivityDate()) {
+  state.activityLog[date] = normalizeActivityEntry(state.activityLog[date]);
+  if (!Number.isFinite(state.activityLog[date].target)) {
+    state.activityLog[date].target = state.plan?.dailyTarget ?? 0;
+  }
+  return state.activityLog[date];
+}
+
+function addActivityWord(kind, wordId, date = currentActivityDate()) {
+  if (!wordById.has(wordId)) return;
+  const activity = activityForDate(date);
+  const field = kind === "new" ? "newWords" : "reviewWords";
+  const countField = kind === "new" ? "newCount" : "reviewCount";
+  const alreadyCounted = activity[field].includes(wordId);
+  activity[field] = [...new Set([...activity[field], wordId])];
+  if (!alreadyCounted) {
+    activity[countField] += 1;
+  }
+  if (kind === "new") {
+    activity.newCountLocked = false;
+  }
+}
+
+function migrateFastLegacyCalendar() {
+  const shouldShift = state.dataVersion >= 3 &&
+    state.dataVersion <= FAST_CALENDAR_LAST_VERSION &&
+    Object.keys(state.activityLog).length > 0;
+  if (!shouldShift) return;
+
+  Object.entries(LOCAL_HISTORY_NEW_COUNT_CORRECTIONS).forEach(([date, count]) => {
+    const activity = state.activityLog[date];
+    if (!activity) return;
+    activity.newCount = count;
+    activity.newCountLocked = true;
+    activity.baseCompleted = count > 0;
+    activity.overtime = false;
+    if (count > 0 && !Number.isFinite(activity.target)) {
+      activity.target = state.plan?.dailyTarget ?? count;
+    }
+  });
+
+  state.activityLog = Object.fromEntries(
+    Object.entries(state.activityLog).map(([date, activity]) => {
+      return [addDays(date, -1), activity];
+    }),
+  );
+
+  Object.values(state.progress).forEach((progress) => {
+    if (!progress || typeof progress !== "object") return;
+    if (!progress.firstSeenActual && /^\d{4}-\d{2}-\d{2}$/.test(progress.firstSeen ?? "")) {
+      progress.firstSeenActual = addDays(progress.firstSeen, -1);
+    }
+    if (!progress.lastSeenActual && /^\d{4}-\d{2}-\d{2}$/.test(progress.lastSeen ?? "")) {
+      progress.lastSeenActual = addDays(progress.lastSeen, -1);
+    }
+    if (!progress.masteredOnActual && /^\d{4}-\d{2}-\d{2}$/.test(progress.masteredOn ?? "")) {
+      progress.masteredOnActual = addDays(progress.masteredOn, -1);
+    }
+  });
+}
+
+function reconcileLocalJulyHistory() {
+  if (
+    state.dataVersion >= DATA_VERSION ||
+    state.introducedWords.length < 359
+  ) {
+    return false;
+  }
+
+  Object.entries(LOCAL_JULY_NEW_HISTORY).forEach(([date, count]) => {
+    const activity = normalizeActivityEntry(state.activityLog[date]);
+    activity.newCount = count;
+    activity.newCountLocked = true;
+    activity.target = 40;
+    activity.baseCompleted = count >= 40;
+    activity.overtime = count > 40;
+    state.activityLog[date] = activity;
+  });
+  return true;
+}
+
+function migrateLegacyActivity() {
+  migrateFastLegacyCalendar();
+  const reconciledLocalHistory = reconcileLocalJulyHistory();
+  Object.entries(state.activityLog).forEach(([date, entry]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      delete state.activityLog[date];
+      return;
+    }
+    state.activityLog[date] = normalizeActivityEntry(entry);
+  });
+
+  if (
+    (reconciledLocalHistory || state.dataVersion >= DATA_VERSION) &&
+    Object.keys(state.activityLog).length > 0
+  ) {
+    state.dataVersion = DATA_VERSION;
+    return;
+  }
+
+  const target = state.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET;
+  const startedOn = state.plan?.startedOn ?? currentDate();
+  const inferredDateByWord = new Map();
+
+  state.introducedWords.forEach((wordId, index) => {
+    const word = wordById.get(wordId);
+    if (!word) return;
+    const seenDates = allSenseKeysForWord(word)
+      .map((key) => state.progress[key]?.firstSeenActual ?? state.progress[key]?.firstSeen)
+      .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ""))
+      .sort();
+    const distributed = addDays(startedOn, Math.floor(index / Math.max(1, target)));
+    const inferredDate = seenDates[0] ?? (
+      distributed <= currentDate() ? distributed : currentDate()
+    );
+    inferredDateByWord.set(wordId, inferredDate);
+    const activity = activityForDate(inferredDate);
+    activity.newWords = [...new Set([...activity.newWords, wordId])];
+    activity.target = activity.target || target;
+  });
+
+  Object.entries(state.progress).forEach(([key, progress]) => {
+    if (!isKnownSenseKey(key)) return;
+    const { wordId } = splitSenseKey(key);
+    const date = progress.lastSeenActual ?? progress.lastSeen;
+    if (
+      /^\d{4}-\d{2}-\d{2}$/.test(date ?? "") &&
+      date !== (
+        progress.firstSeenActual ??
+        progress.firstSeen ??
+        inferredDateByWord.get(wordId)
+      )
+    ) {
+      const activity = activityForDate(date);
+      activity.reviewWords = [...new Set([...activity.reviewWords, wordId])];
+      activity.target = activity.target || target;
+    }
+  });
+
+  Object.values(state.activityLog).forEach((activity) => {
+    if (activity.newCountLocked) return;
+    const newCount = Math.max(activity.newWords.length, activity.newCount || 0);
+    if (newCount >= (activity.target || target)) {
+      activity.baseCompleted = true;
+    }
+    if (newCount > (activity.target || target)) {
+      activity.overtime = true;
+    }
+  });
+  Object.keys(state.activityLog).forEach((date) => {
+    state.activityLog[date] = normalizeActivityEntry(state.activityLog[date]);
+  });
+  state.dataVersion = DATA_VERSION;
+}
+
+function sanitizeState() {
+  if (state.plan) {
+    const advancedDays = Number(state.plan.advancedDays);
+    state.plan.advancedDays = Number.isFinite(advancedDays) ? advancedDays : 0;
+    state.plan.progressBaseWords = Math.max(
+      0,
+      Number(state.plan.progressBaseWords) || 0,
+    );
+    state.plan.progressBaseDays = Math.max(
+      0,
+      Number(state.plan.progressBaseDays) || 0,
+    );
+  }
+
+  state.introducedWords = state.introducedWords.filter((wordId, index, list) => {
+    return wordById.has(wordId) && list.indexOf(wordId) === index;
+  });
+
+  const inferredLearningDays = state.plan?.dailyTarget
+    ? Math.ceil(progressDayCount(state.plan.dailyTarget))
+    : 0;
+  state.learningDayCounter = Math.max(
+    0,
+    Number.parseInt(state.learningDayCounter, 10) || 0,
+    inferredLearningDays,
+  );
+
+  Object.keys(state.progress).forEach((key) => {
+    if (!isKnownSenseKey(key)) delete state.progress[key];
+    const progress = state.progress[key];
+    if (!progress) return;
+    if (progress.status === "learning") progress.status = SENSE_STATUS.REINFORCE;
+    if (!Object.values(SENSE_STATUS).includes(progress.status)) {
+      progress.status = SENSE_STATUS.NEW;
+    }
+    if (
+      (progress.status === SENSE_STATUS.REINFORCE || progress.status === SENSE_STATUS.REVIEW) &&
+      !progress.dueDate
+    ) {
+      progress.dueDate = currentDate();
+    }
+    if (
+      (progress.status === SENSE_STATUS.REINFORCE || progress.status === SENSE_STATUS.REVIEW) &&
+      !Number.isFinite(progress.dueLearningDay)
+    ) {
+      progress.dueLearningDay = progress.dueDate && progress.dueDate > currentDate()
+        ? state.learningDayCounter + 1
+        : Math.max(1, state.learningDayCounter);
+    }
+  });
+
+  if (state.session?.queue) {
+    if (!["hidden", "select", "examples"].includes(state.session.cardPhase)) {
+      state.session.cardPhase = state.session.revealed ? "select" : "hidden";
+    }
+
+    state.session.queue = state.session.queue
+      .filter((card) => wordById.has(card.wordId) && Array.isArray(card.senseKeys))
+      .map((card) => {
+        const activeSenseKeys = Array.isArray(card.activeSenseKeys)
+          ? card.activeSenseKeys
+          : card.senseKeys;
+        return refreshCardDisplayKeys({
+          ...card,
+          type: card.type === "new-review" ? "reinforcement" : card.type,
+          activeSenseKeys: sortSenseKeysByImportance(activeSenseKeys),
+          senseKeys: sortSenseKeysByImportance(card.senseKeys),
+          confirmedKeys: Array.isArray(card.confirmedKeys)
+            ? card.confirmedKeys.filter(isKnownSenseKey)
+            : [],
+          expandedMasteredKeys: Array.isArray(card.expandedMasteredKeys)
+            ? card.expandedMasteredKeys.filter(isKnownSenseKey)
+            : [],
+        });
+      })
+      .filter((card) => card.senseKeys.length > 0);
+    state.session.currentIndex = Math.min(
+      state.session.currentIndex ?? 0,
+      state.session.queue.length,
+    );
+    if (state.session.snapshotTimingVersion !== 2) {
+      const activeIndex = state.session.historyView?.originIndex ??
+        state.session.currentIndex;
+      state.session.queue.forEach((card, index) => {
+        const untouchedCurrent = index === activeIndex &&
+          !state.session.revealed &&
+          (card.confirmedKeys ?? []).length === 0;
+        if (index > activeIndex || untouchedCurrent) {
+          delete card.encounterSnapshot;
+        }
+      });
+      state.session.snapshotTimingVersion = 2;
+    }
+  }
+
+  state.activityLog = state.activityLog && typeof state.activityLog === "object"
+    ? state.activityLog
+    : {};
+  state.studyWindows = Array.isArray(state.studyWindows)
+    ? state.studyWindows
+      .filter((studyWindow) => {
+        return studyWindow &&
+          typeof studyWindow.startedAt === "string" &&
+          /^\d{4}-\d{2}-\d{2}$/.test(studyWindow.activityDate ?? "");
+      })
+      .map((studyWindow, index) => ({
+        id: String(studyWindow.id ?? `${index + 1}`),
+        startedAt: studyWindow.startedAt,
+        endedAt: typeof studyWindow.endedAt === "string"
+          ? studyWindow.endedAt
+          : null,
+        activityDate: studyWindow.activityDate,
+        endedDate: /^\d{4}-\d{2}-\d{2}$/.test(studyWindow.endedDate ?? "")
+          ? studyWindow.endedDate
+          : null,
+        endedReason: typeof studyWindow.endedReason === "string"
+          ? studyWindow.endedReason
+          : null,
+        crossedMidnight: Boolean(studyWindow.crossedMidnight),
+      }))
+      .slice(-500)
+    : [];
+  migrateLegacyActivity();
+  state.wordListSort = [
+    "mastery",
+    "time-asc",
+    "time-desc",
+    "alpha-asc",
+    "alpha-desc",
+  ].includes(state.wordListSort)
+    ? state.wordListSort
+    : "mastery";
+  state.wordBrowse = null;
+  updatePlanDrift();
+}
+
+function cloneSerializable(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function accountStorageKey(userId) {
+  return `${ACCOUNT_STORAGE_PREFIX}${encodeURIComponent(userId)}`;
+}
+
+function requestedWordId() {
+  return new URL(window.location.href).searchParams.get("word");
+}
+
+function applyWordDeepLink() {
+  const requestedBook = new URL(window.location.href).searchParams.get("book");
+  if (requestedBook && requestedBook !== activeBookId() && bookById.has(requestedBook)) {
+    activateBookScope(requestedBook);
+  }
+  const wordId = requestedWordId();
+  if (!wordId || !wordById.has(wordId)) return false;
+  wordDeepLinkReturnView = state.view;
+  state.wordBrowse = { wordId };
+  state.view = "study";
+  return true;
+}
+
+function clearWordDeepLink() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("word")) return;
+  url.searchParams.delete("word");
+  url.searchParams.delete("book");
+  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function stateHasLearningData(candidate) {
+  if (!candidate || typeof candidate !== "object") return false;
+  if (candidate.bookStates && typeof candidate.bookStates === "object") {
+    return Object.values(candidate.bookStates).some(stateHasLearningData);
+  }
+  return Boolean(
+    candidate.plan ||
+    (Array.isArray(candidate.introducedWords) && candidate.introducedWords.length) ||
+    Object.keys(candidate.progress ?? {}).length ||
+    Object.keys(candidate.activityLog ?? {}).length ||
+    (Array.isArray(candidate.studyWindows) && candidate.studyWindows.length),
+  );
+}
+
+function stateSignature(candidate) {
+  const value = JSON.stringify(candidate ?? {});
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function applyStateToStorage(storageKey, nextState = null) {
+  if (tutorialRuntime?.active) {
+    tutorialRuntime.realStorageKey = storageKey;
+    tutorialRuntime.realRootState = nextState
+      ? normalizeRootState(cloneSerializable(nextState))
+      : loadState(storageKey);
+    return;
+  }
+  activeStorageKey = storageKey;
+  rootState = nextState
+    ? normalizeRootState(cloneSerializable(nextState))
+    : loadState(storageKey);
+  activateBookScope(rootState.activeBookId);
+  applyWordDeepLink();
+  saveState({ notify: false, stampSync: !nextState });
+  render();
+  window.dispatchEvent(new CustomEvent("sensevocab:scope-changed", {
+    detail: { storageKey: activeStorageKey },
+  }));
+}
+
+function cloudStateSnapshot() {
+  if (tutorialRuntime?.active) {
+    return cloneSerializable(tutorialRuntime.realRootState);
+  }
+  const snapshot = cloneSerializable(rootState);
+  const activeScope = {
+    ...cloneSerializable(state),
+    view: "home",
+    wordBrowse: null,
+  };
+  snapshot.bookStates[activeBookId()] = activeScope;
+  // The normalized Supabase tables and the existing admin analytics continue
+  // to receive a materialized view of the active book.  The authoritative
+  // multi-book snapshot remains in bookStates.
+  Object.assign(snapshot, activeScope);
+  return snapshot;
+}
+
+function captureActiveNavigation() {
+  if (!state || !rootState) return null;
+  return {
+    bookId: activeBookId(),
+    view: ["home", "study", "word-list"].includes(state.view)
+      ? state.view
+      : "home",
+    wordBrowse: state.wordBrowse
+      ? cloneSerializable(state.wordBrowse)
+      : null,
+  };
+}
+
+function restoreActiveNavigation(navigation) {
+  if (!navigation || !state) return;
+  state.wordBrowse = navigation.wordBrowse &&
+    wordById.has(navigation.wordBrowse.wordId)
+    ? navigation.wordBrowse
+    : null;
+  state.view = navigation.view;
+  if (state.view === "study" && !state.wordBrowse && !state.session) {
+    state.view = "home";
+  }
+  if (state.view === "word-list") {
+    state.wordBrowse = null;
+  }
+}
+
+window.SenseVocabApp = {
+  guestStorageKey: STORAGE_KEY,
+  accountStorageKey,
+  getActiveStorageKey: () => activeStorageKey,
+  getState: cloudStateSnapshot,
+  getGuestState: () => loadState(STORAGE_KEY),
+  getAccountState: (userId) => loadState(accountStorageKey(userId)),
+  hasLearningData: stateHasLearningData,
+  stateSignature,
+  mergeStates: (localState, remoteState) => {
+    if (!window.SenseVocabSync) return cloneSerializable(remoteState);
+    return window.SenseVocabSync.mergeStates(localState, remoteState);
+  },
+  getCurrentWordContext: () => currentFeedbackContext(),
+  activateGuest: () => applyStateToStorage(STORAGE_KEY),
+  activateAccount: (userId, nextState = null) => {
+    applyStateToStorage(accountStorageKey(userId), nextState);
+  },
+  replaceActiveState: (nextState, options = {}) => {
+    if (tutorialRuntime?.active) {
+      tutorialRuntime.realRootState = normalizeRootState(cloneSerializable(nextState));
+      return;
+    }
+    const navigation = options.preserveNavigation
+      ? captureActiveNavigation()
+      : null;
+    rootState = normalizeRootState(cloneSerializable(nextState));
+    if (navigation && bookById.has(navigation.bookId)) {
+      rootState.activeBookId = navigation.bookId;
+    }
+    activateBookScope(rootState.activeBookId);
+    restoreActiveNavigation(navigation);
+    applyWordDeepLink();
+    saveState({
+      notify: options.notify !== false,
+      stampSync: options.stampSync !== false,
+    });
+    render();
+  },
+  removeAccountCache: (userId) => {
+    localStorage.removeItem(accountStorageKey(userId));
+  },
+};
+
+function currentDate() {
+  return todayKey();
+}
+
+function scheduleMidnightRefresh() {
+  if (midnightRefreshTimer) clearTimeout(midnightRefreshTimer);
+  const now = new Date();
+  const nextMidnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0,
+    0,
+    0,
+    100,
+  );
+  midnightRefreshTimer = setTimeout(() => {
+    if (state) {
+      render();
+      saveState();
+    }
+    scheduleMidnightRefresh();
+  }, Math.max(100, nextMidnight.getTime() - now.getTime()));
+}
+
+function currentPlanDate(dayOffset = 0) {
+  return addDays(currentDate(), dayOffset);
+}
+
+function ensureTodaySession() {
+  const date = currentDate();
+  const keepOpenCrossDaySession = state.view === "study" &&
+    state.session &&
+    state.session.date !== date;
+
+  if (!state.session || (state.session.date !== date && !keepOpenCrossDaySession)) {
+    state.session = {
+      date,
+      queue: [],
+      currentIndex: 0,
+      revealed: false,
+      cardPhase: "hidden",
+      baseNewAdded: false,
+      baseCompleted: false,
+      activeBatchType: null,
+      activePlanDate: currentPlanDate(),
+      extraBatches: 0,
+      advanceBatches: 0,
+      advanceShiftCommitted: false,
+      reinforcementAdded: false,
+      reinforcedKeys: [],
+      activeLearningDay: null,
+      baseLearningDay: null,
+      historyView: null,
+      snapshotTimingVersion: 2,
+    };
+  }
+
+  if (!["hidden", "select", "examples"].includes(state.session.cardPhase)) {
+    state.session.cardPhase = state.session.revealed ? "select" : "hidden";
+  }
+  state.session.queue = Array.isArray(state.session.queue) ? state.session.queue : [];
+  state.session.currentIndex = Math.min(
+    Math.max(0, state.session.currentIndex ?? 0),
+    state.session.queue.length,
+  );
+  state.session.reinforcedKeys = Array.isArray(state.session.reinforcedKeys)
+    ? state.session.reinforcedKeys.filter(isKnownSenseKey)
+    : [];
+  if (typeof state.session.reinforcementAdded !== "boolean") {
+    state.session.reinforcementAdded = state.session.queue.some(
+      (card) => card.type === "reinforcement" || card.type === "new-review",
+    );
+  }
+  state.session.advanceBatches = Number.isFinite(state.session.advanceBatches)
+    ? state.session.advanceBatches
+    : 0;
+  state.session.advanceShiftCommitted = Boolean(state.session.advanceShiftCommitted);
+  state.session.activeLearningDay = Number.isFinite(state.session.activeLearningDay)
+    ? state.session.activeLearningDay
+    : null;
+  if (
+    !Number.isFinite(state.session.activeLearningDay) &&
+    state.session.baseNewAdded &&
+    state.learningDayCounter > 0
+  ) {
+    state.session.activeLearningDay = state.learningDayCounter;
+  }
+  state.session.baseLearningDay = Number.isFinite(state.session.baseLearningDay)
+    ? state.session.baseLearningDay
+    : state.session.activeLearningDay;
+  if (!state.session.historyView || typeof state.session.historyView !== "object") {
+    state.session.historyView = null;
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(state.session.activePlanDate ?? "")) {
+    const pendingAdvanceOffset = state.session.activeBatchType === "advance" &&
+      !state.session.advanceShiftCommitted
+      ? 1
+      : 0;
+    state.session.activePlanDate = addDays(state.session.date, pendingAdvanceOffset);
+  }
+
+  return state.session;
+}
+
+function beginLearningDay(mode) {
+  const session = ensureTodaySession();
+  if (mode === "extra" && Number.isFinite(session.activeLearningDay)) {
+    return session.activeLearningDay;
+  }
+  if (
+    mode === "planned" &&
+    Number.isFinite(session.baseLearningDay)
+  ) {
+    session.activeLearningDay = session.baseLearningDay;
+    return session.activeLearningDay;
+  }
+
+  state.learningDayCounter += 1;
+  session.activeLearningDay = state.learningDayCounter;
+  if (mode === "planned") {
+    session.baseLearningDay = session.activeLearningDay;
+  }
+  const activity = activityForDate();
+  activity.learningDays = [
+    ...new Set([...activity.learningDays, session.activeLearningDay]),
+  ];
+  return session.activeLearningDay;
+}
+
+function activeLearningDay() {
+  const session = ensureTodaySession();
+  return session.activeLearningDay ?? state.learningDayCounter + 1;
+}
+
+function upcomingLearningDay() {
+  const session = ensureTodaySession();
+  return session.activeLearningDay ?? state.learningDayCounter + 1;
+}
+
+function activeStudyDate() {
+  return ensureTodaySession().activePlanDate ?? currentPlanDate();
+}
+
+function hasPlan() {
+  return Boolean(state?.plan?.dailyTarget);
+}
+
+function completedWordCount() {
+  return state.introducedWords.length;
+}
+
+function remainingWordCount() {
+  return Math.max(0, words.length - completedWordCount());
+}
+
+function progressDayCount(dailyTarget = state.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET) {
+  if (!dailyTarget) return 0;
+  const baseWords = state.plan?.progressBaseWords ?? 0;
+  const baseDays = state.plan?.progressBaseDays ?? 0;
+  return Math.max(0, baseDays + (completedWordCount() - baseWords) / dailyTarget);
+}
+
+function actualDayCount() {
+  if (!state.plan?.startedOn) return 0;
+  return daysBetween(state.plan.startedOn, currentDate()) + 1;
+}
+
+function scheduleDeltaDays(dailyTarget = state.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET) {
+  if (!hasPlan() || !dailyTarget) return 0;
+  return progressDayCount(dailyTarget) - actualDayCount();
+}
+
+function updatePlanDrift() {
+  if (!hasPlan()) return;
+  state.plan.advancedDays = scheduleDeltaDays();
+}
+
+function formatDayValue(value) {
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function dueReviewKeys(learningDay = upcomingLearningDay()) {
+  return Object.entries(state.progress)
+    .filter(([, progress]) => {
+      const pending = progress.status === SENSE_STATUS.REINFORCE ||
+        progress.status === SENSE_STATUS.REVIEW;
+      return pending && (
+        !Number.isFinite(progress.dueLearningDay) ||
+        progress.dueLearningDay <= learningDay
+      );
+    })
+    .map(([key]) => key)
+    .filter(isKnownSenseKey);
+}
+
+function planStartOffset() {
+  const session = ensureTodaySession();
+  return session.baseCompleted ? 1 : 0;
+}
+
+function plannedCompletionDate(dailyTarget = state.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET) {
+  const remaining = remainingWordCount();
+  if (!dailyTarget || remaining === 0) return currentDate();
+
+  const daysNeeded = Math.ceil(remaining / dailyTarget);
+  return addDays(currentDate(), planStartOffset() + daysNeeded - 1);
+}
+
+function nextNewWords(limit) {
+  if (limit <= 0) return [];
+
+  return words
+    .filter((word) => !state.introducedWords.includes(word.id))
+    .slice(0, limit);
+}
+
+function sortSenseKeysByImportance(keys) {
+  return keys.filter(isKnownSenseKey).sort((left, right) => {
+    return getSense(right).sense.importance - getSense(left).sense.importance;
+  });
+}
+
+function buildReviewCards(reviewLearningDay = upcomingLearningDay()) {
+  const reviewGroups = new Map();
+
+  dueReviewKeys(reviewLearningDay).forEach((key) => {
+    const { wordId } = splitSenseKey(key);
+    const group = reviewGroups.get(wordId) ?? [];
+    group.push(key);
+    reviewGroups.set(wordId, group);
+  });
+
+  return Array.from(reviewGroups.entries()).map(([wordId, keys]) => {
+    return createStudyCard("review", wordId, keys);
+  });
+}
+
+function buildNewCards(limit, type) {
+  return nextNewWords(limit)
+    .map((word) => createStudyCard(type, word.id, allSenseKeysForWord(word)))
+    .filter((card) => card.senseKeys.length > 0);
+}
+
+function buildStudyQueue({
+  includeReviews,
+  newLimit,
+  newType,
+  reviewLearningDay = upcomingLearningDay(),
+}) {
+  const reviewCards = includeReviews ? buildReviewCards(reviewLearningDay) : [];
+  const newCards = buildNewCards(newLimit, newType);
+  return [...reviewCards, ...newCards];
+}
+
+function buildReinforcementCards(reinforcementLearningDay = activeLearningDay()) {
+  const session = ensureTodaySession();
+  const alreadyReinforced = new Set(session.reinforcedKeys);
+  const groups = new Map();
+
+  Object.entries(state.progress).forEach(([key, progress]) => {
+    if (
+      progress.status !== SENSE_STATUS.REINFORCE ||
+      alreadyReinforced.has(key) ||
+      (
+        Number.isFinite(progress.dueLearningDay) &&
+        progress.dueLearningDay > reinforcementLearningDay
+      ) ||
+      !isKnownSenseKey(key)
+    ) return;
+    const { wordId } = splitSenseKey(key);
+    const keys = groups.get(wordId) ?? [];
+    keys.push(key);
+    groups.set(wordId, keys);
+  });
+
+  return Array.from(groups.entries()).map(([wordId, keys]) => {
+    return createStudyCard("reinforcement", wordId, keys);
+  });
+}
+
+function appendReinforcementStage() {
+  const session = ensureTodaySession();
+  if (session.reinforcementAdded) return false;
+
+  session.reinforcementAdded = true;
+  const cards = buildReinforcementCards(activeLearningDay());
+  session.queue.push(...cards);
+  return cards.length > 0;
+}
+
+function currentCard() {
+  if (state.wordBrowse?.wordId && wordById.has(state.wordBrowse.wordId)) {
+    const word = wordById.get(state.wordBrowse.wordId);
+    return createStudyCard("browse", word.id, allSenseKeysForWord(word));
+  }
+  const session = ensureTodaySession();
+  return session.queue[session.currentIndex] ?? null;
+}
+
+function isHistoryView() {
+  return Boolean(ensureTodaySession().historyView || state.wordBrowse);
+}
+
+function currentWord() {
+  const card = currentCard();
+  return card ? wordById.get(card.wordId) : null;
+}
+
+function currentFeedbackContext() {
+  if (!state || state.view !== "study") return null;
+  const card = currentCard();
+  const word = currentWord();
+  if (!card || !word) return null;
+  return {
+    source: "study",
+    bookId: activeBookId(),
+    bookName: bookDisplayName(),
+    wordId: word.id,
+    wordText: word.word,
+    cardType: card.type,
+    capturedAt: new Date().toISOString(),
+  };
+}
+
+function currentCardKey() {
+  const card = currentCard();
+  const session = ensureTodaySession();
+  if (!card) return null;
+
+  if (state.wordBrowse) return `browse:${card.wordId}`;
+  return `${session.date}:${session.currentIndex}:${card.wordId}`;
+}
+
+function hasUnfinishedQueue() {
+  const session = ensureTodaySession();
+  return session.queue.length > 0 && session.currentIndex < session.queue.length;
+}
+
+function visibleSenses() {
+  const card = currentCard();
+  if (!card) return [];
+
+  const confirmed = new Set(card.confirmedKeys ?? []);
+  const active = new Set(activeSenseKeysForCard(card));
+
+  return refreshCardDisplayKeys(card).senseKeys
+    .filter(isKnownSenseKey)
+    .sort((left, right) => {
+      const leftGroup = confirmed.has(left) ? 2 : isMastered(left) ? 1 : 0;
+      const rightGroup = confirmed.has(right) ? 2 : isMastered(right) ? 1 : 0;
+      if (leftGroup !== rightGroup) return leftGroup - rightGroup;
+      if (leftGroup === 2) {
+        return card.confirmedKeys.indexOf(left) - card.confirmedKeys.indexOf(right);
+      }
+      return getSense(right).sense.importance - getSense(left).sense.importance;
+    })
+    .map((key) => {
+      const { word, sense } = getSense(key);
+      return {
+        key,
+        word,
+        sense,
+        isActive: active.has(key),
+        isConfirmed: confirmed.has(key),
+        isMastered: isMastered(key),
+      };
+    });
+}
+
+function definitionSentence(sense) {
+  return sense.definitionSentence ? `释义：${sense.definitionSentence}` : "";
+}
+
+function definitionTranslation(sense) {
+  return sense.definitionZh ? `译文：${sense.definitionZh}` : "";
+}
+
+function exampleSentence(sense) {
+  return sense.example ? `例句：${sense.example}` : "";
+}
+
+function exampleTranslation(sense) {
+  return sense.exampleZh ? `译文：${sense.exampleZh}` : "";
+}
+
+function exampleAttribution(sense) {
+  const source = String(sense.exampleSource ?? "").toLowerCase();
+  if (!source) return "";
+  if (source.includes("tatoeba")) {
+    const sentence = sense.exampleSourceId ? ` #${sense.exampleSourceId}` : "";
+    const owner = sense.exampleOwner ? ` · ${sense.exampleOwner}` : "";
+    const license = sense.exampleLicense ? ` · ${sense.exampleLicense}` : "";
+    return `来源：Tatoeba${sentence}${owner}${license}`;
+  }
+  if (source.includes("kaikki") || source.includes("wiktionary")) {
+    const label = source.includes("quotation") ? "Wiktionary/Kaikki 引文" : "Wiktionary/Kaikki";
+    return `来源：${label}${sense.exampleLicense ? ` · ${sense.exampleLicense}` : ""}`;
+  }
+  if (source.includes("wordnet") || source.includes("semcor")) {
+    return `来源：Princeton WordNet${sense.exampleLicense ? ` · ${sense.exampleLicense}` : ""}`;
+  }
+  return "";
+}
+
+function progressFor(key) {
+  if (!state.progress[key]) {
+    state.progress[key] = {
+      status: SENSE_STATUS.NEW,
+      misses: 0,
+      dueDate: null,
+      firstSeen: null,
+      lastSeen: null,
+      masteredOn: null,
+      firstSeenActual: null,
+      lastSeenActual: null,
+      masteredOnActual: null,
+      lastLearningDay: null,
+      dueLearningDay: null,
+    };
+  }
+
+  return state.progress[key];
+}
+
+function isMastered(key) {
+  return progressFor(key).status === SENSE_STATUS.MASTERED;
+}
+
+function activeLearningCount() {
+  return Object.values(state.progress).filter((progress) => {
+    return progress.status === SENSE_STATUS.REINFORCE;
+  }).length;
+}
+
+function dueWordCount(status, learningDay = upcomingLearningDay()) {
+  return new Set(
+    Object.entries(state.progress)
+      .filter(([key, progress]) => {
+        return isKnownSenseKey(key) &&
+          progress.status === status &&
+          (
+            !Number.isFinite(progress.dueLearningDay) ||
+            progress.dueLearningDay <= learningDay
+          );
+      })
+      .map(([key]) => splitSenseKey(key).wordId),
+  ).size;
+}
+
+function todayNewWordCount() {
+  if (!hasPlan()) return 0;
+
+  const session = ensureTodaySession();
+  if (hasUnfinishedQueue()) {
+    const newTypes = new Set(["new", "extra", "advance"]);
+    return new Set(
+      session.queue
+        .slice(session.currentIndex)
+        .filter((card) => newTypes.has(card.type))
+        .map((card) => card.wordId),
+    ).size;
+  }
+
+  if (!session.baseNewAdded && !session.baseCompleted) {
+    return Math.min(state.plan.dailyTarget, remainingWordCount());
+  }
+
+  return 0;
+}
+
+function todayPlanCounts() {
+  return {
+    newWords: todayNewWordCount(),
+    reinforceWords: dueWordCount(SENSE_STATUS.REINFORCE),
+    reviewWords: dueWordCount(SENSE_STATUS.REVIEW),
+  };
+}
+
+function membershipAllowsStudy() {
+  return !membershipAccess.loggedIn ||
+    membershipAccess.pending ||
+    membershipAccess.active;
+}
+
+function cardProgressCategory(card) {
+  if (card?.type === "review") return "review";
+  if (card?.type === "reinforcement") return "reinforcement";
+  if (["new", "extra", "advance"].includes(card?.type)) return "new";
+  return null;
+}
+
+function currentQueueCounts() {
+  const session = ensureTodaySession();
+  const counts = {
+    review: { completed: 0, total: 0 },
+    new: { completed: 0, total: 0 },
+    reinforcement: { completed: 0, total: 0 },
+  };
+  const progressIndex = Number.isInteger(session.historyView?.originIndex)
+    ? session.historyView.originIndex
+    : session.currentIndex;
+  const progressPhase = session.historyView?.originPhase ??
+    session.cardPhase ??
+    (session.revealed ? "select" : "hidden");
+
+  session.queue.forEach((card, index) => {
+    const category = cardProgressCategory(card);
+    if (!category) return;
+    const keys = activeSenseKeysForCard(card).filter(isKnownSenseKey);
+    counts[category].total += keys.length;
+    if (index < progressIndex) {
+      counts[category].completed += keys.length;
+      return;
+    }
+    if (index !== progressIndex) return;
+    if (progressPhase === "examples") {
+      counts[category].completed += keys.length;
+      return;
+    }
+    const confirmed = new Set(card.confirmedKeys ?? []);
+    counts[category].completed += keys.filter((key) => confirmed.has(key)).length;
+  });
+
+  if (!session.reinforcementAdded) {
+    const alreadyReinforced = new Set(session.reinforcedKeys);
+    const dueReinforcementCount = Object.entries(state.progress).filter(
+      ([key, progress]) => {
+        return isKnownSenseKey(key) &&
+          progress.status === SENSE_STATUS.REINFORCE &&
+          !alreadyReinforced.has(key) &&
+          (
+            !Number.isFinite(progress.dueLearningDay) ||
+            progress.dueLearningDay <= activeLearningDay()
+          );
+      },
+    ).length;
+    counts.reinforcement.total = Math.max(
+      counts.reinforcement.total,
+      dueReinforcementCount,
+    );
+  }
+
+  return counts;
+}
+
+function studyButtonState() {
+  if (!membershipAllowsStudy()) {
+    return { label: "会员已到期", disabled: true };
+  }
+  if (!hasPlan()) {
+    return { label: "开始学习", disabled: true };
+  }
+
+  const session = ensureTodaySession();
+  const hasRemaining = remainingWordCount() > 0;
+  const hasDueReviews = dueReviewKeys().length > 0;
+
+  if (hasUnfinishedQueue()) {
+    return { label: "继续学习", disabled: false };
+  }
+
+  if (!session.baseNewAdded) {
+    return {
+      label: "开始学习",
+      disabled: !hasRemaining && !hasDueReviews,
+    };
+  }
+
+  if (!hasRemaining) {
+    return { label: hasDueReviews ? "开始学习" : "全部完成", disabled: !hasDueReviews };
+  }
+
+  return { label: "增量学习", disabled: false };
+}
+
+function canStartAdvanceStudy() {
+  if (!membershipAllowsStudy() || !hasPlan() || remainingWordCount() === 0) {
+    return false;
+  }
+  const session = ensureTodaySession();
+  return session.baseCompleted && !hasUnfinishedQueue();
+}
+
+function render() {
+  if (!state) return;
+
+  ensureTodaySession();
+  renderHome();
+  renderStudy();
+  if (state.view === "word-list") renderWordList();
+  homePanel.hidden = state.view !== "home";
+  studyPanel.hidden = state.view !== "study";
+  wordListPanel.hidden = state.view !== "word-list";
+}
+
+function fitWordText() {
+  wordFitFrame = null;
+  wordText.style.fontSize = "";
+  const maximum = revealButton.classList.contains("is-finished") ? 78 : 93;
+  wordText.style.fontSize = `${maximum}px`;
+  const buttonStyle = window.getComputedStyle(revealButton);
+  const horizontalPadding =
+    Number.parseFloat(buttonStyle.paddingLeft) +
+    Number.parseFloat(buttonStyle.paddingRight);
+  const available = Math.max(96, revealButton.clientWidth - horizontalPadding);
+  const measured = wordText.getBoundingClientRect().width;
+  if (measured > available) {
+    const fitted = Math.max(18, Math.floor(maximum * available / measured));
+    wordText.style.fontSize = `${fitted}px`;
+  }
+}
+
+function scheduleWordFit() {
+  if (wordFitFrame !== null) {
+    window.cancelAnimationFrame(wordFitFrame);
+  }
+  wordFitFrame = window.requestAnimationFrame(fitWordText);
+}
+
+function renderHome() {
+  const target = state.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET;
+  const completed = completedWordCount();
+  const remaining = remainingWordCount();
+  const button = studyButtonState();
+  const todayCounts = todayPlanCounts();
+  updatePlanDrift();
+  if (homeBookName) homeBookName.textContent = bookDisplayName();
+
+  homeCompletedWords.textContent = completed;
+  homeRemainingWords.textContent = remaining;
+  homeCompletionDate.textContent = hasPlan() ? plannedCompletionDate(target) : "-";
+  todayNewCount.textContent = todayCounts.newWords;
+  todayReinforceCount.textContent = todayCounts.reinforceWords;
+  todayReviewCount.textContent = todayCounts.reviewWords;
+
+  if (hasPlan()) {
+    const progressDays = progressDayCount(target);
+    const actualDays = actualDayCount();
+    const delta = progressDays - actualDays;
+    homePlanMeta.textContent = delta > 0
+      ? `计划已提前 ${formatDayValue(delta)} 天`
+      : delta < 0
+        ? `计划已落后 ${formatDayValue(Math.abs(delta))} 天`
+        : "计划进度同步";
+    progressCompare.textContent =
+      `进度 ${formatDayValue(progressDays)} 天 / 实际 ${formatDayValue(actualDays)} 天`;
+    planButton.textContent = "修改计划";
+  } else {
+    homePlanMeta.textContent = "尚未选择计划";
+    progressCompare.textContent = "";
+    planButton.textContent = "选择计划";
+  }
+
+  renderHeatmap();
+  startStudyButton.textContent = button.label;
+  startStudyButton.disabled = button.disabled;
+  advanceStudyButton.hidden = !hasPlan() || !ensureTodaySession().baseCompleted || remaining === 0;
+  advanceStudyButton.disabled = !canStartAdvanceStudy();
+  advanceStudyButton.textContent = scheduleDeltaDays() > 0 ? "再提前一天" : "提前学习";
+}
+
+function heatmapDateRange() {
+  const today = parseDate(currentDate());
+  const end = new Date(today);
+  end.setDate(end.getDate() + (6 - end.getDay()));
+  const start = new Date(end);
+  start.setDate(start.getDate() - (53 * 7 - 1));
+  return { start, end };
+}
+
+function hasCompletedStudyWindowForDate(date) {
+  return state.studyWindows.some((studyWindow) => {
+    return studyWindow.activityDate === date && Boolean(studyWindow.endedAt);
+  });
+}
+
+function heatmapDateIsReady(date) {
+  if (date < currentDate()) return true;
+  if (date > currentDate()) return false;
+  return hasCompletedStudyWindowForDate(date);
+}
+
+function heatmapColor(date, activity) {
+  const planStarted = state.plan?.startedOn;
+  const isPlanDay = planStarted &&
+    date >= planStarted &&
+    date <= currentDate() &&
+    heatmapDateIsReady(date);
+  if (!isPlanDay) return "#ecefeb";
+
+  const newCountValue = activity?.newCount ?? activity?.newWords?.length ?? 0;
+  const reviewCountValue = activity?.reviewCount ?? activity?.reviewWords?.length ?? 0;
+  const hasActivity = newCountValue + reviewCountValue > 0;
+  if (!hasActivity) return "#dc6a63";
+
+  const target = activity?.target || state.plan?.dailyTarget || 1;
+  if (!activity?.baseCompleted) {
+    const ratio = Math.min(1, (newCountValue + reviewCountValue) / Math.max(1, target));
+    const lightness = Math.round(78 - ratio * 24);
+    return `hsl(42 78% ${lightness}%)`;
+  }
+
+  const overtime = activity.overtime || newCountValue > target;
+  if (!overtime) return "#49a96d";
+  const intensity = Math.min(1, Math.max(0, (newCountValue - target) / target));
+  const lightness = Math.round(41 - intensity * 10);
+  return `hsl(151 58% ${lightness}%)`;
+}
+
+function heatmapLabel(date, activity) {
+  const parsed = parseDate(date);
+  const newCountValue = activity?.newCount ?? activity?.newWords?.length ?? 0;
+  const reviewCountValue = activity?.reviewCount ?? activity?.reviewWords?.length ?? 0;
+  return `${parsed.getMonth() + 1}月${parsed.getDate()}日，新学 ${newCountValue} 词，复习 ${reviewCountValue} 词`;
+}
+
+function positionHeatmapAtLatest(force = false) {
+  window.requestAnimationFrame(() => {
+    const hasHorizontalOverflow = heatmapScroll.scrollWidth > heatmapScroll.clientWidth + 1;
+    if (!hasHorizontalOverflow) return;
+    if (!force && heatmapPositionedBookId === activeBookId()) return;
+    heatmapScroll.scrollLeft = heatmapScroll.scrollWidth - heatmapScroll.clientWidth;
+    heatmapPositionedBookId = activeBookId();
+  });
+}
+
+function renderHeatmap() {
+  heatmapGrid.replaceChildren();
+  heatmapMonths.replaceChildren();
+  const { start } = heatmapDateRange();
+  let previousMonth = -1;
+
+  for (let index = 0; index < 53 * 7; index += 1) {
+    const dateValue = new Date(start);
+    dateValue.setDate(start.getDate() + index);
+    const date = formatDate(dateValue);
+    const activity = state.activityLog[date];
+    const label = heatmapLabel(date, activity);
+    const day = document.createElement("button");
+    day.className = "heatmap-day";
+    day.type = "button";
+    day.dataset.date = date;
+    day.style.setProperty("--heat-color", heatmapColor(date, activity));
+    day.setAttribute("aria-label", label);
+    if (
+      state.plan?.startedOn &&
+      date >= state.plan.startedOn &&
+      date <= currentDate() &&
+      heatmapDateIsReady(date)
+    ) {
+      day.classList.add("is-active");
+    }
+    const showLabel = () => {
+      heatmapTooltip.textContent = label;
+    };
+    day.addEventListener("mouseenter", showLabel);
+    day.addEventListener("focus", showLabel);
+    heatmapGrid.append(day);
+
+    if (dateValue.getDay() === 0 && dateValue.getMonth() !== previousMonth) {
+      previousMonth = dateValue.getMonth();
+      const firstMonthIsIncomplete = index === 0 && dateValue.getDate() > 7;
+      if (firstMonthIsIncomplete) continue;
+      const month = document.createElement("span");
+      month.className = "heatmap-month-label";
+      month.textContent = `${previousMonth + 1}月`;
+      month.style.gridColumn = `${Math.floor(index / 7) + 1} / span 4`;
+      heatmapMonths.append(month);
+    }
+  }
+  positionHeatmapAtLatest();
+}
+
+function wordLearningInfo(word) {
+  const keys = allSenseKeysForWord(word);
+  const seenDates = keys
+    .map((key) => state.progress[key]?.firstSeenActual ?? state.progress[key]?.firstSeen)
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ""))
+    .sort();
+  let firstLearned = seenDates[0] ?? null;
+  if (!firstLearned && state.introducedWords.includes(word.id)) {
+    firstLearned = Object.entries(state.activityLog)
+      .filter(([, activity]) => activity.newWords.includes(word.id))
+      .map(([date]) => date)
+      .sort()[0] ?? state.plan?.startedOn ?? currentDate();
+  }
+
+  const masteredDates = keys.map((key) => {
+    const progress = state.progress[key];
+    return progress?.status === SENSE_STATUS.MASTERED
+      ? progress.masteredOnActual ?? progress.masteredOn
+      : null;
+  });
+  const mastered = keys.length > 0 && masteredDates.every(Boolean);
+  const masteredOn = mastered ? masteredDates.sort().at(-1) : null;
+  const duration = firstLearned
+    ? daysBetween(firstLearned, masteredOn ?? currentDate()) + 1
+    : -1;
+
+  return {
+    firstLearned,
+    firstOrder: state.introducedWords.indexOf(word.id),
+    mastered,
+    masteredOn,
+    duration,
+  };
+}
+
+function wordStatusBadges(word) {
+  if (!state.introducedWords.includes(word.id)) {
+    return [{ label: "待新学", type: "new" }];
+  }
+
+  const statuses = allSenseKeysForWord(word).map((key) => {
+    return state.progress[key]?.status ?? SENSE_STATUS.NEW;
+  });
+  if (statuses.length > 0 && statuses.every((status) => status === SENSE_STATUS.MASTERED)) {
+    return [{ label: "已掌握", type: "mastered" }];
+  }
+
+  const badges = [];
+  if (statuses.includes(SENSE_STATUS.NEW)) {
+    badges.push({ label: "待新学", type: "new" });
+  }
+  if (statuses.includes(SENSE_STATUS.REINFORCE)) {
+    badges.push({ label: "待强化", type: "reinforce" });
+  }
+  if (statuses.includes(SENSE_STATUS.REVIEW)) {
+    badges.push({ label: "待复习", type: "review" });
+  }
+  return badges.length > 0 ? badges : [{ label: "待新学", type: "new" }];
+}
+
+function sortedWordsForList() {
+  const query = wordListQuery.trim().toLocaleLowerCase("en");
+  const items = words
+    .filter((word) => !query || word.word.toLocaleLowerCase("en").includes(query))
+    .map((word) => ({ word, info: wordLearningInfo(word) }));
+  const alpha = (left, right) => left.word.word.localeCompare(
+    right.word.word,
+    "en",
+    { sensitivity: "base" },
+  );
+  const learnedFirst = (left, right) => {
+    if (Boolean(left.info.firstLearned) !== Boolean(right.info.firstLearned)) {
+      return left.info.firstLearned ? -1 : 1;
+    }
+    return 0;
+  };
+
+  return items.sort((left, right) => {
+    const mode = state.wordListSort;
+    if (mode === "alpha-asc") return alpha(left, right);
+    if (mode === "alpha-desc") return -alpha(left, right);
+
+    const learnedOrder = learnedFirst(left, right);
+    if (learnedOrder !== 0) return learnedOrder;
+    if (!left.info.firstLearned && !right.info.firstLearned) return alpha(left, right);
+
+    if (mode === "time-asc" || mode === "time-desc") {
+      const dateOrder = left.info.firstLearned.localeCompare(right.info.firstLearned);
+      if (dateOrder !== 0) return mode === "time-asc" ? dateOrder : -dateOrder;
+      return left.info.firstOrder - right.info.firstOrder;
+    }
+
+    if (right.info.duration !== left.info.duration) {
+      return right.info.duration - left.info.duration;
+    }
+    return left.info.firstOrder - right.info.firstOrder;
+  });
+}
+
+function renderWordList() {
+  if (wordListBookName) wordListBookName.textContent = bookDisplayName();
+  wordSortSelect.value = state.wordListSort;
+  wordSearchInput.value = wordListQuery;
+  wordList.replaceChildren();
+  const fragment = document.createDocumentFragment();
+  const items = sortedWordsForList();
+  wordListEmpty.hidden = items.length > 0;
+  items.forEach(({ word, info }) => {
+    const button = document.createElement("button");
+    button.className = "word-list-item";
+    button.type = "button";
+    button.dataset.wordId = word.id;
+
+    const name = document.createElement("span");
+    name.className = "word-list-name";
+    name.textContent = word.word;
+
+    const meta = document.createElement("span");
+    meta.className = "word-list-meta";
+
+    const duration = document.createElement("span");
+    duration.className = "word-list-badge is-duration";
+    duration.textContent = `学习${Math.max(0, info.duration)}天`;
+    meta.append(duration);
+
+    wordStatusBadges(word).forEach(({ label, type }) => {
+      const status = document.createElement("span");
+      status.className = `word-list-badge is-${type}`;
+      status.textContent = label;
+      meta.append(status);
+    });
+
+    button.append(name, meta);
+    fragment.append(button);
+  });
+  wordList.append(fragment);
+}
+
+function renderStudy() {
+  const session = ensureTodaySession();
+  const browsing = Boolean(state.wordBrowse);
+  const card = currentCard();
+  const historyViewing = isHistoryView();
+  if (card && !historyViewing) {
+    ensureEncounterSnapshot(card);
+  }
+  const word = currentWord();
+  const counts = currentQueueCounts();
+  const finished = !card;
+  const phase = historyViewing
+    ? "examples"
+    : session.cardPhase ?? (session.revealed ? "select" : "hidden");
+  const fullyMastered = Boolean(card && isWordFullyMastered(card.wordId));
+
+  studyFeedbackButton.hidden = !word;
+  studyTopbar.hidden = browsing;
+  studyProgressRow.hidden = false;
+  queueProgress.hidden = browsing;
+  resetButton.hidden = browsing;
+  reviewCount.textContent = `${counts.review.completed}/${counts.review.total}`;
+  newCount.textContent = `${counts.new.completed}/${counts.new.total}`;
+  learningCount.textContent =
+    `${counts.reinforcement.completed}/${counts.reinforcement.total}`;
+  queueProgress.textContent = browsing
+    ? "单词卡片"
+    : finished
+    ? `${session.queue.length} / ${session.queue.length}`
+    : `${session.currentIndex + 1} / ${session.queue.length}`;
+
+  senseList.replaceChildren();
+  morphologyPanel.replaceChildren();
+  senseArea.hidden = browsing ? false : !session.revealed || finished;
+  nextButton.disabled = browsing ? false : !session.revealed || finished;
+  nextButton.textContent = browsing
+    ? requestedWordId()
+      ? wordDeepLinkReturnView === "study"
+        ? "回到当前词"
+        : wordDeepLinkReturnView === "word-list"
+          ? "返回单词列表"
+          : "返回首页"
+      : "返回单词列表"
+    : isHistoryView()
+    ? "回到当前词"
+    : phase === "examples" ? "下一词" : "完成";
+  audioButton.hidden = finished;
+  revealButton.disabled = finished || browsing;
+  revealButton.classList.toggle("is-finished", finished);
+  revealButton.classList.toggle("is-mastered", fullyMastered);
+
+  if (finished) {
+    wordText.textContent = session.baseCompleted ? "今日任务已完成" : "本轮已完成";
+    cardMode.textContent = session.activeBatchType === "extra"
+      ? "增量学习完成"
+      : session.activeBatchType === "advance"
+        ? "提前学习完成"
+        : "今日任务";
+    revealButton.setAttribute("aria-label", "本轮已完成");
+    nextButton.textContent = "下一词";
+    scheduleWordFit();
+    return;
+  }
+
+  wordText.textContent = word.word;
+  scheduleWordFit();
+  cardMode.textContent = browsing
+    ? "单词卡片"
+    : historyViewing
+    ? "回看"
+    : card.type === "review"
+    ? "复习"
+    : card.type === "reinforcement"
+      ? "强化"
+    : card.type === "advance"
+      ? "提前"
+    : card.type === "extra"
+      ? "增量"
+      : "新学";
+  revealButton.setAttribute("aria-label", `显示 ${word.word} 的义项`);
+  if (!browsing) maybeAutoPlayCurrentWord();
+
+  if (!session.revealed && !browsing) return;
+
+  renderMorphology(word);
+  const items = visibleSenses();
+  senseHint.textContent = browsing
+    ? "全部义项"
+    : historyViewing
+    ? "上一词义项"
+    : phase === "examples"
+      ? "义项与例句"
+      : "点击熟知的义项";
+
+  if (items.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "sense-hint";
+    empty.textContent = phase === "examples"
+      ? "熟知义项已处理，可以进入下一词。"
+      : "这个单词的义项本轮都已处理。";
+    senseList.append(empty);
+    nextButton.disabled = false;
+    return;
+  }
+
+  items.forEach(({
+    key,
+    sense,
+    isActive,
+    isConfirmed,
+    isMastered: mastered,
+  }, listIndex) => {
+    const button = document.createElement("button");
+    const greenSense = mastered || isConfirmed;
+    const expanded = (card.expandedMasteredKeys ?? []).includes(key);
+    const collapsibleGreen = phase === "examples" &&
+      !historyViewing &&
+      greenSense;
+    button.className = "sense-item";
+    button.type = "button";
+    button.dataset.key = key;
+    button.disabled = collapsibleGreen
+      ? false
+      : phase === "examples" ||
+        historyViewing ||
+        !isActive ||
+        isConfirmed ||
+        mastered;
+    button.classList.toggle("is-example", phase === "examples");
+    button.classList.toggle("is-confirmed", isConfirmed && !mastered);
+    button.classList.toggle("is-mastered", mastered);
+    button.classList.toggle("is-collapsible", collapsibleGreen);
+    button.classList.toggle("is-expanded", collapsibleGreen && expanded);
+    if (collapsibleGreen) {
+      button.setAttribute("aria-expanded", String(expanded));
+      button.setAttribute("aria-label", `${sense.meaning}，${expanded ? "收起" : "展开"}详情`);
+    }
+
+    const rank = document.createElement("span");
+    rank.className = "sense-rank";
+    rank.textContent = listIndex + 1;
+
+    const copy = document.createElement("span");
+    copy.className = "sense-copy";
+
+    const meaningLine = document.createElement("span");
+    meaningLine.className = "sense-line";
+
+    const pos = document.createElement("span");
+    pos.className = "sense-pos";
+    pos.textContent = sense.pos;
+
+    const text = document.createElement("span");
+    text.className = "sense-text";
+    text.textContent = sense.meaning;
+
+    meaningLine.append(pos, text);
+    if (sense.ipa) {
+      const ipa = document.createElement("span");
+      ipa.className = "sense-ipa";
+      ipa.textContent = `/${sense.ipa.replace(/^\/+|\/+$/g, "")}/`;
+      meaningLine.append(ipa);
+    }
+    copy.append(meaningLine);
+
+    if (phase === "examples" && (!collapsibleGreen || expanded)) {
+      const definitionGroup = document.createElement("span");
+      definitionGroup.className = "sense-detail-group sense-definition-group";
+      const definition = document.createElement("span");
+      definition.className = "sense-definition";
+      definition.textContent = definitionSentence(sense);
+      const definitionZh = document.createElement("span");
+      definitionZh.className = "sense-definition-zh";
+      definitionZh.textContent = definitionTranslation(sense);
+      definitionGroup.append(definition, definitionZh);
+
+      const exampleGroup = document.createElement("span");
+      exampleGroup.className = "sense-detail-group sense-example-group";
+      const example = document.createElement("span");
+      example.className = "sense-example";
+      example.textContent = exampleSentence(sense);
+      const translation = document.createElement("span");
+      translation.className = "sense-example-zh";
+      translation.textContent = exampleTranslation(sense);
+      exampleGroup.append(example, translation);
+      const attributionText = exampleAttribution(sense);
+      if (attributionText) {
+        const attribution = document.createElement("span");
+        attribution.className = "sense-attribution";
+        attribution.textContent = attributionText;
+        exampleGroup.append(attribution);
+      }
+      copy.append(definitionGroup, exampleGroup);
+    }
+
+    button.append(rank, copy);
+    senseList.append(button);
+  });
+}
+
+function appendMorphologyForms(container, rows) {
+  rows.forEach((row, index) => {
+    if (index > 0) {
+      const separator = document.createElement("span");
+      separator.className = "morphology-separator";
+      separator.textContent = "/";
+      container.append(separator);
+    }
+    const form = document.createElement("span");
+    form.className = `morphology-form is-${row.emphasis || "normal"}`;
+    form.textContent = row.form;
+    container.append(form);
+  });
+}
+
+function createMorphologyItem(label, rows) {
+  const item = document.createElement("div");
+  item.className = "morphology-item";
+
+  const itemLabel = document.createElement("span");
+  itemLabel.className = "morphology-item-label";
+  itemLabel.textContent = label;
+
+  const value = document.createElement("span");
+  value.className = "morphology-value";
+  appendMorphologyForms(value, rows);
+  item.append(itemLabel, value);
+  return item;
+}
+
+function appendMorphologyGroup(title, content) {
+  const group = document.createElement("section");
+  group.className = "morphology-group";
+
+  const heading = document.createElement("h4");
+  heading.className = "morphology-group-title";
+  heading.textContent = title;
+  group.append(heading, content);
+  morphologyPanel.append(group);
+}
+
+function renderMorphology(word) {
+  const morphology = word.morphology;
+  morphologyPanel.replaceChildren();
+  morphologyPanel.hidden = !morphology;
+  if (!morphology) return;
+
+  const title = document.createElement("h3");
+  title.className = "morphology-title";
+  title.textContent = "词形变化";
+  morphologyPanel.append(title);
+
+  if (morphology.noun) {
+    const nounGrid = document.createElement("div");
+    nounGrid.className = "morphology-grid";
+    if (morphology.noun.countability === "uncountable") {
+      nounGrid.append(createMorphologyItem("数", [{ form: "不可数", emphasis: "normal" }]));
+    } else {
+      nounGrid.append(createMorphologyItem("复数", morphology.noun.plural));
+    }
+    appendMorphologyGroup("名词", nounGrid);
+  }
+
+  if (morphology.verb) {
+    const labels = {
+      thirdPerson: "第三人称单数",
+      presentParticiple: "-ing 形式",
+      past: "过去式",
+      pastParticiple: "过去分词",
+    };
+    const verb = morphology.verb;
+    if (verb.defective) {
+      const defectiveGrid = document.createElement("div");
+      defectiveGrid.className = "morphology-grid";
+      defectiveGrid.append(createMorphologyItem("说明", [{ form: verb.defective, emphasis: "normal" }]));
+      appendMorphologyGroup("动词", defectiveGrid);
+    } else if (verb.special?.length) {
+      const specialList = document.createElement("div");
+      specialList.className = "morphology-special-list";
+      verb.special.forEach((paradigm) => {
+        const section = document.createElement("section");
+        section.className = "morphology-special";
+
+        const meaning = document.createElement("h5");
+        meaning.className = "morphology-special-meaning";
+        meaning.textContent = paradigm.meaning;
+
+        const grid = document.createElement("div");
+        grid.className = "morphology-grid";
+        Object.entries(labels).forEach(([field, label]) => {
+          grid.append(createMorphologyItem(label, paradigm[field]));
+        });
+        section.append(meaning, grid);
+        specialList.append(section);
+      });
+      appendMorphologyGroup("动词（按义项变化）", specialList);
+    } else {
+      const verbGrid = document.createElement("div");
+      verbGrid.className = "morphology-grid";
+      Object.entries(labels).forEach(([field, label]) => {
+        verbGrid.append(createMorphologyItem(label, verb[field]));
+      });
+      appendMorphologyGroup("动词", verbGrid);
+    }
+  }
+}
+
+function startStudy() {
+  if (tutorialRuntime?.active && tutorialRuntime.step === "start") {
+    beginTutorialStudy();
+    return;
+  }
+  if (!membershipAllowsStudy() || !hasPlan()) return;
+
+  startStudyWindow();
+  const session = ensureTodaySession();
+
+  if (!hasUnfinishedQueue()) {
+    if (!session.baseNewAdded) {
+      const learningDay = beginLearningDay("planned");
+      session.activePlanDate = currentPlanDate();
+      session.queue = buildStudyQueue({
+        includeReviews: true,
+        newLimit: state.plan.dailyTarget,
+        newType: "new",
+        reviewLearningDay: learningDay,
+      });
+      session.currentIndex = 0;
+      session.revealed = false;
+      session.cardPhase = "hidden";
+      session.baseNewAdded = true;
+      session.activeBatchType = "planned";
+      session.reinforcementAdded = false;
+      if (session.queue.length === 0) appendReinforcementStage();
+      session.baseCompleted = session.queue.length === 0;
+      if (session.baseCompleted) activityForDate().baseCompleted = true;
+    } else {
+      beginLearningDay("extra");
+      session.activePlanDate = currentPlanDate();
+      session.queue = buildStudyQueue({
+        includeReviews: false,
+        newLimit: state.plan.dailyTarget,
+        newType: "extra",
+      });
+      session.currentIndex = 0;
+      session.revealed = false;
+      session.cardPhase = "hidden";
+      session.activeBatchType = "extra";
+      session.extraBatches += 1;
+      session.reinforcementAdded = false;
+      if (session.queue.length === 0) appendReinforcementStage();
+    }
+  }
+
+  state.view = "study";
+  saveState();
+  render();
+}
+
+function startAdvanceStudy() {
+  if (!canStartAdvanceStudy()) return;
+
+  startStudyWindow();
+  const session = ensureTodaySession();
+  const learningDay = beginLearningDay("advance");
+  session.activePlanDate = addDays(currentDate(), session.advanceBatches + 1);
+  session.queue = buildStudyQueue({
+    includeReviews: true,
+    newLimit: state.plan.dailyTarget,
+    newType: "advance",
+    reviewLearningDay: learningDay,
+  });
+  session.currentIndex = 0;
+  session.revealed = false;
+  session.cardPhase = "hidden";
+  session.activeBatchType = "advance";
+  session.advanceBatches += 1;
+  session.advanceShiftCommitted = false;
+  session.reinforcementAdded = false;
+  session.reinforcedKeys = [];
+  if (session.queue.length === 0) appendReinforcementStage();
+
+  state.view = "study";
+  saveState();
+  render();
+}
+
+function openMoreDialog() {
+  moreDialog.hidden = false;
+}
+
+function closeMoreDialog() {
+  moreDialog.hidden = true;
+}
+
+function openWordList() {
+  state.wordBrowse = null;
+  state.view = "word-list";
+  wordListQuery = "";
+  saveState();
+  render();
+}
+
+function closeWordList() {
+  state.wordBrowse = null;
+  state.view = "home";
+  saveState();
+  render();
+}
+
+function openWordCard(wordId) {
+  if (!wordById.has(wordId)) return;
+  state.wordBrowse = { wordId };
+  state.view = "study";
+  saveState();
+  render();
+}
+
+function closeWordCard() {
+  const deepLinked = Boolean(requestedWordId());
+  state.wordBrowse = null;
+  state.view = deepLinked
+    ? ["home", "study", "word-list"].includes(wordDeepLinkReturnView)
+      ? wordDeepLinkReturnView
+      : "home"
+    : "word-list";
+  clearWordDeepLink();
+  wordDeepLinkReturnView = null;
+  saveState();
+  render();
+}
+
+function exitStudy() {
+  if (!state) return;
+  if (state.wordBrowse) {
+    closeWordCard();
+    return;
+  }
+
+  finishStudyWindow("return-home");
+  const session = ensureTodaySession();
+  session.historyView = null;
+  session.revealed = false;
+  session.cardPhase = "hidden";
+  state.view = "home";
+  saveState();
+  render();
+}
+
+function openReturnDialog() {
+  const session = ensureTodaySession();
+  pendingCrossDayReturn = false;
+  returnTitle.textContent = "返回";
+  returnCrossDayWarning.hidden = true;
+  returnOptions.hidden = false;
+  previousWordButton.hidden = false;
+  previousWordButton.disabled = session.currentIndex <= 0;
+  returnHomeButton.textContent = "返回主页";
+  returnHomeButton.className = "secondary-button";
+  returnDialog.hidden = false;
+}
+
+function closeReturnDialog() {
+  pendingCrossDayReturn = false;
+  returnDialog.hidden = true;
+}
+
+function handleReturnHome() {
+  if (isCrossDayStudy() && !pendingCrossDayReturn) {
+    pendingCrossDayReturn = true;
+    returnTitle.textContent = "确认进入下一日学习？";
+    returnCrossDayWarning.hidden = false;
+    previousWordButton.hidden = true;
+    returnHomeButton.textContent = "确认返回主页";
+    returnHomeButton.className = "danger-button";
+    return;
+  }
+
+  closeReturnDialog();
+  exitStudy();
+}
+
+function showPreviousWord() {
+  const session = ensureTodaySession();
+  if (session.currentIndex <= 0) return;
+
+  if (!session.historyView) {
+    session.historyView = {
+      originIndex: session.currentIndex,
+      originRevealed: session.revealed,
+      originPhase: session.cardPhase,
+    };
+  }
+  session.currentIndex -= 1;
+  session.revealed = true;
+  session.cardPhase = "examples";
+  closeReturnDialog();
+  saveState();
+  render();
+}
+
+function returnToCurrentWord() {
+  const session = ensureTodaySession();
+  const history = session.historyView;
+  if (!history) return;
+
+  session.currentIndex = Math.min(history.originIndex, session.queue.length);
+  session.revealed = Boolean(history.originRevealed);
+  session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
+  session.historyView = null;
+  saveState();
+  render();
+}
+
+function revealSenses() {
+  if (!state || !currentCard()) return;
+
+  const session = ensureTodaySession();
+  session.revealed = true;
+  session.cardPhase = "select";
+  saveState();
+  render();
+}
+
+function stopWordAudio() {
+  audioPlaybackGeneration += 1;
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio = null;
+  }
+  if ("speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+function speakWithLocalVoice(wordTextValue, playbackGeneration) {
+  if (
+    playbackGeneration !== audioPlaybackGeneration ||
+    !("speechSynthesis" in window)
+  ) return;
+
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(wordTextValue);
+  utterance.lang = "en-US";
+  utterance.rate = 0.9;
+  window.speechSynthesis.speak(utterance);
+}
+
+function safeAudioUrl(sourceUrl) {
+  if (!sourceUrl) return "";
+  try {
+    const url = new URL(sourceUrl, window.location.href);
+    return url.protocol === "https:" || url.origin === window.location.origin
+      ? url.href
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function playWordAudio(wordTextValue, sourceUrl = "") {
+  if (!wordTextValue) return;
+
+  stopWordAudio();
+  const playbackGeneration = audioPlaybackGeneration;
+  const pronunciationUrl =
+    safeAudioUrl(sourceUrl) ||
+    `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(
+      wordTextValue,
+    )}&type=2`;
+
+  const audio = new Audio(pronunciationUrl);
+  activeAudio = audio;
+  audio.play().catch(() => {
+    if (
+      playbackGeneration !== audioPlaybackGeneration ||
+      activeAudio !== audio
+    ) return;
+    speakWithLocalVoice(wordTextValue, playbackGeneration);
+  });
+}
+
+function maybeAutoPlayCurrentWord() {
+  const session = ensureTodaySession();
+  if (!state || session.revealed || state.view !== "study") return;
+
+  const key = currentCardKey();
+  const word = currentWord();
+  if (!key || !word || key === lastAutoPlayedCardKey) return;
+
+  lastAutoPlayedCardKey = key;
+  playWordAudio(
+    word.word,
+    word.senses.find((sense) => sense.audio)?.audio ?? "",
+  );
+}
+
+function speakCurrentWord() {
+  if (!state) return;
+
+  const word = currentWord();
+  if (!word) return;
+  playWordAudio(
+    word.word,
+    word.senses.find((sense) => sense.audio)?.audio ?? "",
+  );
+}
+
+function playSenseTapSound() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return;
+
+  soundContext = soundContext ?? new AudioContextClass();
+
+  if (soundContext.state === "suspended") {
+    soundContext.resume();
+  }
+
+  const start = soundContext.currentTime;
+  const oscillator = soundContext.createOscillator();
+  const gain = soundContext.createGain();
+
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(620, start);
+  oscillator.frequency.exponentialRampToValueAtTime(880, start + 0.08);
+
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(0.08, start + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+
+  oscillator.connect(gain);
+  gain.connect(soundContext.destination);
+  oscillator.start(start);
+  oscillator.stop(start + 0.13);
+}
+
+function setProgressMastered(progress, date, learningDay = activeLearningDay()) {
+  const actualDate = currentActivityDate();
+  progress.status = SENSE_STATUS.MASTERED;
+  progress.firstSeen = progress.firstSeen ?? date;
+  progress.lastSeen = date;
+  progress.masteredOn = date;
+  progress.firstSeenActual = progress.firstSeenActual ?? actualDate;
+  progress.lastSeenActual = actualDate;
+  progress.masteredOnActual = actualDate;
+  progress.dueDate = null;
+  progress.lastLearningDay = learningDay;
+  progress.dueLearningDay = null;
+}
+
+function setProgressPending(
+  progress,
+  status,
+  date,
+  dueDate,
+  dueLearningDay,
+) {
+  const actualDate = currentActivityDate();
+  progress.status = status;
+  progress.firstSeen = progress.firstSeen ?? date;
+  progress.lastSeen = date;
+  progress.masteredOn = null;
+  progress.firstSeenActual = progress.firstSeenActual ?? actualDate;
+  progress.lastSeenActual = actualDate;
+  progress.masteredOnActual = null;
+  progress.dueDate = dueDate;
+  progress.lastLearningDay = activeLearningDay();
+  progress.dueLearningDay = dueLearningDay;
+}
+
+function markSenseFamiliar(key, options = {}) {
+  if (!options.skipSound) {
+    playSenseTapSound();
+  }
+
+  const session = ensureTodaySession();
+  const card = currentCard();
+  if (!card || !activeSenseKeysForCard(card).includes(key)) return;
+  if ((card.confirmedKeys ?? []).includes(key) || isMastered(key)) return;
+  ensureEncounterSnapshot(card);
+
+  const progress = progressFor(key);
+  const date = activeStudyDate();
+  const learningDay = activeLearningDay();
+  if (isNewLearningCard(card)) {
+    setProgressMastered(progress, date, learningDay);
+  } else if (card.type === "reinforcement") {
+    setProgressPending(
+      progress,
+      SENSE_STATUS.REVIEW,
+      date,
+      addDays(date, 1),
+      learningDay + 1,
+    );
+  } else if (card.type === "review") {
+    if (progress.status === SENSE_STATUS.REVIEW) {
+      setProgressMastered(progress, date, learningDay);
+    } else {
+      setProgressPending(
+        progress,
+        SENSE_STATUS.REVIEW,
+        date,
+        addDays(date, 1),
+        learningDay + 1,
+      );
+    }
+  }
+
+  card.confirmedKeys = [...new Set([...(card.confirmedKeys ?? []), key])];
+  if (isWordFullyMastered(card.wordId)) {
+    card.expandedMasteredKeys = [];
+    session.cardPhase = "examples";
+  }
+  saveState();
+  if (!options.skipRender) {
+    render();
+  }
+}
+
+function toggleGreenSenseDetails(key) {
+  const card = currentCard();
+  if (!card || !isKnownSenseKey(key)) return;
+  const expanded = new Set(card.expandedMasteredKeys ?? []);
+  if (expanded.has(key)) {
+    expanded.delete(key);
+  } else {
+    expanded.add(key);
+  }
+  card.expandedMasteredKeys = [...expanded];
+  saveState();
+  render();
+}
+
+function animateSenseMastered(item) {
+  if (item.classList.contains("is-confirming")) return;
+
+  const key = item.dataset.key;
+  const previousLayout = new Map(
+    [...senseList.querySelectorAll(".sense-item[data-key]")].map((senseItem) => [
+      senseItem.dataset.key,
+      senseItem.getBoundingClientRect(),
+    ]),
+  );
+  playSenseTapSound();
+  senseList.classList.add("is-reordering");
+  item.classList.add("is-confirming");
+  item.disabled = true;
+  markSenseFamiliar(key, { skipSound: true, skipRender: true });
+  if (ensureTodaySession().cardPhase === "examples") {
+    nextButton.textContent = "下一词";
+    nextButton.disabled = true;
+    revealButton.classList.add("is-mastered");
+  }
+
+  window.setTimeout(() => {
+    render();
+    animateSenseReorder(previousLayout, key);
+  }, 340);
+}
+
+function animateSenseReorder(previousLayout, selectedKey) {
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animations = [];
+
+  senseList.querySelectorAll(".sense-item[data-key]").forEach((item) => {
+    const previous = previousLayout.get(item.dataset.key);
+    if (!previous) return;
+
+    const current = item.getBoundingClientRect();
+    const offsetX = previous.left - current.left;
+    const offsetY = previous.top - current.top;
+    if (Math.abs(offsetX) < 0.5 && Math.abs(offsetY) < 0.5) return;
+
+    const selected = item.dataset.key === selectedKey;
+    if (reducedMotion) return;
+    animations.push(
+      item.animate(
+        [
+          {
+            transform: `translate3d(${offsetX}px, ${offsetY}px, 0) scale(${selected ? 0.965 : 1})`,
+          },
+          {
+            transform: "translate3d(0, 0, 0) scale(1)",
+          },
+        ],
+        {
+          duration: 560,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          fill: "both",
+        },
+      ),
+    );
+  });
+
+  if (animations.length === 0) {
+    senseList.classList.remove("is-reordering");
+    return;
+  }
+
+  Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
+    senseList.classList.remove("is-reordering");
+  });
+}
+
+function isNewLearningCard(card) {
+  return card?.type === "new" || card?.type === "extra" || card?.type === "advance";
+}
+
+function unknownSenseKeysForCurrentCard() {
+  const card = currentCard();
+  if (!card) return [];
+  const confirmed = new Set(card.confirmedKeys ?? []);
+  return activeSenseKeysForCard(card)
+    .filter(isKnownSenseKey)
+    .filter((key) => !isMastered(key))
+    .filter((key) => !confirmed.has(key));
+}
+
+function completeCurrentSelection() {
+  if (!state) return;
+
+  const session = ensureTodaySession();
+  const card = currentCard();
+  if (!session.revealed || !card) return;
+
+  card.expandedMasteredKeys = [];
+  session.cardPhase = "examples";
+  saveState();
+  render();
+}
+
+function scheduleUnknownSenses() {
+  const card = currentCard();
+  const unknownKeys = unknownSenseKeysForCurrentCard();
+  const date = activeStudyDate();
+  const learningDay = activeLearningDay();
+  const dueDate = card?.type === "reinforcement" ? addDays(date, 1) : date;
+  const dueLearningDay = card?.type === "reinforcement"
+    ? learningDay + 1
+    : learningDay;
+
+  unknownKeys.forEach((key) => {
+    const progress = progressFor(key);
+    setProgressPending(
+      progress,
+      SENSE_STATUS.REINFORCE,
+      date,
+      dueDate,
+      dueLearningDay,
+    );
+    progress.misses += 1;
+  });
+}
+
+function markCurrentWordIntroduced() {
+  const card = currentCard();
+  if (!card || !isNewLearningCard(card)) return false;
+  if (!state.introducedWords.includes(card.wordId)) {
+    state.introducedWords.push(card.wordId);
+    addActivityWord("new", card.wordId);
+    updatePlanDrift();
+    return true;
+  }
+  return false;
+}
+
+function nextWord() {
+  if (!state) return;
+
+  const session = ensureTodaySession();
+  if (!session.revealed || session.cardPhase !== "examples" || !currentCard()) return;
+
+  const completedCard = currentCard();
+  scheduleUnknownSenses();
+  markCurrentWordIntroduced();
+  if (
+    completedCard.type === "extra" ||
+    completedCard.type === "advance" ||
+    session.activeBatchType === "extra" ||
+    session.activeBatchType === "advance"
+  ) {
+    activityForDate().overtime = true;
+  }
+  if (completedCard.type === "review" || completedCard.type === "reinforcement") {
+    addActivityWord("review", completedCard.wordId);
+  }
+  if (completedCard.type === "reinforcement") {
+    session.reinforcedKeys = [
+      ...new Set([...session.reinforcedKeys, ...activeSenseKeysForCard(completedCard)]),
+    ];
+  }
+  session.currentIndex += 1;
+  session.revealed = false;
+  session.cardPhase = "hidden";
+
+  if (session.currentIndex >= session.queue.length) {
+    appendReinforcementStage();
+  }
+
+  if (
+    session.currentIndex >= session.queue.length &&
+    session.activeBatchType === "planned"
+  ) {
+    session.baseCompleted = true;
+    activityForDate().baseCompleted = true;
+  }
+  if (
+    session.currentIndex >= session.queue.length &&
+    session.activeBatchType === "advance" &&
+    !session.advanceShiftCommitted
+  ) {
+    session.advanceShiftCommitted = true;
+    activityForDate().overtime = true;
+  }
+  if (session.currentIndex >= session.queue.length) {
+    finishStudyWindow("completed");
+  }
+
+  saveState();
+  render();
+}
+
+function handleProgressButton() {
+  if (state.wordBrowse) {
+    closeWordCard();
+    return;
+  }
+  const session = ensureTodaySession();
+  if (session.historyView) {
+    returnToCurrentWord();
+    return;
+  }
+  if (session.cardPhase === "examples") {
+    nextWord();
+    return;
+  }
+
+  completeCurrentSelection();
+}
+
+function resettableCardIndex() {
+  const session = ensureTodaySession();
+  if (session.queue[session.currentIndex]) return session.currentIndex;
+  if (session.queue.length > 0) return session.queue.length - 1;
+  return -1;
+}
+
+function resettableCard() {
+  const session = ensureTodaySession();
+  const index = resettableCardIndex();
+  return index >= 0 ? session.queue[index] : null;
+}
+
+function openPlanDialog() {
+  bookSelect.value = activeBookId();
+  const selectedState = rootState.bookStates[bookSelect.value] ?? createState();
+  const value = selectedState.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET;
+  planTitle.textContent = selectedState.plan?.dailyTarget ? "修改计划" : "选择计划";
+  dailyTargetInput.value = value;
+  planForm.hidden = false;
+  planResetConfirm.hidden = true;
+  resetAllPlanButton.hidden = !selectedState.plan?.dailyTarget;
+  updatePlanPreview();
+  planDialog.hidden = false;
+}
+
+function closePlanDialog() {
+  planForm.hidden = false;
+  planResetConfirm.hidden = true;
+  planDialog.hidden = true;
+}
+
+function showPlanResetConfirmation() {
+  const bookId = bookSelect.value;
+  if (!rootState.bookStates[bookId]?.plan?.dailyTarget) return;
+  if (planResetBookName) planResetBookName.textContent = bookDisplayName(bookId);
+  planForm.hidden = true;
+  planResetConfirm.hidden = false;
+}
+
+function hidePlanResetConfirmation() {
+  planResetConfirm.hidden = true;
+  planForm.hidden = false;
+}
+
+function normalizedDailyTarget() {
+  const parsed = Number.parseInt(dailyTargetInput.value, 10);
+  if (Number.isNaN(parsed)) return DEFAULT_DAILY_TARGET;
+  return Math.min(500, Math.max(1, parsed));
+}
+
+function updatePlanPreview() {
+  const target = normalizedDailyTarget();
+  const bookId = bookSelect.value || activeBookId();
+  const bookState = rootState.bookStates[bookId] ?? createState();
+  const bookWords = wordsForBook(bookId);
+  const knownIds = new Set(bookWords.map((word) => word.id));
+  const completed = new Set(
+    (bookState.introducedWords ?? []).filter((wordId) => knownIds.has(wordId)),
+  ).size;
+  const remaining = Math.max(0, bookWords.length - completed);
+  const days = remaining === 0 ? 0 : Math.ceil(remaining / target);
+  const completion = addDays(currentDate(), days);
+  planPreview.textContent = `按剩余 ${remaining} 个词计算，每天 ${target} 个，预计还需 ${days} 天，完成日期 ${completion}。`;
+  planTitle.textContent = bookState.plan?.dailyTarget ? "修改计划" : "选择计划";
+  resetAllPlanButton.hidden = !bookState.plan?.dailyTarget;
+}
+
+function savePlan() {
+  const selectedBookId = bookSelect.value || activeBookId();
+  if (selectedBookId !== activeBookId()) {
+    activateBookScope(selectedBookId);
+  }
+  const target = normalizedDailyTarget();
+  const date = currentDate();
+
+  if (!state.plan) {
+    state.plan = {
+      dailyTarget: target,
+      startedOn: date,
+      createdOn: date,
+      updatedOn: date,
+      advancedDays: 0,
+      progressBaseWords: 0,
+      progressBaseDays: 0,
+    };
+  } else {
+    const preservedProgress = progressDayCount(state.plan.dailyTarget);
+    state.plan.progressBaseWords = completedWordCount();
+    state.plan.progressBaseDays = preservedProgress;
+    state.plan.dailyTarget = target;
+    state.plan.updatedOn = date;
+  }
+
+  closePlanDialog();
+  saveState();
+  render();
+}
+
+function openResetDialog() {
+  if (!state) return;
+
+  const card = resettableCard();
+  const word = card ? wordById.get(card.wordId) : null;
+
+  resetWordLabel.textContent = word ? `当前单词：${word.word}` : "当前没有单词";
+  resetMarkingButton.disabled = !word;
+  relearnWordButton.disabled = !word;
+  showResetOptions();
+  resetDialog.hidden = false;
+}
+
+function closeResetDialog() {
+  pendingResetType = null;
+  resetDialog.hidden = true;
+}
+
+function showResetOptions() {
+  pendingResetType = null;
+  resetOptions.hidden = false;
+  resetConfirm.hidden = true;
+}
+
+function showResetConfirmation(type) {
+  const card = resettableCard();
+  const word = card ? wordById.get(card.wordId) : null;
+
+  pendingResetType = type;
+  resetOptions.hidden = true;
+  resetConfirm.hidden = false;
+
+  if (type === "marking") {
+    resetConfirmTitle.textContent = "确认重置本次标记？";
+    resetConfirmCopy.textContent = word
+      ? `${word.word} 的所有义项会回到进入本词时的状态，本次标记将被撤销。`
+      : "当前没有可重置的单词。";
+    confirmResetButton.textContent = "确认重置本次标记";
+  } else {
+    resetConfirmTitle.textContent = "确认重学该单词？";
+    resetConfirmCopy.textContent = word
+      ? `${word.word} 的所有义项会回到待新学状态，并重新按初始顺序学习。`
+      : "当前没有可重学的单词。";
+    confirmResetButton.textContent = "确认重学该单词";
+  }
+}
+
+function confirmPendingReset() {
+  if (pendingResetType === "marking") {
+    resetCurrentMarking();
+  } else if (pendingResetType === "relearn") {
+    relearnCurrentWord();
+  }
+}
+
+function resetAllProgress() {
+  const selectedBookId = bookSelect.value || activeBookId();
+  rootState.bookStates[selectedBookId] = createState();
+  activateBookScope(selectedBookId);
+  saveState();
+  closePlanDialog();
+  render();
+}
+
+function resetCurrentMarking() {
+  const session = ensureTodaySession();
+  const cardIndex = resettableCardIndex();
+  const card = session.queue[cardIndex];
+  if (!card) return;
+
+  ensureEncounterSnapshot(card);
+  const snapshot = card.encounterSnapshot;
+  Object.entries(snapshot.progress ?? {}).forEach(([key, progress]) => {
+    if (progress) {
+      state.progress[key] = cloneProgress(progress);
+    } else {
+      delete state.progress[key];
+    }
+  });
+
+  const introduced = new Set(state.introducedWords);
+  if (snapshot.introduced) {
+    introduced.add(card.wordId);
+  } else {
+    introduced.delete(card.wordId);
+  }
+  state.introducedWords = [...introduced];
+  if (snapshot.activity) {
+    state.activityLog[currentActivityDate()] = normalizeActivityEntry(snapshot.activity);
+  } else {
+    delete state.activityLog[currentActivityDate()];
+  }
+  updatePlanDrift();
+
+  session.reinforcedKeys = [
+    ...session.reinforcedKeys.filter(
+      (key) => splitSenseKey(key).wordId !== card.wordId,
+    ),
+    ...(snapshot.reinforcedKeys ?? []),
+  ];
+  card.confirmedKeys = [];
+  refreshCardDisplayKeys(card);
+  session.currentIndex = cardIndex;
+  session.revealed = true;
+  session.cardPhase = "select";
+  saveState();
+  closeResetDialog();
+  render();
+}
+
+function relearnCurrentWord() {
+  const session = ensureTodaySession();
+  const cardIndex = resettableCardIndex();
+  const card = session.queue[cardIndex];
+  if (!card) return;
+
+  const word = wordById.get(card.wordId);
+  const allKeys = sortSenseKeysByImportance(allSenseKeysForWord(word));
+  allKeys.forEach((key) => delete state.progress[key]);
+  state.introducedWords = state.introducedWords.filter(
+    (wordId) => wordId !== card.wordId,
+  );
+  updatePlanDrift();
+  session.reinforcedKeys = session.reinforcedKeys.filter(
+    (key) => splitSenseKey(key).wordId !== card.wordId,
+  );
+
+  const insertionIndex = session.queue
+    .slice(0, cardIndex)
+    .filter((item) => item.wordId !== card.wordId).length;
+  session.queue = session.queue.filter((item) => item.wordId !== card.wordId);
+  const replacement = createStudyCard("new", card.wordId, allKeys);
+  session.queue.splice(insertionIndex, 0, replacement);
+  session.currentIndex = insertionIndex;
+  session.reinforcementAdded = session.queue.some(
+    (item) => item.type === "reinforcement",
+  );
+  session.revealed = false;
+  session.cardPhase = "hidden";
+  saveState();
+  closeResetDialog();
+  render();
+}
+
+const TUTORIAL_HINTS = Object.freeze({
+  plan: "点击这里选择词书和每日计划",
+  "plan-form": "选择词书和每日计划，然后保存计划",
+  start: "试着学几个单词吧",
+  "recall-wait": "当单词出现时，请先尽可能回忆其所有含义",
+  reveal: "回忆完成后，点击单词卡片展开详细内容",
+  "act-performance": "展开后，点击刚才已经想到的义项",
+  "act-law": "展开后，点击刚才已经想到的义项",
+  reset: "当误点了不熟悉的义项时，可以在重置中撤回",
+  "reset-marking": "点击这里撤回本次标记",
+  complete: "标记完所有能回忆起来的义项后，点击这里结束标记。",
+  "examples-wait": "不熟悉的义项提供了释义和例句以帮助学习记忆",
+  "act-next": "完成学习后，点击这里进入下一词的学习。存在不熟悉义项的单词将进入强化和复习",
+  "her-senses": "试试点击所有义项",
+  "her-next": "所有义项都被标为熟悉的新单词将不再出现",
+  "abandon-return": "点击这里返回主页",
+  "return-home": "点击这里返回主页",
+  more: "点击这里注册/登录/退出账户，或反馈遇到的问题，或重新学习教程",
+  account: "请尽快注册账户，以防数据丢失；若已有账户，请直接登录",
+});
+
+function tutorialScopeId() {
+  return document.documentElement.dataset.accountUserId || "guest";
+}
+
+function tutorialStorageKey(scopeId = tutorialScopeId()) {
+  return `${TUTORIAL_STORAGE_PREFIX}${scopeId}`;
+}
+
+function tutorialTargetForStep(step = tutorialRuntime?.step) {
+  const selectors = {
+    plan: "#planButton",
+    "plan-form": "#planForm",
+    start: "#startStudyButton",
+    "recall-wait": "#revealButton",
+    reveal: "#revealButton",
+    "act-performance": '.sense-item[data-key="act:v-1"]',
+    "act-law": '.sense-item[data-key="act:n-3"]',
+    reset: "#resetButton",
+    "reset-marking": "#resetMarkingButton",
+    complete: "#nextButton",
+    "examples-wait": "#senseArea",
+    "act-next": "#nextButton",
+    "her-wait": "#revealButton",
+    "her-senses": "#senseList",
+    "her-next": "#nextButton",
+    "abandon-return": "#exitStudyButton",
+    "return-home": "#returnHomeButton",
+    more: "#moreButton",
+    account: "#accountButton",
+  };
+  const selector = selectors[step];
+  if (!selector) return null;
+  const target = document.querySelector(selector);
+  return target && !target.hidden && target.getClientRects().length
+    ? target
+    : null;
+}
+
+function setTutorialMaskRect(mask, left, top, width, height) {
+  mask.style.left = `${Math.max(0, left)}px`;
+  mask.style.top = `${Math.max(0, top)}px`;
+  mask.style.width = `${Math.max(0, width)}px`;
+  mask.style.height = `${Math.max(0, height)}px`;
+}
+
+function tutorialVisualRect(target) {
+  const targets = tutorialRuntime?.step === "her-senses"
+    ? [revealButton, senseArea]
+    : [target];
+  const rects = targets
+    .filter((item) => item && !item.hidden && item.getClientRects().length)
+    .map((item) => item.getBoundingClientRect());
+  if (!rects.length) return target.getBoundingClientRect();
+  return {
+    left: Math.min(...rects.map((rect) => rect.left)),
+    top: Math.min(...rects.map((rect) => rect.top)),
+    right: Math.max(...rects.map((rect) => rect.right)),
+    bottom: Math.max(...rects.map((rect) => rect.bottom)),
+  };
+}
+
+function positionTutorialOverlay() {
+  if (!tutorialRuntime?.active || tutorialOverlay.hidden) return;
+
+  const hint = TUTORIAL_HINTS[tutorialRuntime.step] ?? "";
+  tutorialTip.textContent = hint;
+  tutorialTip.hidden = !hint;
+  const target = tutorialTargetForStep();
+  const viewportWidth = document.documentElement.clientWidth;
+  const viewportHeight = document.documentElement.clientHeight;
+
+  if (!target) {
+    setTutorialMaskRect(tutorialMasks.top, 0, 0, viewportWidth, viewportHeight);
+    setTutorialMaskRect(tutorialMasks.right, 0, 0, 0, 0);
+    setTutorialMaskRect(tutorialMasks.bottom, 0, 0, 0, 0);
+    setTutorialMaskRect(tutorialMasks.left, 0, 0, 0, 0);
+    tutorialSpotlight.hidden = true;
+    tutorialTip.classList.add("is-centered");
+    tutorialTip.style.left = "50%";
+    tutorialTip.style.top = "50%";
+    return;
+  }
+
+  const padding = 8;
+  const rect = tutorialVisualRect(target);
+  const left = Math.max(0, rect.left - padding);
+  const top = Math.max(0, rect.top - padding);
+  const right = Math.min(viewportWidth, rect.right + padding);
+  const bottom = Math.min(viewportHeight, rect.bottom + padding);
+  const width = Math.max(0, right - left);
+  const height = Math.max(0, bottom - top);
+
+  setTutorialMaskRect(tutorialMasks.top, 0, 0, viewportWidth, top);
+  setTutorialMaskRect(tutorialMasks.bottom, 0, bottom, viewportWidth, viewportHeight - bottom);
+  setTutorialMaskRect(tutorialMasks.left, 0, top, left, height);
+  setTutorialMaskRect(tutorialMasks.right, right, top, viewportWidth - right, height);
+
+  tutorialSpotlight.hidden = false;
+  tutorialSpotlight.style.left = `${left}px`;
+  tutorialSpotlight.style.top = `${top}px`;
+  tutorialSpotlight.style.width = `${width}px`;
+  tutorialSpotlight.style.height = `${height}px`;
+
+  tutorialTip.classList.remove("is-centered");
+  const tipRect = tutorialTip.getBoundingClientRect();
+  const tipWidth = Math.min(tipRect.width || 360, viewportWidth - 24);
+  const minTipCenter = 12 + tipWidth / 2;
+  const maxTipCenter = viewportWidth - 12 - tipWidth / 2;
+  const targetCenter = left + width / 2;
+  tutorialTip.style.left = `${maxTipCenter < minTipCenter
+    ? viewportWidth / 2
+    : Math.min(Math.max(minTipCenter, targetCenter), maxTipCenter)}px`;
+  const tipHeight = tipRect.height || 72;
+  if (tutorialRuntime.step === "examples-wait") {
+    tutorialTip.style.left = `${viewportWidth / 2}px`;
+    tutorialTip.style.top = "12px";
+    return;
+  }
+  const canPlaceBelow = bottom + 14 + tipHeight <= viewportHeight - 12;
+  const canPlaceAbove = top - tipHeight - 14 >= 12;
+  const preferAbove = tutorialRuntime.step === "reset-marking";
+  tutorialTip.style.top = `${preferAbove && canPlaceAbove
+    ? top - tipHeight - 14
+    : canPlaceBelow
+      ? bottom + 14
+      : Math.max(12, top - tipHeight - 14)}px`;
+}
+
+function scheduleTutorialOverlayPosition({ scroll = false } = {}) {
+  if (!tutorialRuntime?.active) return;
+  window.requestAnimationFrame(() => {
+    const target = tutorialTargetForStep();
+    if (scroll && target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      window.setTimeout(positionTutorialOverlay, 260);
+    }
+    positionTutorialOverlay();
+  });
+}
+
+function setTutorialStep(step, options = {}) {
+  if (!tutorialRuntime?.active) return;
+  if (tutorialRuntime.timer) {
+    window.clearTimeout(tutorialRuntime.timer);
+    tutorialRuntime.timer = null;
+  }
+  tutorialRuntime.step = step;
+  tutorialOverlay.hidden = false;
+  scheduleTutorialOverlayPosition({ scroll: options.scroll !== false });
+}
+
+function beginTutorialWait(step, nextStep, delay = TUTORIAL_WAIT_MS) {
+  setTutorialStep(step, { scroll: false });
+  tutorialRuntime.timer = window.setTimeout(() => {
+    tutorialRuntime.timer = null;
+    setTutorialStep(nextStep);
+  }, delay);
+}
+
+function tutorialSessionForWord(wordId, { revealed = false } = {}) {
+  const word = wordById.get(wordId);
+  if (!word) return false;
+  stopWordAudio();
+  state.session = {
+    date: currentDate(),
+    queue: [createStudyCard("new", word.id, allSenseKeysForWord(word))],
+    currentIndex: 0,
+    revealed,
+    cardPhase: revealed ? "select" : "hidden",
+    baseNewAdded: true,
+    baseCompleted: false,
+    activeBatchType: "planned",
+    activePlanDate: currentDate(),
+    extraBatches: 0,
+    advanceBatches: 0,
+    advanceShiftCommitted: false,
+    reinforcementAdded: false,
+    reinforcedKeys: [],
+    activeLearningDay: 1,
+    baseLearningDay: 1,
+    historyView: null,
+    snapshotTimingVersion: 2,
+  };
+  state.view = "study";
+  state.wordBrowse = null;
+  lastAutoPlayedCardKey = null;
+  render();
+  if (revealed) {
+    lastAutoPlayedCardKey = currentCardKey();
+    playWordAudio(
+      word.word,
+      word.senses.find((sense) => sense.audio)?.audio ?? "",
+    );
+  }
+  return true;
+}
+
+function beginTutorialStudy() {
+  if (!tutorialRuntime?.active) return;
+  activateBookScope(DEFAULT_BOOK_ID);
+  state.plan = {
+    dailyTarget: 3,
+    startedOn: currentDate(),
+    createdOn: currentDate(),
+    updatedOn: currentDate(),
+    advancedDays: 0,
+    progressBaseWords: 0,
+    progressBaseDays: 0,
+  };
+  tutorialSessionForWord("act");
+  beginTutorialWait("recall-wait", "reveal");
+}
+
+function tutorialCurrentWordIsFullyMarked() {
+  const card = currentCard();
+  if (!card) return false;
+  return activeSenseKeysForCard(card).every((key) => {
+    return isMastered(key) || (card.confirmedKeys ?? []).includes(key);
+  });
+}
+
+function closeTutorialSurfaces() {
+  planDialog.hidden = true;
+  resetDialog.hidden = true;
+  returnDialog.hidden = true;
+  moreDialog.hidden = true;
+  document.querySelector("#accountDialog").hidden = true;
+}
+
+function startTutorial({ replay = false } = {}) {
+  if (!rootState || tutorialRuntime?.active) return false;
+
+  const scopeId = tutorialScopeId();
+  closeTutorialSurfaces();
+  tutorialRuntime = {
+    active: true,
+    replay,
+    scopeId,
+    realStorageKey: activeStorageKey,
+    realRootState: cloneSerializable(rootState),
+    timer: null,
+    step: "plan",
+  };
+
+  rootState = createRootState();
+  activateBookScope(DEFAULT_BOOK_ID);
+  stopWordAudio();
+  state.view = "home";
+  state.plan = null;
+  render();
+  tutorialDoneDialog.hidden = true;
+  tutorialOverlay.hidden = false;
+  setTutorialStep("plan");
+  return true;
+}
+
+function finishTutorial() {
+  if (!tutorialRuntime?.active) return;
+  const completedScope = tutorialRuntime.scopeId;
+  if (tutorialRuntime.timer) window.clearTimeout(tutorialRuntime.timer);
+  const realRootState = tutorialRuntime.realRootState;
+  const realStorageKey = tutorialRuntime.realStorageKey;
+  stopWordAudio();
+  tutorialRuntime = null;
+  tutorialOverlay.hidden = true;
+  tutorialDoneDialog.hidden = true;
+  localStorage.setItem(tutorialStorageKey(completedScope), "completed");
+
+  activeStorageKey = realStorageKey;
+  rootState = normalizeRootState(realRootState);
+  activateBookScope(rootState.activeBookId);
+  state.view = "home";
+  state.wordBrowse = null;
+  render();
+}
+
+function showTutorialCompletedDialog() {
+  if (!tutorialRuntime?.active) return;
+  tutorialOverlay.hidden = true;
+  tutorialDoneDialog.hidden = false;
+}
+
+function maybeStartAutomaticTutorial() {
+  if (navigator.webdriver || tutorialRuntime?.active) return;
+  if (
+    document.documentElement.dataset.appReady !== "true" ||
+    document.documentElement.dataset.accountReady !== "true"
+  ) return;
+  if (!document.querySelector("#accountConflictView").hidden) return;
+
+  const scopeId = tutorialScopeId();
+  if (tutorialAutoScheduledScope === scopeId) return;
+  if (localStorage.getItem(tutorialStorageKey(scopeId))) return;
+  if (scopeId === "guest" && stateHasLearningData(rootState)) {
+    localStorage.setItem(tutorialStorageKey(scopeId), "completed");
+    return;
+  }
+
+  tutorialAutoScheduledScope = scopeId;
+  window.setTimeout(() => {
+    if (
+      !tutorialRuntime?.active &&
+      tutorialScopeId() === scopeId &&
+      !localStorage.getItem(tutorialStorageKey(scopeId))
+    ) {
+      startTutorial();
+    }
+  }, 350);
+}
+
+function handleTutorialInteraction(event) {
+  if (!tutorialRuntime?.active) return;
+  const target = tutorialTargetForStep();
+  if (target && !target.contains(event.target)) return;
+
+  const step = tutorialRuntime.step;
+  if (step === "plan" && event.target.closest("#planButton")) {
+    window.setTimeout(() => setTutorialStep("plan-form"), 0);
+  } else if (step === "plan-form" && event.target.closest("#savePlanButton")) {
+    window.setTimeout(() => setTutorialStep("start"), 0);
+  } else if (step === "reveal" && event.target.closest("#revealButton")) {
+    window.setTimeout(() => setTutorialStep("act-performance"), 0);
+  } else if (step === "act-performance" && event.target.closest('[data-key="act:v-1"]')) {
+    window.setTimeout(() => setTutorialStep("act-law"), 720);
+  } else if (step === "act-law" && event.target.closest('[data-key="act:n-3"]')) {
+    window.setTimeout(() => setTutorialStep("reset"), 720);
+  } else if (step === "reset" && event.target.closest("#resetButton")) {
+    window.setTimeout(() => setTutorialStep("reset-marking"), 0);
+  } else if (step === "reset-marking" && event.target.closest("#resetMarkingButton")) {
+    window.setTimeout(() => {
+      resetCurrentMarking();
+      setTutorialStep("complete");
+    }, 0);
+  } else if (step === "complete" && event.target.closest("#nextButton")) {
+    window.setTimeout(() => beginTutorialWait("examples-wait", "act-next"), 0);
+  } else if (step === "act-next" && event.target.closest("#nextButton")) {
+    window.setTimeout(() => {
+      tutorialSessionForWord("her", { revealed: true });
+      beginTutorialWait(
+        "her-wait",
+        "her-senses",
+        TUTORIAL_HER_PROMPT_DELAY_MS,
+      );
+    }, 0);
+  } else if (step === "her-senses" && event.target.closest(".sense-item")) {
+    if (tutorialCurrentWordIsFullyMarked()) {
+      window.setTimeout(() => setTutorialStep("her-next"), 720);
+    }
+  } else if (step === "her-next" && event.target.closest("#nextButton")) {
+    window.setTimeout(() => {
+      tutorialSessionForWord("abandon");
+      setTutorialStep("abandon-return");
+    }, 0);
+  } else if (step === "abandon-return" && event.target.closest("#exitStudyButton")) {
+    window.setTimeout(() => setTutorialStep("return-home"), 0);
+  } else if (step === "return-home" && event.target.closest("#returnHomeButton")) {
+    window.setTimeout(() => setTutorialStep("more"), 0);
+  } else if (step === "more" && event.target.closest("#moreButton")) {
+    if (tutorialScopeId() === "guest") {
+      window.setTimeout(() => setTutorialStep("account"), 0);
+    } else {
+      closeMoreDialog();
+      window.setTimeout(showTutorialCompletedDialog, 0);
+    }
+  } else if (step === "account" && event.target.closest("#accountButton")) {
+    closeMoreDialog();
+    window.setTimeout(showTutorialCompletedDialog, 0);
+  }
+}
+
+function blockNonTutorialClick(event) {
+  if (!tutorialRuntime?.active || tutorialDoneDialog.hidden === false) return;
+  const target = tutorialTargetForStep();
+  if (
+    target?.contains(event.target) &&
+    !TUTORIAL_NON_INTERACTIVE_STEPS.has(tutorialRuntime.step)
+  ) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+}
+
+async function initializeApp() {
+  wordText.textContent = "加载中";
+  cardMode.textContent = "词汇学习";
+  startStudyButton.disabled = true;
+  nextButton.disabled = true;
+  audioButton.hidden = true;
+
+  try {
+    vocabularyBundle = await loadVocabularyBundle();
+    bookById = new Map(
+      vocabularyBundle.books.map((book) => [book.id, book]),
+    );
+    const normalizedPool = normalizeWordList(vocabularyBundle.words);
+    poolWordById = new Map(normalizedPool.map((word) => [word.id, word]));
+  } catch (error) {
+    console.warn(error);
+    vocabularyBundle = {
+      defaultBookId: DEFAULT_BOOK_ID,
+      books: [
+        {
+          id: DEFAULT_BOOK_ID,
+          name: "考研词汇",
+          displayName: "考研词汇",
+          entries: FALLBACK_WORDS.map((word) => ({
+            wordId: word.id,
+            senseIds: word.senses.map((sense) => sense.id),
+          })),
+        },
+      ],
+      words: FALLBACK_WORDS,
+    };
+    bookById = new Map(vocabularyBundle.books.map((book) => [book.id, book]));
+    const normalizedPool = normalizeWordList(vocabularyBundle.words);
+    poolWordById = new Map(normalizedPool.map((word) => [word.id, word]));
+  }
+
+  bookSelect.replaceChildren(
+    ...vocabularyBundle.books.map((book) => {
+      const option = document.createElement("option");
+      option.value = book.id;
+      option.textContent = String(book.displayName ?? book.name).replace(/[《》]/g, "");
+      return option;
+    }),
+  );
+  rootState = loadState();
+  activateBookScope(rootState.activeBookId);
+  applyWordDeepLink();
+  saveState();
+  render();
+  scheduleMidnightRefresh();
+  document.documentElement.dataset.appReady = "true";
+  window.dispatchEvent(new CustomEvent("sensevocab:app-ready"));
+  maybeStartAutomaticTutorial();
+}
+
+planButton.addEventListener("click", openPlanDialog);
+advanceStudyButton.addEventListener("click", startAdvanceStudy);
+wordListButton.addEventListener("click", openWordList);
+startStudyButton.addEventListener("click", startStudy);
+moreButton.addEventListener("click", openMoreDialog);
+closeMoreButton.addEventListener("click", closeMoreDialog);
+moreDialog.addEventListener("click", (event) => {
+  if (event.target === moreDialog) closeMoreDialog();
+});
+document.querySelector("#accountButton").addEventListener("click", closeMoreDialog);
+homeFeedbackButton.addEventListener("click", () => {
+  closeMoreDialog();
+  window.dispatchEvent(new CustomEvent("sensevocab:open-feedback"));
+});
+replayTutorialButton.addEventListener("click", () => {
+  closeMoreDialog();
+  startTutorial({ replay: true });
+});
+savePlanButton.addEventListener("click", savePlan);
+cancelPlanButton.addEventListener("click", closePlanDialog);
+resetAllPlanButton.addEventListener("click", showPlanResetConfirmation);
+confirmResetAllPlanButton.addEventListener("click", resetAllProgress);
+backPlanResetButton.addEventListener("click", hidePlanResetConfirmation);
+dailyTargetInput.addEventListener("input", updatePlanPreview);
+bookSelect.addEventListener("change", () => {
+  const selectedState = rootState.bookStates[bookSelect.value] ?? createState();
+  dailyTargetInput.value = selectedState.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET;
+  updatePlanPreview();
+});
+planDialog.addEventListener("click", (event) => {
+  if (event.target === planDialog) closePlanDialog();
+});
+
+revealButton.addEventListener("click", revealSenses);
+audioButton.addEventListener("click", speakCurrentWord);
+studyFeedbackButton.addEventListener("click", () => {
+  const context = currentFeedbackContext();
+  if (!context) return;
+  window.dispatchEvent(new CustomEvent("sensevocab:open-feedback", {
+    detail: { context },
+  }));
+});
+exitStudyButton.addEventListener("click", () => {
+  if (state.wordBrowse) {
+    closeWordCard();
+  } else {
+    openReturnDialog();
+  }
+});
+
+wordListBackButton.addEventListener("click", closeWordList);
+wordSearchInput.addEventListener("input", () => {
+  wordListQuery = wordSearchInput.value;
+  renderWordList();
+});
+wordSortSelect.addEventListener("change", () => {
+  state.wordListSort = wordSortSelect.value;
+  saveState();
+  renderWordList();
+});
+wordList.addEventListener("click", (event) => {
+  const item = event.target.closest(".word-list-item");
+  if (!item) return;
+  openWordCard(item.dataset.wordId);
+});
+
+senseList.addEventListener("click", (event) => {
+  const item = event.target.closest(".sense-item");
+  if (!item) return;
+  const session = ensureTodaySession();
+  if (
+    session.cardPhase === "examples" &&
+    item.classList.contains("is-collapsible")
+  ) {
+    toggleGreenSenseDetails(item.dataset.key);
+    return;
+  }
+  if (session.cardPhase !== "select") return;
+
+  animateSenseMastered(item);
+});
+
+nextButton.addEventListener("click", handleProgressButton);
+resetButton.addEventListener("click", openResetDialog);
+resetMarkingButton.addEventListener("click", () => showResetConfirmation("marking"));
+relearnWordButton.addEventListener("click", () => showResetConfirmation("relearn"));
+confirmResetButton.addEventListener("click", confirmPendingReset);
+backResetButton.addEventListener("click", showResetOptions);
+cancelResetButton.addEventListener("click", closeResetDialog);
+resetDialog.addEventListener("click", (event) => {
+  if (event.target === resetDialog) closeResetDialog();
+});
+
+previousWordButton.addEventListener("click", showPreviousWord);
+returnHomeButton.addEventListener("click", handleReturnHome);
+cancelReturnButton.addEventListener("click", closeReturnDialog);
+returnDialog.addEventListener("click", (event) => {
+  if (event.target === returnDialog) closeReturnDialog();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (tutorialRuntime?.active) return;
+  if (event.key === "Escape") {
+    if (!resetDialog.hidden) closeResetDialog();
+    if (!planDialog.hidden) closePlanDialog();
+    if (!returnDialog.hidden) closeReturnDialog();
+  }
+});
+document.addEventListener("click", blockNonTutorialClick, true);
+document.addEventListener("click", handleTutorialInteraction);
+window.addEventListener("scroll", positionTutorialOverlay, true);
+window.addEventListener("resize", () => {
+  updateAppViewportHeight();
+  scheduleWordFit();
+  positionTutorialOverlay();
+  positionHeatmapAtLatest();
+});
+window.visualViewport?.addEventListener("resize", updateAppViewportHeight);
+window.addEventListener("orientationchange", updateAppViewportHeight);
+finishTutorialButton.addEventListener("click", finishTutorial);
+window.addEventListener("sensevocab:app-ready", maybeStartAutomaticTutorial);
+window.addEventListener("sensevocab:account-ready", maybeStartAutomaticTutorial);
+window.addEventListener("sensevocab:account-scope", maybeStartAutomaticTutorial);
+window.addEventListener("sensevocab:membership", (event) => {
+  membershipAccess = {
+    loggedIn: Boolean(event.detail?.loggedIn),
+    active: event.detail?.active !== false,
+    pending: Boolean(event.detail?.pending),
+    expiresAt: event.detail?.expiresAt ?? null,
+  };
+  if (state) render();
+});
+
+initializeApp();

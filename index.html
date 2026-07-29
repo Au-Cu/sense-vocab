@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sense Vocab MVP</title>
+    <link rel="icon" href="./assets/app-icon-zoomed.png" />
+    <link rel="stylesheet" href="./styles.css?v=20260729-6" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="study-panel" id="homePanel" aria-live="polite">
+        <div class="home-summary">
+          <section class="home-card" aria-labelledby="todayPlanHeading">
+            <p class="home-card-title" id="todayPlanHeading">今日计划</p>
+            <div class="today-plan-grid" aria-label="今日计划">
+              <div class="stats today-plan-item">
+                <span id="todayNewCount">0</span>
+                <small>待新学单词</small>
+              </div>
+              <div class="stats today-plan-item">
+                <span id="todayReinforceCount">0</span>
+                <small>待强化单词</small>
+              </div>
+              <div class="stats today-plan-item">
+                <span id="todayReviewCount">0</span>
+                <small>待复习单词</small>
+              </div>
+            </div>
+          </section>
+
+          <div class="home-actions">
+            <div class="home-primary-actions">
+              <button class="secondary-button" id="planButton" type="button">选择计划</button>
+              <button class="secondary-button" id="wordListButton" type="button">单词列表</button>
+              <button class="primary-button" id="startStudyButton" type="button">开始学习</button>
+            </div>
+          </div>
+
+          <section class="home-card progress-card" aria-labelledby="progressHeading">
+            <div class="home-card-heading">
+              <p class="home-card-title" id="progressHeading">背词进度</p>
+              <span class="book-scope-label" id="homeBookName">考研词汇</span>
+            </div>
+            <div class="stats-grid progress-overview" aria-label="计划统计">
+              <div class="stats">
+                <span id="homeCompletedWords">0</span>
+                <small>已学单词</small>
+              </div>
+              <div class="stats">
+                <span id="homeRemainingWords">0</span>
+                <small>剩余单词</small>
+              </div>
+              <div class="stats">
+                <span id="homeCompletionDate">-</span>
+                <small>预计完成</small>
+              </div>
+            </div>
+            <p class="heatmap-tooltip" id="heatmapTooltip" aria-live="polite">
+              将鼠标移到日期上查看
+            </p>
+            <div class="heatmap-scroll" tabindex="0" aria-label="背词热力图日历">
+              <div class="heatmap-months" id="heatmapMonths" aria-hidden="true"></div>
+              <div class="heatmap-grid" id="heatmapGrid"></div>
+            </div>
+            <div class="plan-compare">
+              <span class="home-plan-meta" id="homePlanMeta"></span>
+              <span id="progressCompare"></span>
+            </div>
+          </section>
+
+          <div class="home-utility-actions">
+            <button class="secondary-button" id="advanceStudyButton" type="button" hidden>提前学习</button>
+            <button class="plain-button more-button" id="moreButton" type="button" aria-haspopup="dialog">
+              更多
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <section class="study-panel word-list-panel" id="wordListPanel" aria-live="polite" hidden>
+        <header class="word-list-header">
+          <div>
+            <p class="word-label" id="wordListBookName">考研词汇</p>
+            <h1>单词列表</h1>
+          </div>
+          <label class="sort-field" for="wordSortSelect">
+            <span>排序</span>
+            <select id="wordSortSelect">
+              <option value="mastery">按掌握程度顺序</option>
+              <option value="time-asc">按时间顺序</option>
+              <option value="time-desc">按时间倒序</option>
+              <option value="alpha-asc">按字母顺序</option>
+              <option value="alpha-desc">按字母倒序</option>
+            </select>
+          </label>
+        </header>
+        <label class="word-search-field" for="wordSearchInput">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m20 20-4-4"></path>
+          </svg>
+          <input
+            id="wordSearchInput"
+            type="search"
+            inputmode="search"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="搜索单词"
+          />
+        </label>
+        <p class="word-list-empty" id="wordListEmpty" hidden>没有找到匹配的单词</p>
+        <div class="word-list" id="wordList"></div>
+        <div class="actions">
+          <button class="secondary-button" id="wordListBackButton" type="button">返回主页</button>
+        </div>
+      </section>
+
+      <section class="study-panel" id="studyPanel" aria-live="polite" hidden>
+        <div class="topbar">
+          <div class="stats-grid" aria-label="学习统计">
+            <div class="stats">
+              <span id="reviewCount">0</span>
+              <small>复习义项</small>
+            </div>
+            <div class="stats">
+              <span id="newCount">0</span>
+              <small>新学义项</small>
+            </div>
+            <div class="stats">
+              <span id="learningCount">0</span>
+              <small>强化义项</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="day-row study-progress-row">
+          <p class="word-label" id="cardMode">当前单词</p>
+          <div class="study-progress-tools">
+            <span id="queueProgress">0 / 0</span>
+            <button
+              class="icon-button study-feedback-button"
+              id="studyFeedbackButton"
+              type="button"
+              aria-label="反馈当前单词"
+              title="反馈当前单词"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"></path>
+                <path d="M8 9h8M8 13h5"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="word-stage">
+          <div class="word-card-wrap">
+            <button class="word-button" id="revealButton" type="button">
+              <span id="wordText"></span>
+            </button>
+            <button class="audio-button" id="audioButton" type="button" aria-label="播放读音">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 9v6h4l5 4V5L8 9H4z"></path>
+                <path d="M16 8.5a5 5 0 0 1 0 7"></path>
+                <path d="M18.5 6a8 8 0 0 1 0 12"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="sense-area" id="senseArea" hidden>
+          <section class="morphology-panel" id="morphologyPanel" aria-label="词形变化"></section>
+          <p class="sense-hint" id="senseHint">点击熟知的义项</p>
+          <div class="sense-list" id="senseList"></div>
+        </div>
+
+        <div class="actions study-actions">
+          <div class="study-primary-actions">
+            <button class="secondary-button" id="exitStudyButton" type="button">返回</button>
+            <button class="secondary-button" id="resetButton" type="button">重置</button>
+            <button class="primary-button" id="nextButton" type="button">完成</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="modal-backdrop" id="planDialog" hidden>
+        <section class="reset-dialog" role="dialog" aria-modal="true" aria-labelledby="planTitle">
+          <div class="plan-form" id="planForm">
+            <h2 id="planTitle">选择计划</h2>
+            <label class="plan-field" for="bookSelect">
+              <span>词书</span>
+              <select class="plan-select" id="bookSelect">
+                <option value="kaoyan">考研词汇</option>
+                <option value="ielts">雅思词汇</option>
+              </select>
+            </label>
+            <label class="plan-field" for="dailyTargetInput">
+              <span>每天新学单词数</span>
+              <input class="number-input" id="dailyTargetInput" type="number" min="1" max="500" />
+            </label>
+            <p class="confirm-copy" id="planPreview"></p>
+            <div class="confirm-actions">
+              <button class="primary-button" id="savePlanButton" type="button">保存计划</button>
+              <button class="secondary-button" id="cancelPlanButton" type="button">取消</button>
+            </div>
+            <button class="danger-button plan-reset-button" id="resetAllPlanButton" type="button">
+              重置全部进度
+            </button>
+          </div>
+          <div class="reset-confirm" id="planResetConfirm" hidden>
+            <h2>确认重置词书进度？</h2>
+            <p class="confirm-copy">
+              <span id="planResetBookName">当前词书</span>的计划、已学、待复习和强化记录都会清空，其他词书不受影响。
+            </p>
+            <div class="confirm-actions">
+              <button class="danger-button" id="confirmResetAllPlanButton" type="button">
+                确认重置全部
+              </button>
+              <button class="secondary-button" id="backPlanResetButton" type="button">返回</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" id="resetDialog" hidden>
+        <section class="reset-dialog" role="dialog" aria-modal="true" aria-labelledby="resetTitle">
+          <h2 id="resetTitle">重置</h2>
+          <p class="reset-word" id="resetWordLabel"></p>
+          <div class="reset-options" id="resetOptions">
+            <button class="secondary-button" id="resetMarkingButton" type="button">
+              重置本次标记
+            </button>
+            <button class="danger-button" id="relearnWordButton" type="button">
+              重学该单词
+            </button>
+          </div>
+          <div class="reset-confirm" id="resetConfirm" hidden>
+            <p class="confirm-title" id="resetConfirmTitle"></p>
+            <p class="confirm-copy" id="resetConfirmCopy"></p>
+            <div class="confirm-actions">
+              <button class="danger-button" id="confirmResetButton" type="button">确认重置</button>
+              <button class="secondary-button" id="backResetButton" type="button">返回</button>
+            </div>
+          </div>
+          <button class="plain-button" id="cancelResetButton" type="button">取消</button>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" id="returnDialog" hidden>
+        <section class="reset-dialog" role="dialog" aria-modal="true" aria-labelledby="returnTitle">
+          <h2 id="returnTitle">返回</h2>
+          <p class="confirm-copy" id="returnCrossDayWarning" hidden>
+            当前时间返回首页将进入下一日学习，本次学习数据仍会归入开始学习的日期。
+          </p>
+          <div class="reset-options" id="returnOptions">
+            <button class="secondary-button" id="previousWordButton" type="button">返回上一词</button>
+            <button class="secondary-button" id="returnHomeButton" type="button">返回主页</button>
+          </div>
+          <button class="plain-button" id="cancelReturnButton" type="button">取消</button>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" id="moreDialog" hidden>
+        <section class="reset-dialog more-dialog" role="dialog" aria-modal="true" aria-labelledby="moreTitle">
+          <h2 id="moreTitle">更多</h2>
+          <div class="more-action-list">
+            <button class="secondary-button" id="accountButton" type="button">账户</button>
+            <button class="secondary-button notification-entry-button" id="notificationsButton" type="button">
+              <span>消息通知</span>
+              <span class="notification-badge" id="notificationBadge" hidden>0</span>
+            </button>
+            <button class="secondary-button" id="homeFeedbackButton" type="button">反馈问题</button>
+            <button class="secondary-button" id="replayTutorialButton" type="button">重学教程</button>
+            <a class="secondary-button legal-link-button" href="./legal.html" target="_blank" rel="noopener">
+              条款、隐私与内容来源
+            </a>
+          </div>
+          <button class="plain-button" id="closeMoreButton" type="button">关闭</button>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" id="accountDialog" hidden>
+        <section
+          class="reset-dialog account-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="accountTitle"
+        >
+          <div class="account-dialog-heading">
+            <h2 id="accountTitle">账户</h2>
+            <span class="account-state-badge" id="accountStateBadge">游客</span>
+          </div>
+
+          <div class="account-auth-view" id="accountAuthView">
+            <p class="confirm-copy" id="accountIntro">
+              游客数据保存在当前浏览器。登录后可将进度同步到其他浏览器和设备。
+            </p>
+            <div class="account-tabs" role="tablist" aria-label="账户操作">
+              <button
+                class="account-tab is-active"
+                id="accountLoginTab"
+                type="button"
+                role="tab"
+                aria-selected="true"
+              >
+                登录
+              </button>
+              <button
+                class="account-tab"
+                id="accountRegisterTab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+              >
+                注册
+              </button>
+            </div>
+            <form class="account-form" id="accountForm">
+              <label class="plan-field" for="accountEmail">
+                <span>邮箱</span>
+                <input
+                  class="number-input account-input"
+                  id="accountEmail"
+                  name="email"
+                  type="email"
+                  autocomplete="email"
+                  required
+                />
+              </label>
+              <label class="plan-field" id="accountPasswordField" for="accountPassword">
+                <span id="accountPasswordLabel">密码</span>
+                <input
+                  class="number-input account-input"
+                  id="accountPassword"
+                  name="password"
+                  type="password"
+                  minlength="6"
+                  autocomplete="current-password"
+                  required
+                />
+              </label>
+              <label class="plan-field" id="accountOtpField" for="accountOtp" hidden>
+                <span>邮箱验证码</span>
+                <input
+                  class="number-input account-input"
+                  id="accountOtp"
+                  name="email-otp"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="one-time-code"
+                  minlength="6"
+                  maxlength="8"
+                  pattern="[0-9]{6,8}"
+                />
+              </label>
+              <label class="plan-field" id="invitationCodeField" for="invitationCode" hidden>
+                <span>邀请码（选填）</span>
+                <input
+                  class="number-input invitation-input"
+                  id="invitationCode"
+                  name="invitation-code"
+                  type="text"
+                  maxlength="20"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                />
+              </label>
+              <div class="registration-consents" id="registrationConsents" hidden>
+                <label class="consent-check">
+                  <input id="registerTermsConsent" type="checkbox" />
+                  <span>
+                    我已阅读并同意
+                    <a href="./legal.html#terms" target="_blank" rel="noopener">用户条款</a>
+                    和
+                    <a href="./legal.html#privacy" target="_blank" rel="noopener">隐私政策</a>
+                  </span>
+                </label>
+                <label class="consent-check">
+                  <input id="registerCrossBorderConsent" type="checkbox" />
+                  <span>
+                    我单独同意将账户及学习数据传输至新加坡等境外服务节点处理。
+                    <a href="./legal.html#cross-border" target="_blank" rel="noopener">查看详细告知</a>
+                  </span>
+                </label>
+                <label class="consent-check">
+                  <input id="registerAgeConsent" type="checkbox" />
+                  <span>我确认自己已满 14 周岁。</span>
+                </label>
+              </div>
+              <button class="primary-button" id="accountSubmitButton" type="submit">登录</button>
+              <div class="account-auth-secondary">
+                <button class="account-text-button" id="forgotPasswordButton" type="button">
+                  忘记密码
+                </button>
+                <button class="account-text-button" id="backToLoginButton" type="button" hidden>
+                  返回登录
+                </button>
+                <button class="account-text-button" id="resendOtpButton" type="button" hidden>
+                  重新发送验证码
+                </button>
+              </div>
+            </form>
+            <p class="account-legal-copy">
+              登录即表示继续受当前
+              <a href="./legal.html" target="_blank" rel="noopener">条款与隐私说明</a>
+              约束；游客模式无需上传数据。
+            </p>
+          </div>
+
+          <div class="account-consent-view" id="accountConsentView" hidden>
+            <div>
+              <p class="confirm-title">请确认账户数据处理方式</p>
+              <p class="confirm-copy">
+                你的云端学习记录尚未读取或更改。确认后才会继续加载并同步原有记录；
+                不同意可退出到游客模式，云端记录会原样保留。
+              </p>
+            </div>
+            <label class="consent-check">
+              <input id="existingTermsConsent" type="checkbox" />
+              <span>
+                我已阅读并同意
+                <a href="./legal.html#terms" target="_blank" rel="noopener">用户条款</a>
+                和
+                <a href="./legal.html#privacy" target="_blank" rel="noopener">隐私政策</a>
+              </span>
+            </label>
+            <label class="consent-check">
+              <input id="existingCrossBorderConsent" type="checkbox" />
+              <span>
+                我单独同意账户及学习数据按
+                <a href="./legal.html#cross-border" target="_blank" rel="noopener">跨境处理告知</a>
+                传输和处理。
+              </span>
+            </label>
+            <label class="consent-check">
+              <input id="existingAgeConsent" type="checkbox" />
+              <span>我确认自己已满 14 周岁。</span>
+            </label>
+            <div class="confirm-actions">
+              <button class="primary-button" id="acceptLegalConsentButton" type="button" disabled>
+                同意并继续
+              </button>
+              <button class="secondary-button" id="declineLegalConsentButton" type="button">
+                不同意，退出账户
+              </button>
+            </div>
+          </div>
+
+          <div class="account-user-view" id="accountUserView" hidden>
+            <div class="account-user-copy">
+              <strong id="accountEmailLabel"></strong>
+              <span class="account-sync-copy" id="accountSyncStatus">云端记录已同步</span>
+            </div>
+            <div class="account-membership-summary">
+              <div>
+                <span>会员到期日</span>
+                <strong id="accountMembershipExpiry">读取中</strong>
+              </div>
+              <div>
+                <span>邀请码</span>
+                <strong id="accountInviteCode">读取中</strong>
+              </div>
+            </div>
+            <div class="account-action-list">
+              <button class="secondary-button" id="syncNowButton" type="button">立即同步</button>
+              <button class="secondary-button" id="logoutButton" type="button">退出账户</button>
+              <button class="danger-button" id="deleteAccountButton" type="button">删除账户</button>
+            </div>
+          </div>
+
+          <div class="account-conflict-view" id="accountConflictView" hidden>
+            <p class="confirm-title">请选择要保留的学习记录</p>
+            <p class="confirm-copy">
+              当前浏览器和云端都有学习记录。为避免误覆盖，程序不会自动替你选择。
+            </p>
+            <div class="account-action-list">
+              <button class="primary-button" id="useCloudStateButton" type="button">
+                使用云端记录
+              </button>
+              <button class="secondary-button" id="useLocalStateButton" type="button">
+                使用本机记录并上传
+              </button>
+            </div>
+          </div>
+
+          <div class="account-delete-confirm" id="accountDeleteConfirm" hidden>
+            <p class="confirm-title">确认删除账户？</p>
+            <p class="account-danger-copy">
+              此操作不可恢复。账户、云端学习记录和已上传的反馈图片都会永久删除。
+              本机游客记录不会受到影响。
+            </p>
+            <label class="plan-field" for="deleteAccountConfirmation">
+              <span>请输入“删除账户”继续</span>
+              <input
+                class="number-input account-input account-danger-input"
+                id="deleteAccountConfirmation"
+                type="text"
+                autocomplete="off"
+              />
+            </label>
+            <div class="confirm-actions">
+              <button
+                class="danger-button"
+                id="confirmDeleteAccountButton"
+                type="button"
+                disabled
+              >
+                确认永久删除
+              </button>
+              <button class="secondary-button" id="cancelDeleteAccountButton" type="button">
+                返回
+              </button>
+            </div>
+          </div>
+
+          <div class="account-feedback-view" id="accountFeedbackView" hidden>
+            <div>
+              <p class="confirm-title">反馈问题</p>
+              <p class="confirm-copy">请描述遇到的问题，并可附上最多 4 张截图。</p>
+              <p class="feedback-privacy-copy">
+                图片会在浏览器中重新编码以移除 EXIF 等附加信息。请勿上传身份证件、
+                银行卡、地址或其他敏感信息。
+              </p>
+            </div>
+            <div class="feedback-context" id="feedbackContext" hidden>
+              <span>关联单词</span>
+              <strong id="feedbackContextWord"></strong>
+            </div>
+            <label class="plan-field" for="feedbackMessage">
+              <span>问题描述</span>
+              <textarea
+                class="account-textarea"
+                id="feedbackMessage"
+                minlength="3"
+                maxlength="4000"
+                rows="7"
+              ></textarea>
+            </label>
+            <div class="feedback-image-row">
+              <label class="secondary-button feedback-image-button" for="feedbackImageInput">
+                添加图片
+              </label>
+              <span class="feedback-image-count" id="feedbackImageCount">0 / 4</span>
+              <input
+                id="feedbackImageInput"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                hidden
+              />
+            </div>
+            <div class="feedback-image-preview" id="feedbackImagePreview"></div>
+            <div class="confirm-actions">
+              <button class="primary-button" id="submitFeedbackButton" type="button" disabled>
+                提交反馈
+              </button>
+              <button class="secondary-button" id="cancelFeedbackButton" type="button">
+                返回
+              </button>
+            </div>
+          </div>
+
+          <p class="account-message" id="accountMessage" aria-live="polite"></p>
+
+          <div class="account-data-actions" id="accountDataActions">
+            <button class="plain-button" id="exportDataButton" type="button">导出学习数据</button>
+            <button class="plain-button" id="importDataButton" type="button">导入学习数据</button>
+            <input id="importDataInput" type="file" accept="application/json,.json" hidden />
+          </div>
+          <button class="plain-button" id="closeAccountButton" type="button">关闭</button>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" id="notificationsDialog" hidden>
+        <section
+          class="reset-dialog notifications-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="notificationsTitle"
+        >
+          <div class="account-dialog-heading">
+            <h2 id="notificationsTitle">消息通知</h2>
+            <span class="account-state-badge" id="notificationsAccountState">公告</span>
+          </div>
+          <p class="confirm-copy notifications-intro" id="notificationsIntro">
+            公告会在这里发布。登录后还可以查看反馈答复与账户消息。
+          </p>
+          <div class="notifications-list" id="notificationsList"></div>
+          <p class="account-message" id="notificationsMessage" aria-live="polite"></p>
+          <button class="plain-button" id="closeNotificationsButton" type="button">关闭</button>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" id="registrationWelcomeDialog" hidden>
+        <section
+          class="reset-dialog registration-welcome-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="registrationWelcomeTitle"
+        >
+          <h2 id="registrationWelcomeTitle">注册成功</h2>
+          <p class="confirm-title" id="registrationWelcomeMessage"></p>
+          <p class="confirm-copy">已赠送 21 天会员；使用有效邀请码时，双方再各得 14 天。</p>
+          <button class="primary-button" id="closeRegistrationWelcomeButton" type="button">
+            确认
+          </button>
+        </section>
+      </div>
+
+      <div class="tutorial-overlay" id="tutorialOverlay" aria-live="polite" hidden>
+        <div class="tutorial-mask" data-mask="top"></div>
+        <div class="tutorial-mask" data-mask="right"></div>
+        <div class="tutorial-mask" data-mask="bottom"></div>
+        <div class="tutorial-mask" data-mask="left"></div>
+        <div class="tutorial-spotlight" id="tutorialSpotlight"></div>
+        <p class="tutorial-tip" id="tutorialTip"></p>
+      </div>
+
+      <div class="modal-backdrop" id="tutorialDoneDialog" hidden>
+        <section class="reset-dialog tutorial-done-dialog" role="dialog" aria-modal="true" aria-labelledby="tutorialDoneTitle">
+          <h2 id="tutorialDoneTitle">教程完成</h2>
+          <p class="confirm-copy">你已完成全部教程。</p>
+          <button class="primary-button" id="finishTutorialButton" type="button">确认</button>
+        </section>
+      </div>
+    </main>
+
+    <script src="./cloud-config.js?v=20260728-2"></script>
+    <script src="./cloud-client.js?v=20260729-3"></script>
+    <script src="./sync-state.js?v=20260728-3"></script>
+    <script src="./app.js?v=20260729-6"></script>
+    <script src="./account.js?v=20260729-6"></script>
+  </body>
+</html>

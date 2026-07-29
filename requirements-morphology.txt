@@ -1,0 +1,4 @@
+lemminflect==0.2.3
+mwparserfromhell==0.7.2
+word-forms==2.1.0
+wordfreq==3.1.1

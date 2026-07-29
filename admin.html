@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow,noarchive" />
+    <title>后台管理</title>
+    <link rel="stylesheet" href="./admin.css?v=20260729-3" />
+  </head>
+  <body>
+    <main class="admin-shell">
+      <header class="admin-header">
+        <div>
+          <p class="admin-eyebrow">仅限管理员</p>
+          <h1>后台管理</h1>
+        </div>
+        <div class="admin-header-actions" id="adminHeaderActions" hidden>
+          <button class="admin-button secondary" id="extendAllMembershipsButton" type="button">
+            全体会员延长 7 天
+          </button>
+          <button class="admin-button secondary" id="refreshAdminButton" type="button">
+            刷新数据
+          </button>
+          <button class="admin-button secondary" id="adminLogoutButton" type="button">
+            退出账户
+          </button>
+        </div>
+      </header>
+
+      <p class="admin-message" id="adminMessage" aria-live="polite"></p>
+
+      <section class="admin-gate" id="adminLoginView">
+        <h2>管理员登录</h2>
+        <form class="admin-login-form" id="adminLoginForm">
+          <label>
+            <span>邮箱</span>
+            <input id="adminEmail" type="email" autocomplete="email" required />
+          </label>
+          <label>
+            <span>密码</span>
+            <input
+              id="adminPassword"
+              type="password"
+              autocomplete="current-password"
+              minlength="6"
+              required
+            />
+          </label>
+          <button class="admin-button primary" id="adminLoginButton" type="submit">
+            登录
+          </button>
+        </form>
+      </section>
+
+      <section class="admin-gate" id="adminDeniedView" hidden>
+        <h2>无管理权限</h2>
+        <p>当前账户不在管理员白名单中。</p>
+        <button class="admin-button secondary" id="deniedLogoutButton" type="button">
+          退出账户
+        </button>
+      </section>
+
+      <div id="adminDashboard" hidden>
+        <section class="admin-section overview-section" aria-labelledby="overviewTitle">
+          <div class="section-heading">
+            <h2 id="overviewTitle">数据总览</h2>
+            <span id="overviewUpdatedAt"></span>
+          </div>
+          <div class="metric-grid" id="metricGrid"></div>
+        </section>
+
+        <nav class="admin-tabs" aria-label="后台数据">
+          <button
+            class="admin-tab is-active"
+            id="usersTab"
+            type="button"
+            aria-selected="true"
+          >
+            用户
+          </button>
+          <button
+            class="admin-tab"
+            id="feedbackTab"
+            type="button"
+            aria-selected="false"
+          >
+            问题反馈
+          </button>
+          <button
+            class="admin-tab"
+            id="announcementsTab"
+            type="button"
+            aria-selected="false"
+          >
+            消息通知
+          </button>
+        </nav>
+
+        <section class="admin-section" id="usersSection" aria-labelledby="usersTitle">
+          <div class="section-heading controls-heading">
+            <div>
+              <h2 id="usersTitle">用户列表</h2>
+              <span id="usersTotal"></span>
+            </div>
+            <form class="search-form" id="userSearchForm">
+              <input
+                id="userSearchInput"
+                type="search"
+                autocomplete="off"
+                placeholder="搜索邮箱"
+                aria-label="搜索用户邮箱"
+              />
+              <button class="admin-button secondary" type="submit">搜索</button>
+            </form>
+          </div>
+
+          <div class="table-scroll">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>邮箱</th>
+                  <th>注册时间</th>
+                  <th>最近学习</th>
+                  <th>学习天数</th>
+                  <th>连续学习</th>
+                  <th>最近同步</th>
+                </tr>
+              </thead>
+              <tbody id="usersTableBody"></tbody>
+            </table>
+          </div>
+          <div class="pagination">
+            <button class="admin-button secondary" id="previousUsersButton" type="button">
+              上一页
+            </button>
+            <span id="usersPageLabel"></span>
+            <button class="admin-button secondary" id="nextUsersButton" type="button">
+              下一页
+            </button>
+          </div>
+        </section>
+
+        <section
+          class="admin-section"
+          id="feedbackSection"
+          aria-labelledby="feedbackTitle"
+          hidden
+        >
+          <div class="section-heading controls-heading">
+            <div>
+              <h2 id="feedbackTitle">问题反馈</h2>
+              <span id="feedbackTotal"></span>
+            </div>
+            <label class="filter-field" for="feedbackStatusFilter">
+              <span>状态</span>
+              <select id="feedbackStatusFilter">
+                <option value="">全部</option>
+                <option value="new">待处理</option>
+                <option value="in_progress">处理中</option>
+                <option value="resolved">已解决</option>
+              </select>
+            </label>
+          </div>
+          <div class="feedback-list" id="adminFeedbackList"></div>
+        </section>
+
+        <section
+          class="admin-section"
+          id="announcementsSection"
+          aria-labelledby="announcementsTitle"
+          hidden
+        >
+          <div class="section-heading controls-heading">
+            <div>
+              <h2 id="announcementsTitle">消息通知</h2>
+              <span>向所有用户和游客发布公告</span>
+            </div>
+          </div>
+          <form class="announcement-form" id="announcementForm">
+            <label>
+              <span>标题</span>
+              <input id="announcementTitle" type="text" maxlength="120" required />
+            </label>
+            <label>
+              <span>正文</span>
+              <textarea id="announcementBody" maxlength="4000" rows="5" required></textarea>
+            </label>
+            <button class="admin-button primary" id="publishAnnouncementButton" type="submit">
+              发布公告
+            </button>
+          </form>
+          <div class="announcement-list" id="announcementList"></div>
+        </section>
+      </div>
+    </main>
+
+    <dialog class="user-detail-dialog" id="userDetailDialog">
+      <div class="dialog-heading">
+        <div>
+          <p>用户详情</p>
+          <h2 id="userDetailEmail"></h2>
+        </div>
+        <button
+          class="dialog-close"
+          id="closeUserDetailButton"
+          type="button"
+          aria-label="关闭用户详情"
+          title="关闭"
+        >
+          ×
+        </button>
+      </div>
+      <div class="detail-grid" id="userDetailGrid"></div>
+      <section class="membership-control">
+        <div>
+          <h3>会员设置</h3>
+          <p>设置剩余会员天数，只能延长，不能缩短。</p>
+        </div>
+        <div class="membership-control-row">
+          <input
+            id="membershipDaysInput"
+            type="number"
+            min="0"
+            max="36500"
+            step="1"
+            inputmode="numeric"
+            aria-label="剩余会员天数"
+          />
+          <button class="admin-button primary" id="setMembershipButton" type="button">
+            保存会员时长
+          </button>
+        </div>
+      </section>
+      <section class="detail-status-section">
+        <h3>义项状态</h3>
+        <div class="detail-status-grid" id="userSenseStatus"></div>
+      </section>
+    </dialog>
+
+    <script src="./cloud-config.js?v=20260729-2"></script>
+    <script src="./cloud-client.js?v=20260729-3"></script>
+    <script src="./admin.js?v=20260729-3"></script>
+  </body>
+</html>

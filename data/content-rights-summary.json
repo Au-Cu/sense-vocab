@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-07-29T12:31:42.078Z",
+  "bundleSchemaVersion": 1,
+  "counts": {
+    "remoteAudioWithoutCompleteAttribution": 1617,
+    "quotationExamplesRequiringReview": 314,
+    "tatoebaExamplesWithoutCompleteAttribution": 46,
+    "semanticExamplesWithoutTraceableAttribution": 148,
+    "translationSourcesRequiringCommercialReview": 8944,
+    "legacyExternalServicesRequiringReplacement": 2
+  },
+  "releasePolicy": {
+    "remoteAudio": "The free beta retains existing Wikimedia audio to avoid feature loss. Missing per-file rights metadata remains blocking for paid release.",
+    "translation": "English-to-Chinese maintenance translation uses the local CC BY 4.0 Argos/OPUS model. The historical unofficial endpoint remains only for unsupported Chinese-to-English maintenance work.",
+    "unresolvedText": "Existing text stays unchanged for learning-record compatibility. Items in this report require licensing or independent rewriting before paid commercial release."
+  }
+}

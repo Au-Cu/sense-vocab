@@ -1,0 +1,27 @@
+{
+  "name": "sense-vocab-mvp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build:cloud-client": "esbuild tools/cloud-client-entry.js --bundle --format=iife --platform=browser --target=es2020 --outfile=cloud-client.js",
+    "lock:content-identity": "node tools/content-identity.mjs --write",
+    "verify:content-identity": "node tools/content-identity.mjs",
+    "audit:content": "node tools/audit-content-rights.mjs",
+    "audit:content:strict": "node tools/audit-content-rights.mjs --strict",
+    "build:web": "npm run build:cloud-client && npm run verify:content-identity && npm run audit:content && node tools/build-web.mjs",
+    "package:web": "npm run build:web && powershell -NoProfile -ExecutionPolicy Bypass -File tools/package-web.ps1",
+    "test": "playwright test",
+    "cloudflare:login": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-wrangler.ps1 login",
+    "deploy:cloudflare": "npm run build:web && powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-wrangler.ps1 pages deploy dist --project-name=sense-vocab"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.9",
+    "wordnet": "^2.0.0",
+    "wordnet-db": "^3.1.14"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "esbuild": "^0.25.12",
+    "supabase": "^2.110.0"
+  }
+}

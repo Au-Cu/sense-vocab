@@ -1,0 +1,26 @@
+{
+  "formatVersion": 1,
+  "schemaVersion": 1,
+  "defaultBookId": "kaoyan",
+  "books": [
+    {
+      "id": "kaoyan",
+      "name": "考研词汇",
+      "entryCount": 5042,
+      "senseReferenceCount": 7894,
+      "identitySha256": "2370f3e37048da1727ffca0892ccabe42bb39e83ae13a3a21c6e20ec3bebe272"
+    },
+    {
+      "id": "ielts",
+      "name": "雅思词汇",
+      "entryCount": 4827,
+      "senseReferenceCount": 7538,
+      "identitySha256": "3f90c836b614785ee3314277e57603706f8812c94bcd563fb4a39752548ee6f7"
+    }
+  ],
+  "wordPool": {
+    "wordCount": 6607,
+    "senseCount": 10211,
+    "identitySha256": "5b82135990721356da457759d1c0109475becf281d525891979837b34321755f"
+  }
+}
