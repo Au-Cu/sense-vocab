@@ -5,25 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260729-6" />
+    <link rel="stylesheet" href="./styles.css?v=20260730-2" />
   </head>
   <body>
     <main class="app-shell">
-      <section class="study-panel" id="homePanel" aria-live="polite">
+      <section class="study-panel" id="homePanel" aria-live="polite" aria-busy="true">
         <div class="home-summary">
           <section class="home-card" aria-labelledby="todayPlanHeading">
             <p class="home-card-title" id="todayPlanHeading">今日计划</p>
             <div class="today-plan-grid" aria-label="今日计划">
               <div class="stats today-plan-item">
-                <span id="todayNewCount">0</span>
+                <span id="todayNewCount">--</span>
                 <small>待新学单词</small>
               </div>
               <div class="stats today-plan-item">
-                <span id="todayReinforceCount">0</span>
+                <span id="todayReinforceCount">--</span>
                 <small>待强化单词</small>
               </div>
               <div class="stats today-plan-item">
-                <span id="todayReviewCount">0</span>
+                <span id="todayReviewCount">--</span>
                 <small>待复习单词</small>
               </div>
             </div>
@@ -31,11 +31,14 @@
 
           <div class="home-actions">
             <div class="home-primary-actions">
-              <button class="secondary-button" id="planButton" type="button">选择计划</button>
-              <button class="secondary-button" id="wordListButton" type="button">单词列表</button>
-              <button class="primary-button" id="startStudyButton" type="button">开始学习</button>
+              <button class="secondary-button" id="planButton" type="button" disabled>选择计划</button>
+              <button class="secondary-button" id="wordListButton" type="button" disabled>单词列表</button>
+              <button class="primary-button" id="startStudyButton" type="button" disabled>开始学习</button>
             </div>
           </div>
+          <p class="vocabulary-status" id="vocabularyStatus" role="status">
+            正在加载词库索引和本地学习记录…
+          </p>
 
           <section class="home-card progress-card" aria-labelledby="progressHeading">
             <div class="home-card-heading">
@@ -44,11 +47,11 @@
             </div>
             <div class="stats-grid progress-overview" aria-label="计划统计">
               <div class="stats">
-                <span id="homeCompletedWords">0</span>
+                <span id="homeCompletedWords">--</span>
                 <small>已学单词</small>
               </div>
               <div class="stats">
-                <span id="homeRemainingWords">0</span>
+                <span id="homeRemainingWords">--</span>
                 <small>剩余单词</small>
               </div>
               <div class="stats">
@@ -57,7 +60,7 @@
               </div>
             </div>
             <p class="heatmap-tooltip" id="heatmapTooltip" aria-live="polite">
-              将鼠标移到日期上查看
+              正在加载背词日历…
             </p>
             <div class="heatmap-scroll" tabindex="0" aria-label="背词热力图日历">
               <div class="heatmap-months" id="heatmapMonths" aria-hidden="true"></div>
@@ -71,7 +74,7 @@
 
           <div class="home-utility-actions">
             <button class="secondary-button" id="advanceStudyButton" type="button" hidden>提前学习</button>
-            <button class="plain-button more-button" id="moreButton" type="button" aria-haspopup="dialog">
+            <button class="plain-button more-button" id="moreButton" type="button" aria-haspopup="dialog" disabled>
               更多
             </button>
           </div>
@@ -628,9 +631,9 @@
     </main>
 
     <script src="./cloud-config.js?v=20260728-2"></script>
-    <script src="./cloud-client.js?v=20260729-3"></script>
+    <script src="./cloud-client.js?v=20260730-1"></script>
     <script src="./sync-state.js?v=20260728-3"></script>
-    <script src="./app.js?v=20260729-6"></script>
-    <script src="./account.js?v=20260729-6"></script>
+    <script src="./app.js?v=20260730-3"></script>
+    <script src="./account.js?v=20260730-2"></script>
   </body>
 </html>

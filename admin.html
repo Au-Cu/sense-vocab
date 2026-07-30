@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow,noarchive" />
     <title>后台管理</title>
-    <link rel="stylesheet" href="./admin.css?v=20260729-3" />
+    <link rel="stylesheet" href="./admin.css?v=20260730-1" />
   </head>
   <body>
     <main class="admin-shell">
@@ -185,6 +185,26 @@
               <span>正文</span>
               <textarea id="announcementBody" maxlength="4000" rows="5" required></textarea>
             </label>
+            <div class="announcement-image-row">
+              <label
+                class="admin-button secondary announcement-image-button"
+                for="announcementImageInput"
+              >
+                添加图片
+              </label>
+              <span id="announcementImageCount">0 / 4</span>
+              <input
+                id="announcementImageInput"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                hidden
+              />
+            </div>
+            <div
+              class="announcement-image-preview"
+              id="announcementImagePreview"
+            ></div>
             <button class="admin-button primary" id="publishAnnouncementButton" type="submit">
               发布公告
             </button>
@@ -238,7 +258,7 @@
     </dialog>
 
     <script src="./cloud-config.js?v=20260729-2"></script>
-    <script src="./cloud-client.js?v=20260729-3"></script>
-    <script src="./admin.js?v=20260729-3"></script>
+    <script src="./cloud-client.js?v=20260730-1"></script>
+    <script src="./admin.js?v=20260730-1"></script>
   </body>
 </html>

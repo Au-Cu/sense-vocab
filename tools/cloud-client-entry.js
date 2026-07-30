@@ -6,11 +6,16 @@ function assertResult(result) {
 }
 
 const FEEDBACK_BUCKET = "feedback-images";
+const ANNOUNCEMENT_BUCKET = "announcement-images";
 const FEEDBACK_IMAGE_TYPES = new Map([
   ["image/jpeg", "jpg"],
   ["image/png", "png"],
   ["image/webp", "webp"],
 ]);
+const ANNOUNCEMENT_IMAGE_PATH =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[1-4]\.(?:jpg|jpeg|png|webp)$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function createUuid() {
   if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
@@ -36,6 +41,31 @@ window.SenseVocabCloud = {
         storageKey: `sense-vocab-auth-${projectRef}`,
       },
     });
+
+    function hydrateAnnouncementImages(result) {
+      const snapshot = result && typeof result === "object" ? result : {};
+      return {
+        ...snapshot,
+        items: Array.isArray(snapshot.items)
+          ? snapshot.items.map((item) => ({
+            ...item,
+            images: Array.isArray(item.imagePaths)
+              ? item.imagePaths
+                .map((path) => {
+                  const normalizedPath = String(path ?? "").trim();
+                  if (!ANNOUNCEMENT_IMAGE_PATH.test(normalizedPath)) return null;
+                  const publicResult = client.storage
+                    .from(ANNOUNCEMENT_BUCKET)
+                    .getPublicUrl(normalizedPath);
+                  const url = publicResult?.data?.publicUrl;
+                  return url ? { path: normalizedPath, url } : null;
+                })
+                .filter(Boolean)
+              : [],
+          }))
+          : [],
+      };
+    }
 
     async function recordAdminAccess(
       action,
@@ -156,9 +186,10 @@ window.SenseVocabCloud = {
       },
 
       async loadNotifications(limit = 100) {
-        return assertResult(await client.rpc("load_my_notifications", {
+        const result = assertResult(await client.rpc("load_my_notifications", {
           p_limit: limit,
         }));
+        return hydrateAnnouncementImages(result);
       },
 
       async markNotificationRead(kind, id) {
@@ -369,16 +400,95 @@ window.SenseVocabCloud = {
         await recordAdminAccess("announcements.list", "announcement", null, {
           limit,
         });
-        return assertResult(await client.rpc("admin_announcement_list", {
+        const result = assertResult(await client.rpc("admin_announcement_list", {
           p_limit: limit,
         }));
+        return hydrateAnnouncementImages(result);
       },
 
-      async publishAnnouncement(title, body) {
-        return assertResult(await client.rpc("admin_publish_announcement", {
-          p_title: title,
-          p_body: body,
-        }));
+      async publishAnnouncement(title, body, files = []) {
+        const images = Array.from(files ?? []);
+        if (images.length > 4) {
+          throw new Error("每条公告最多上传 4 张图片。");
+        }
+
+        const announcementId = createUuid();
+        const uploadedPaths = [];
+        let rpcStarted = false;
+        try {
+          for (const [index, file] of images.entries()) {
+            const extension = FEEDBACK_IMAGE_TYPES.get(file.type);
+            if (!extension) throw new Error("仅支持 JPG、PNG 或 WebP 图片。");
+            if (file.size > 5 * 1024 * 1024) {
+              throw new Error("每张图片不能超过 5 MB。");
+            }
+            const path = `${announcementId}/${index + 1}.${extension}`;
+            assertResult(
+              await client.storage.from(ANNOUNCEMENT_BUCKET).upload(path, file, {
+                cacheControl: "31536000",
+                contentType: file.type,
+                upsert: false,
+              }),
+            );
+            uploadedPaths.push(path);
+          }
+
+          rpcStarted = true;
+          return assertResult(await client.rpc("admin_publish_announcement", {
+            p_title: title,
+            p_body: body,
+            p_announcement_id: announcementId,
+            p_image_paths: uploadedPaths,
+          }));
+        } catch (error) {
+          const commitMayHaveSucceeded = rpcStarted &&
+            !error?.code &&
+            !Number.isFinite(Number(error?.status));
+          if (uploadedPaths.length && !commitMayHaveSucceeded) {
+            try {
+              await client.storage.from(ANNOUNCEMENT_BUCKET).remove(uploadedPaths);
+            } catch {
+              // Orphaned files remain unlisted and use an unguessable UUID path.
+            }
+          }
+          throw error;
+        }
+      },
+
+      async deleteAnnouncement(announcementId) {
+        const normalizedId = String(announcementId ?? "").trim();
+        if (!UUID_PATTERN.test(normalizedId)) {
+          throw new Error("公告编号无效。");
+        }
+
+        const result = assertResult(
+          await client.rpc("admin_delete_announcement", {
+            p_announcement_id: normalizedId,
+          }),
+        );
+        const imagePaths = Array.isArray(result?.imagePaths)
+          ? result.imagePaths.filter((path) => {
+            const normalizedPath = String(path ?? "").trim();
+            return normalizedPath.startsWith(`${normalizedId}/`) &&
+              ANNOUNCEMENT_IMAGE_PATH.test(normalizedPath);
+          })
+          : [];
+        let imageCleanupFailed = false;
+        if (result?.deleted && imagePaths.length) {
+          try {
+            assertResult(
+              await client.storage
+                .from(ANNOUNCEMENT_BUCKET)
+                .remove(imagePaths),
+            );
+          } catch {
+            imageCleanupFailed = true;
+          }
+        }
+        return {
+          ...result,
+          imageCleanupFailed,
+        };
       },
 
       async setUserMembershipDays(userId, days) {

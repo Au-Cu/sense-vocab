@@ -20087,11 +20087,14 @@ ${suffix}`;
     return result?.data ?? null;
   }
   var FEEDBACK_BUCKET = "feedback-images";
+  var ANNOUNCEMENT_BUCKET = "announcement-images";
   var FEEDBACK_IMAGE_TYPES = /* @__PURE__ */ new Map([
     ["image/jpeg", "jpg"],
     ["image/png", "png"],
     ["image/webp", "webp"]
   ]);
+  var ANNOUNCEMENT_IMAGE_PATH = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[1-4]\.(?:jpg|jpeg|png|webp)$/i;
+  var UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   function createUuid() {
     if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (token) => {
@@ -20114,6 +20117,22 @@ ${suffix}`;
           storageKey: `sense-vocab-auth-${projectRef}`
         }
       });
+      function hydrateAnnouncementImages(result) {
+        const snapshot = result && typeof result === "object" ? result : {};
+        return {
+          ...snapshot,
+          items: Array.isArray(snapshot.items) ? snapshot.items.map((item) => ({
+            ...item,
+            images: Array.isArray(item.imagePaths) ? item.imagePaths.map((path) => {
+              const normalizedPath = String(path ?? "").trim();
+              if (!ANNOUNCEMENT_IMAGE_PATH.test(normalizedPath)) return null;
+              const publicResult = client.storage.from(ANNOUNCEMENT_BUCKET).getPublicUrl(normalizedPath);
+              const url = publicResult?.data?.publicUrl;
+              return url ? { path: normalizedPath, url } : null;
+            }).filter(Boolean) : []
+          })) : []
+        };
+      }
       async function recordAdminAccess(action, targetType = null, targetId = null, metadata = {}) {
         assertResult(await client.rpc("admin_record_access", {
           p_action: action,
@@ -20208,9 +20227,10 @@ ${suffix}`;
           return assertResult(await client.rpc("load_my_account_profile"));
         },
         async loadNotifications(limit = 100) {
-          return assertResult(await client.rpc("load_my_notifications", {
+          const result = assertResult(await client.rpc("load_my_notifications", {
             p_limit: limit
           }));
+          return hydrateAnnouncementImages(result);
         },
         async markNotificationRead(kind, id) {
           return assertResult(await client.rpc("mark_my_notification_read", {
@@ -20394,15 +20414,82 @@ ${suffix}`;
           await recordAdminAccess("announcements.list", "announcement", null, {
             limit
           });
-          return assertResult(await client.rpc("admin_announcement_list", {
+          const result = assertResult(await client.rpc("admin_announcement_list", {
             p_limit: limit
           }));
+          return hydrateAnnouncementImages(result);
         },
-        async publishAnnouncement(title, body) {
-          return assertResult(await client.rpc("admin_publish_announcement", {
-            p_title: title,
-            p_body: body
-          }));
+        async publishAnnouncement(title, body, files = []) {
+          const images = Array.from(files ?? []);
+          if (images.length > 4) {
+            throw new Error("\u6BCF\u6761\u516C\u544A\u6700\u591A\u4E0A\u4F20 4 \u5F20\u56FE\u7247\u3002");
+          }
+          const announcementId = createUuid();
+          const uploadedPaths = [];
+          let rpcStarted = false;
+          try {
+            for (const [index, file] of images.entries()) {
+              const extension = FEEDBACK_IMAGE_TYPES.get(file.type);
+              if (!extension) throw new Error("\u4EC5\u652F\u6301 JPG\u3001PNG \u6216 WebP \u56FE\u7247\u3002");
+              if (file.size > 5 * 1024 * 1024) {
+                throw new Error("\u6BCF\u5F20\u56FE\u7247\u4E0D\u80FD\u8D85\u8FC7 5 MB\u3002");
+              }
+              const path = `${announcementId}/${index + 1}.${extension}`;
+              assertResult(
+                await client.storage.from(ANNOUNCEMENT_BUCKET).upload(path, file, {
+                  cacheControl: "31536000",
+                  contentType: file.type,
+                  upsert: false
+                })
+              );
+              uploadedPaths.push(path);
+            }
+            rpcStarted = true;
+            return assertResult(await client.rpc("admin_publish_announcement", {
+              p_title: title,
+              p_body: body,
+              p_announcement_id: announcementId,
+              p_image_paths: uploadedPaths
+            }));
+          } catch (error) {
+            const commitMayHaveSucceeded = rpcStarted && !error?.code && !Number.isFinite(Number(error?.status));
+            if (uploadedPaths.length && !commitMayHaveSucceeded) {
+              try {
+                await client.storage.from(ANNOUNCEMENT_BUCKET).remove(uploadedPaths);
+              } catch {
+              }
+            }
+            throw error;
+          }
+        },
+        async deleteAnnouncement(announcementId) {
+          const normalizedId = String(announcementId ?? "").trim();
+          if (!UUID_PATTERN.test(normalizedId)) {
+            throw new Error("\u516C\u544A\u7F16\u53F7\u65E0\u6548\u3002");
+          }
+          const result = assertResult(
+            await client.rpc("admin_delete_announcement", {
+              p_announcement_id: normalizedId
+            })
+          );
+          const imagePaths = Array.isArray(result?.imagePaths) ? result.imagePaths.filter((path) => {
+            const normalizedPath = String(path ?? "").trim();
+            return normalizedPath.startsWith(`${normalizedId}/`) && ANNOUNCEMENT_IMAGE_PATH.test(normalizedPath);
+          }) : [];
+          let imageCleanupFailed = false;
+          if (result?.deleted && imagePaths.length) {
+            try {
+              assertResult(
+                await client.storage.from(ANNOUNCEMENT_BUCKET).remove(imagePaths)
+              );
+            } catch {
+              imageCleanupFailed = true;
+            }
+          }
+          return {
+            ...result,
+            imageCleanupFailed
+          };
         },
         async setUserMembershipDays(userId, days) {
           return assertResult(await client.rpc("admin_set_membership_days", {

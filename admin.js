@@ -40,6 +40,15 @@
   const announcementForm = document.querySelector("#announcementForm");
   const announcementTitle = document.querySelector("#announcementTitle");
   const announcementBody = document.querySelector("#announcementBody");
+  const announcementImageInput = document.querySelector(
+    "#announcementImageInput",
+  );
+  const announcementImageCount = document.querySelector(
+    "#announcementImageCount",
+  );
+  const announcementImagePreview = document.querySelector(
+    "#announcementImagePreview",
+  );
   const publishAnnouncementButton = document.querySelector(
     "#publishAnnouncementButton",
   );
@@ -72,6 +81,8 @@
   let loading = false;
   let selectedUser = null;
   let selectedUserDetail = null;
+  let announcementBusy = false;
+  let announcementFiles = [];
 
   const bookNames = {
     kaoyan: "考研词汇",
@@ -461,6 +472,183 @@
     });
   }
 
+  function updateAnnouncementFormState() {
+    announcementImageCount.textContent = `${announcementFiles.length} / 4`;
+    announcementImageInput.disabled = announcementBusy;
+    publishAnnouncementButton.disabled = announcementBusy;
+    announcementList
+      .querySelectorAll(".announcement-delete-button")
+      .forEach((button) => {
+        button.disabled = announcementBusy;
+      });
+  }
+
+  function renderAnnouncementFiles() {
+    announcementImagePreview.replaceChildren();
+    announcementFiles.forEach((entry, index) => {
+      const item = document.createElement("div");
+      item.className = "announcement-image-item";
+
+      const image = document.createElement("img");
+      image.src = entry.url;
+      image.alt = `待发布公告图片 ${index + 1}`;
+
+      const removeButton = document.createElement("button");
+      removeButton.className = "announcement-image-remove";
+      removeButton.type = "button";
+      removeButton.textContent = "×";
+      removeButton.title = "移除图片";
+      removeButton.setAttribute("aria-label", `移除公告图片 ${index + 1}`);
+      removeButton.addEventListener("click", () => {
+        URL.revokeObjectURL(entry.url);
+        announcementFiles.splice(index, 1);
+        renderAnnouncementFiles();
+      });
+
+      item.append(image, removeButton);
+      announcementImagePreview.append(item);
+    });
+    updateAnnouncementFormState();
+  }
+
+  function clearAnnouncementFiles() {
+    announcementFiles.forEach((entry) => URL.revokeObjectURL(entry.url));
+    announcementFiles = [];
+    announcementImageInput.value = "";
+    renderAnnouncementFiles();
+  }
+
+  async function decodeAnnouncementImage(file) {
+    if (typeof createImageBitmap === "function") {
+      const bitmap = await createImageBitmap(file);
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        close: () => bitmap.close(),
+      };
+    }
+
+    const sourceUrl = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.decoding = "async";
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error("图片无法解码。"));
+        image.src = sourceUrl;
+      });
+      return {
+        source: image,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+        close: () => {},
+      };
+    } finally {
+      URL.revokeObjectURL(sourceUrl);
+    }
+  }
+
+  async function sanitizeAnnouncementImage(file, index) {
+    const decoded = await decodeAnnouncementImage(file);
+    try {
+      if (
+        !Number.isFinite(decoded.width) ||
+        !Number.isFinite(decoded.height) ||
+        decoded.width < 1 ||
+        decoded.height < 1
+      ) {
+        throw new Error("图片尺寸无效。");
+      }
+
+      const maxDimension = 2560;
+      const maxPixels = 6_000_000;
+      const dimensionScale = Math.min(
+        1,
+        maxDimension / Math.max(decoded.width, decoded.height),
+      );
+      const pixelScale = Math.min(
+        1,
+        Math.sqrt(maxPixels / (decoded.width * decoded.height)),
+      );
+      const scale = Math.min(dimensionScale, pixelScale);
+      const width = Math.max(1, Math.round(decoded.width * scale));
+      const height = Math.max(1, Math.round(decoded.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("当前浏览器无法安全处理图片。");
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, width, height);
+      context.drawImage(decoded.source, 0, 0, width, height);
+
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob(resolve, "image/jpeg", 0.86);
+      });
+      canvas.width = 1;
+      canvas.height = 1;
+      if (!blob || blob.size < 1 || blob.size > 5 * 1024 * 1024) {
+        throw new Error("图片重新编码失败或编码后仍超过 5 MB。");
+      }
+      return new File(
+        [blob],
+        `announcement-${Date.now()}-${index + 1}.jpg`,
+        { type: "image/jpeg", lastModified: Date.now() },
+      );
+    } finally {
+      decoded.close();
+    }
+  }
+
+  async function addAnnouncementFiles(fileList) {
+    const selected = Array.from(fileList ?? []);
+    const allowedTypes = new Set([
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
+    if (announcementFiles.length + selected.length > 4) {
+      setMessage("每条公告最多添加 4 张图片。", "error");
+      announcementImageInput.value = "";
+      return;
+    }
+    if (selected.some((file) => !allowedTypes.has(file.type))) {
+      setMessage("仅支持 JPG、PNG 或 WebP 图片。", "error");
+      announcementImageInput.value = "";
+      return;
+    }
+    if (selected.some((file) => file.size > 5 * 1024 * 1024)) {
+      setMessage("每张图片不能超过 5 MB。", "error");
+      announcementImageInput.value = "";
+      return;
+    }
+
+    announcementBusy = true;
+    updateAnnouncementFormState();
+    setMessage("正在安全处理图片……");
+    const sanitized = [];
+    try {
+      for (const [index, file] of selected.entries()) {
+        const safeFile = await sanitizeAnnouncementImage(file, index);
+        sanitized.push({
+          file: safeFile,
+          url: URL.createObjectURL(safeFile),
+        });
+      }
+      announcementFiles.push(...sanitized);
+      setMessage();
+      renderAnnouncementFiles();
+    } catch (error) {
+      sanitized.forEach((entry) => URL.revokeObjectURL(entry.url));
+      setMessage(error?.message ?? "图片处理失败。", "error");
+    } finally {
+      announcementImageInput.value = "";
+      announcementBusy = false;
+      updateAnnouncementFormState();
+    }
+  }
+
   function renderAnnouncements(result) {
     const items = result?.items ?? [];
     announcementList.replaceChildren();
@@ -480,10 +668,38 @@
       title.textContent = announcement.title;
       const time = document.createElement("span");
       time.textContent = formatDate(announcement.publishedAt, true);
-      heading.append(title, time);
+      const actions = document.createElement("div");
+      actions.className = "announcement-item-actions";
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "announcement-delete-button";
+      deleteButton.type = "button";
+      deleteButton.textContent = "删除";
+      deleteButton.dataset.announcementId = announcement.id;
+      deleteButton.dataset.announcementTitle = announcement.title;
+      deleteButton.setAttribute("aria-label", `删除公告：${announcement.title}`);
+      actions.append(time, deleteButton);
+      heading.append(title, actions);
       const body = document.createElement("p");
       body.textContent = announcement.body;
       item.append(heading, body);
+      if (announcement.images?.length) {
+        const images = document.createElement("div");
+        images.className = "announcement-images";
+        announcement.images.forEach((entry, index) => {
+          const link = document.createElement("a");
+          link.href = entry.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          const image = document.createElement("img");
+          image.src = entry.url;
+          image.alt = `${announcement.title} 图片 ${index + 1}`;
+          image.loading = "lazy";
+          image.decoding = "async";
+          link.append(image);
+          images.append(link);
+        });
+        item.append(images);
+      }
       announcementList.append(item);
     });
   }
@@ -643,16 +859,50 @@
       return;
     }
 
-    publishAnnouncementButton.disabled = true;
+    announcementBusy = true;
+    updateAnnouncementFormState();
     try {
-      await cloud.publishAnnouncement(title, body);
+      await cloud.publishAnnouncement(
+        title,
+        body,
+        announcementFiles.map((entry) => entry.file),
+      );
       announcementForm.reset();
+      clearAnnouncementFiles();
       await loadAnnouncements();
       setMessage("公告已发布，用户可在“消息通知”中查看。");
     } catch (error) {
       setMessage(error?.message ?? "公告发布失败。", "error");
     } finally {
-      publishAnnouncementButton.disabled = false;
+      announcementBusy = false;
+      updateAnnouncementFormState();
+    }
+  }
+
+  async function deleteAnnouncement(announcementId, title) {
+    const confirmed = window.confirm(
+      `确认删除公告“${title}”？删除后所有用户将不再看到该公告，此操作无法撤销。`,
+    );
+    if (!confirmed) return;
+
+    announcementBusy = true;
+    updateAnnouncementFormState();
+    try {
+      const result = await cloud.deleteAnnouncement(announcementId);
+      await loadAnnouncements();
+      if (result?.imageCleanupFailed) {
+        setMessage(
+          "公告已删除，但部分图片暂未清理，请稍后重试或检查存储空间。",
+          "error",
+        );
+      } else {
+        setMessage(result?.deleted === false ? "该公告已经被删除。" : "公告已删除。");
+      }
+    } catch (error) {
+      setMessage(error?.message ?? "公告删除失败。", "error");
+    } finally {
+      announcementBusy = false;
+      updateAnnouncementFormState();
     }
   }
 
@@ -684,6 +934,17 @@
   announcementsTab.addEventListener("click", () => setActiveSection("announcements"));
   extendAllMembershipsButton.addEventListener("click", extendAllMemberships);
   announcementForm.addEventListener("submit", publishAnnouncement);
+  announcementImageInput.addEventListener("change", async () => {
+    await addAnnouncementFiles(announcementImageInput.files);
+  });
+  announcementList.addEventListener("click", async (event) => {
+    const button = event.target.closest(".announcement-delete-button");
+    if (!button || announcementBusy) return;
+    await deleteAnnouncement(
+      button.dataset.announcementId,
+      button.dataset.announcementTitle,
+    );
+  });
   setMembershipButton.addEventListener("click", updateSelectedMembership);
   userSearchForm.addEventListener("submit", async (event) => {
     event.preventDefault();

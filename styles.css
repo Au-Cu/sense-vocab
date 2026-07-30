@@ -321,6 +321,29 @@ button {
   min-width: 0;
 }
 
+.vocabulary-status {
+  min-height: 36px;
+  margin: -2px 0 0;
+  padding: 8px 12px;
+  border: 1px solid rgba(15, 118, 110, 0.22);
+  border-radius: 6px;
+  background: #f2fbf9;
+  color: var(--accent-strong);
+  font-size: 0.84rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.vocabulary-status.is-error {
+  border-color: rgba(180, 35, 24, 0.28);
+  background: #fff5f3;
+  color: #9f241b;
+}
+
+.vocabulary-status[hidden] {
+  display: none;
+}
+
 .home-utility-actions {
   display: flex;
   width: 100%;
@@ -330,7 +353,22 @@ button {
 }
 
 .more-button {
+  position: relative;
   min-height: 44px;
+}
+
+.more-button.has-unread::after {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 3px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: #b42318;
+  box-sizing: content-box;
+  pointer-events: none;
 }
 
 .word-list-panel {
@@ -508,6 +546,19 @@ button {
   background: #f2fbf9;
   color: var(--accent-strong);
   outline: none;
+}
+
+.word-list-item.is-loading {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.word-list-item.is-loading::after {
+  content: "正在加载…";
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 .word-stage {
@@ -1484,6 +1535,33 @@ button {
   color: var(--muted);
   white-space: pre-wrap;
   line-height: 1.55;
+}
+
+.notification-images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.notification-images a {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #f7f8f7;
+}
+
+.notification-images a:only-child {
+  grid-column: 1 / -1;
+}
+
+.notification-images img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .notifications-empty {

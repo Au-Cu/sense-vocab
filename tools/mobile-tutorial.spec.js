@@ -54,21 +54,15 @@ async function expectHint(page, text) {
 }
 
 async function expectSpotlightContains(page, targetSelector) {
-  const [spotlight, target] = await Promise.all([
-    page.locator("#tutorialSpotlight").boundingBox(),
-    page.locator(targetSelector).boundingBox(),
-  ]);
-  expect(spotlight).not.toBeNull();
-  expect(target).not.toBeNull();
-  expect(spotlight.x).toBeLessThanOrEqual(target.x);
-  expect(spotlight.y).toBeLessThanOrEqual(target.y);
-  const viewport = page.viewportSize();
-  expect(spotlight.x + spotlight.width).toBeGreaterThanOrEqual(
-    Math.min(viewport.width, target.x + target.width),
-  );
-  expect(spotlight.y + spotlight.height).toBeGreaterThanOrEqual(
-    Math.min(viewport.height, target.y + target.height),
-  );
+  await expect.poll(async () => page.evaluate((selector) => {
+    const spotlight = document.querySelector("#tutorialSpotlight")?.getBoundingClientRect();
+    const target = document.querySelector(selector)?.getBoundingClientRect();
+    if (!spotlight || !target) return false;
+    return spotlight.left <= target.left &&
+      spotlight.top <= target.top &&
+      spotlight.right >= Math.min(document.documentElement.clientWidth, target.right) &&
+      spotlight.bottom >= Math.min(document.documentElement.clientHeight, target.bottom);
+  }, targetSelector)).toBe(true);
 }
 
 test("mobile home stays compact, searches words, and opens the heatmap at the latest date", async ({ page }) => {
@@ -122,6 +116,56 @@ test("mobile home stays compact, searches words, and opens the heatmap at the la
   await expect(page.locator("#wordListEmpty")).toBeVisible();
 });
 
+test("the first-run tutorial retries after a transient account conflict", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    window.__SENSE_VOCAB_ALLOW_AUTOMATIC_TUTORIAL__ = true;
+    window.addEventListener("sensevocab:account-ready", () => {
+      const conflict = document.querySelector("#accountConflictView");
+      conflict.hidden = false;
+      window.setTimeout(() => {
+        conflict.hidden = true;
+      }, 900);
+    }, { once: true });
+  });
+
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  await expect(page.locator("#tutorialOverlay")).toBeVisible({
+    timeout: 4_000,
+  });
+  await expectHint(page, "点击这里选择词书和每日计划");
+  await expectSpotlightContains(page, "#planButton");
+});
+
+test("the first-run tutorial survives stalled account startup and early home interaction", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    window.__SENSE_VOCAB_ALLOW_AUTOMATIC_TUTORIAL__ = true;
+    window.__SENSE_VOCAB_TUTORIAL_ACCOUNT_READY_GRACE_MS__ = 2000;
+    window.__SENSE_VOCAB_CLOUD_FACTORY__ = () => ({
+      onAuthStateChange() {},
+      getSession() {
+        return new Promise(() => {});
+      },
+    });
+  });
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => (
+    document.documentElement.dataset.appReady === "true"
+  ));
+  await page.locator("#planButton").click();
+  await page.locator("#savePlanButton").click();
+
+  await expect(page.locator("#tutorialOverlay")).toBeVisible({
+    timeout: 5_000,
+  });
+  await expectHint(page, "点击这里选择词书和每日计划");
+  await expectSpotlightContains(page, "#planButton");
+  await expect(page.locator("html")).not.toHaveAttribute("data-account-ready", "true");
+});
+
 test("the guided tutorial is complete and never mutates real learning data", async ({ page }) => {
   await page.addInitScript(() => {
     window.__SENSE_VOCAB_TUTORIAL_WAIT_MS__ = 650;
@@ -169,10 +213,17 @@ test("the guided tutorial is complete and never mutates real learning data", asy
   await page.locator("#moreButton").click();
   await page.locator("#replayTutorialButton").click();
   await expectHint(page, "点击这里选择词书和每日计划");
+  await page.locator("#planButton").evaluate((element) => {
+    element.style.transform = "translateY(72px)";
+  });
+  await expectSpotlightContains(page, "#planButton");
   const firstTipBox = await page.locator("#tutorialTip").boundingBox();
   expect(firstTipBox.x).toBeGreaterThanOrEqual(0);
   expect(firstTipBox.x + firstTipBox.width).toBeLessThanOrEqual(390);
   await page.locator("#planButton").click();
+  await page.locator("#planButton").evaluate((element) => {
+    element.style.removeProperty("transform");
+  });
   await expectHint(page, "选择词书和每日计划，然后保存计划");
   await page.locator("#savePlanButton").click();
   await expectHint(page, "试着学几个单词吧");

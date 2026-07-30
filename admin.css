@@ -499,6 +499,68 @@ button {
   width: fit-content;
 }
 
+.announcement-image-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.announcement-form .announcement-image-button {
+  display: inline-flex;
+  width: fit-content;
+  color: var(--ink);
+  font-size: 0.88rem;
+}
+
+.announcement-image-row > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.announcement-image-preview,
+.announcement-images {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.announcement-image-item,
+.announcement-images a {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f7f8f7;
+}
+
+.announcement-image-item img,
+.announcement-images img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.announcement-image-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.84);
+  border-radius: 50%;
+  background: rgba(25, 31, 34, 0.82);
+  color: #fff;
+  font: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
 .announcement-list {
   display: grid;
   gap: 10px;
@@ -524,10 +586,40 @@ button {
   font-size: 0.76rem;
 }
 
+.announcement-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.announcement-delete-button {
+  min-width: 52px;
+  border: 1px solid rgba(180, 35, 24, 0.32);
+  border-radius: 5px;
+  background: #fff;
+  color: var(--danger);
+  padding: 6px 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.announcement-delete-button:hover {
+  background: #fff4f2;
+}
+
+.announcement-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .announcement-item p {
   margin: 10px 0 0;
   white-space: pre-wrap;
   line-height: 1.65;
+}
+
+.announcement-item .announcement-images {
+  margin-top: 14px;
 }
 
 .user-detail-dialog {
@@ -718,5 +810,10 @@ button {
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .announcement-image-preview,
+  .announcement-images {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

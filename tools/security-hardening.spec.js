@@ -69,7 +69,7 @@ test("published vocabulary keeps stable word and sense identities", async () => 
 
   const packageJson = JSON.parse(await read("package.json"));
   expect(packageJson.scripts["build:web"]).toMatch(
-    /^npm run build:cloud-client && npm run verify:content-identity && npm run audit:content && /,
+    /^npm run build:cloud-client && npm run build:vocabulary-index && npm run verify:content-identity && npm run audit:content && /,
   );
 });
 
@@ -159,4 +159,103 @@ test("membership, invitation, announcements, and replies stay behind RPC boundar
   expect(authConfig).toContain("[auth.email.template.confirmation]");
   expect(authConfig).toContain("[auth.email.template.recovery]");
   expect(legal).toContain("所有例句来自第三方或 AI 生成，均不代表运营者立场与观点");
+});
+
+test("announcements remain visible to accounts registered after publication", async () => {
+  const migration = await read(
+    "supabase/migrations/202607300001_announcement_images.sql",
+  );
+  const loadStart = migration.indexOf(
+    "create or replace function public.load_my_notifications",
+  );
+  const loadEnd = migration.indexOf(
+    "drop function if exists public.admin_publish_announcement",
+    loadStart,
+  );
+  const publishStart = migration.indexOf(
+    "create or replace function public.admin_publish_announcement",
+  );
+  const publishEnd = migration.indexOf(
+    "create or replace function public.admin_announcement_list",
+    publishStart,
+  );
+  const loadFunction = migration.slice(loadStart, loadEnd);
+  const publishFunction = migration.slice(publishStart, publishEnd);
+
+  expect(loadStart).toBeGreaterThanOrEqual(0);
+  expect(loadEnd).toBeGreaterThan(loadStart);
+  expect(loadFunction).toContain("from public.announcements as announcement");
+  expect(loadFunction).toContain("left join public.announcement_reads as reads");
+  expect(loadFunction).toContain("reads.user_id = v_user_id");
+  expect(loadFunction).toContain(
+    "where announcement.published_at <= clock_timestamp()",
+  );
+  expect(loadFunction).not.toContain("public.profiles");
+  expect(loadFunction).not.toMatch(/profile\.created_at/i);
+
+  expect(publishStart).toBeGreaterThanOrEqual(0);
+  expect(publishEnd).toBeGreaterThan(publishStart);
+  expect(publishFunction).toContain("insert into public.announcements");
+  expect(publishFunction).not.toContain("insert into public.user_notifications");
+});
+
+test("bulk membership extension is bounded and notification-complete", async () => {
+  const migration = await read(
+    "supabase/migrations/202607300002_membership_bulk_update_fix.sql",
+  );
+  expect(migration).toContain(
+    "create or replace function public.admin_extend_all_memberships",
+  );
+  expect(migration).toContain("where user_id is not null");
+  expect(migration).toContain("from updated_profiles");
+  expect(migration).toContain("from inserted_notifications");
+  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+});
+
+test("announcement images are bounded, admin-only to upload, and publicly rendered", async () => {
+  const [migration, client, adminHtml, adminScript, account] = await Promise.all([
+    read("supabase/migrations/202607300001_announcement_images.sql"),
+    read("tools/cloud-client-entry.js"),
+    read("admin.html"),
+    read("admin.js"),
+    read("account.js"),
+  ]);
+
+  expect(migration).toContain("'announcement-images'");
+  expect(migration).toContain("true,\n  5242880");
+  expect(migration).toContain("cardinality(image_paths) between 0 and 4");
+  expect(migration).toContain("public.can_upload_announcement_image(name)");
+  expect(migration).toContain("and public.is_admin()");
+  expect(migration).toContain("Invalid or missing announcement image");
+  expect(migration).toContain("'imagePaths', image_paths");
+  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+
+  expect(client).toContain('const ANNOUNCEMENT_BUCKET = "announcement-images"');
+  expect(client).toContain(".getPublicUrl(normalizedPath)");
+  expect(client).toContain("p_image_paths: uploadedPaths");
+  expect(adminHtml).toContain('id="announcementImageInput"');
+  expect(adminHtml).toContain("image/jpeg,image/png,image/webp");
+  expect(adminScript).toContain("sanitizeAnnouncementImage");
+  expect(adminScript).toContain("announcementFiles.map((entry) => entry.file)");
+  expect(account).toContain('images.className = "notification-images"');
+});
+
+test("announcement deletion is admin-only, audited, and cleans storage through its API", async () => {
+  const [migration, client, adminScript] = await Promise.all([
+    read("supabase/migrations/202607300003_announcement_delete.sql"),
+    read("tools/cloud-client-entry.js"),
+    read("admin.js"),
+  ]);
+  expect(migration).toContain(
+    "create or replace function public.admin_delete_announcement",
+  );
+  expect(migration).toContain("if v_admin_id is null or not public.is_admin()");
+  expect(migration).toContain("delete from public.announcements");
+  expect(migration).toContain("'announcement.delete'");
+  expect(migration).not.toContain("delete from storage.objects");
+  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+  expect(client).toContain('client.rpc("admin_delete_announcement"');
+  expect(client).toContain(".remove(imagePaths)");
+  expect(adminScript).toContain("公告已删除");
+  expect(adminScript).toContain("announcement-delete-button");
 });

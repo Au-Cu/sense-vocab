@@ -45,6 +45,10 @@ await cp(path.join(rootDir, "assets"), path.join(distDir, "assets"), {
   recursive: true,
 });
 await copyFile(
+  path.join(rootDir, "data", "vocabulary-index.json"),
+  path.join(distDir, "data", "vocabulary-index.json"),
+);
+await copyFile(
   path.join(rootDir, "data", "vocabulary-bundle.json"),
   path.join(distDir, "data", "vocabulary-bundle.json"),
 );

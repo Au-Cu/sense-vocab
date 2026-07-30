@@ -24,6 +24,9 @@
 /*.css
   Cache-Control: no-cache
 
+/data/vocabulary-index.json
+  Cache-Control: no-cache
+
 /data/*
   Cache-Control: public, max-age=3600
 

@@ -30,6 +30,8 @@ test("morphology modules render all emphasis modes without overflow", async ({ p
   });
 
   await page.goto(APP_URL);
+  await expect(page.locator("#homePanel")).toHaveAttribute("aria-busy", "false");
+  await expect(page.locator("html")).toHaveAttribute("data-vocabulary-ready", "true");
   await expect(page.locator("#morphologyPanel")).toBeHidden();
 
   await previewWord(page, "action");

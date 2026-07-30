@@ -26,8 +26,11 @@ async function openFreshApp(page) {
 test("the shared pool preserves the original Kaoyan book and adds IELTS", async () => {
   const kaoyanPath = path.join(ROOT_DIR, "data", "kaoyan-words.json");
   const bundlePath = path.join(ROOT_DIR, "data", "vocabulary-bundle.json");
+  const indexPath = path.join(ROOT_DIR, "data", "vocabulary-index.json");
   const kaoyanBytes = fs.readFileSync(kaoyanPath);
-  const bundle = JSON.parse(fs.readFileSync(bundlePath, "utf8"));
+  const bundleBytes = fs.readFileSync(bundlePath);
+  const bundle = JSON.parse(bundleBytes.toString("utf8"));
+  const index = JSON.parse(fs.readFileSync(indexPath, "utf8"));
   const byId = Object.fromEntries(bundle.books.map((book) => [book.id, book]));
 
   expect(crypto.createHash("sha256").update(kaoyanBytes).digest("hex"))
@@ -39,6 +42,49 @@ test("the shared pool preserves the original Kaoyan book and adds IELTS", async 
     .toBe(5042);
   expect(new Set(byId.ielts.entries.map((entry) => entry.wordId)).size)
     .toBe(4827);
+  expect(index.bundleVersion).toBe(
+    crypto.createHash("sha256").update(bundleBytes).digest("hex"),
+  );
+  expect(index.words).toHaveLength(bundle.words.length);
+  expect(index.words.reduce((total, word) => total + word.senses.length, 0))
+    .toBe(10211);
+});
+
+test("the home shell stays usable while detailed vocabulary loads slowly", async ({ page }) => {
+  const bundle = fs.readFileSync(
+    path.join(ROOT_DIR, "data", "vocabulary-bundle.json"),
+    "utf8",
+  );
+  await page.route("**/data/vocabulary-bundle.json*", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: bundle,
+    });
+  });
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => {
+    return document.documentElement.dataset.appReady === "true";
+  });
+
+  await expect(page.locator("#homeRemainingWords")).toHaveText("5042");
+  await expect(page.locator("#heatmapGrid .heatmap-day")).toHaveCount(371);
+  await expect(page.locator("#vocabularyStatus")).toContainText("后台加载");
+  await expect(page.locator("html")).toHaveAttribute("data-vocabulary-ready", "loading");
+
+  await page.locator("#planButton").click();
+  await expect(page.locator("#planDialog")).toBeVisible();
+  await page.locator("#cancelPlanButton").click();
+
+  await page.locator("#wordListButton").click();
+  await expect(page.locator("#wordListPanel")).toBeVisible();
+  await expect(page.locator(".word-list-item")).toHaveCount(5042);
+
+  await expect(page.locator("html")).toHaveAttribute("data-vocabulary-ready", "true", {
+    timeout: 10000,
+  });
 });
 
 test("plans, progress, statistics, and word lists switch by book", async ({ page }) => {

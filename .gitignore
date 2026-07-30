@@ -9,6 +9,7 @@ supabase/.temp/
 supabase/.branches/
 data/*
 !data/vocabulary-bundle.json
+!data/vocabulary-index.json
 !data/kaoyan-words.json
 !data/content-identity-lock.json
 !data/content-rights-summary.json

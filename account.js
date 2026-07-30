@@ -62,6 +62,7 @@
   const submitFeedbackButton = document.querySelector("#submitFeedbackButton");
   const cancelFeedbackButton = document.querySelector("#cancelFeedbackButton");
   const closeAccountButton = document.querySelector("#closeAccountButton");
+  const moreButton = document.querySelector("#moreButton");
   const moreDialog = document.querySelector("#moreDialog");
   const notificationsButton = document.querySelector("#notificationsButton");
   const notificationBadge = document.querySelector("#notificationBadge");
@@ -260,6 +261,11 @@
     notificationBadge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
     notificationBadge.hidden = unreadCount === 0;
     notificationsButton.classList.toggle("has-unread", unreadCount > 0);
+    moreButton.classList.toggle("has-unread", unreadCount > 0);
+    moreButton.setAttribute(
+      "aria-label",
+      unreadCount > 0 ? `更多，${unreadCount} 条未读消息` : "更多",
+    );
   }
 
   function renderNotifications(snapshot = notificationSnapshot) {
@@ -300,6 +306,25 @@
       const body = document.createElement("p");
       body.textContent = notification.body || "";
       item.append(heading, body);
+      if (notification.images?.length) {
+        const images = document.createElement("div");
+        images.className = "notification-images";
+        notification.images.forEach((entry, index) => {
+          if (!entry?.url) return;
+          const link = document.createElement("a");
+          link.href = entry.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          const image = document.createElement("img");
+          image.src = entry.url;
+          image.alt = `${notification.title || "公告"} 图片 ${index + 1}`;
+          image.loading = "lazy";
+          image.decoding = "async";
+          link.append(image);
+          images.append(link);
+        });
+        if (images.childElementCount) item.append(images);
+      }
       notificationsList.append(item);
     });
   }
@@ -1584,13 +1609,13 @@
     } catch (error) {
       setMessage(error?.message ?? "账户服务暂不可用。", "error");
     }
-    await refreshNotifications({ silent: true });
     startRefreshTimer();
     if (currentUser && !pendingConflict && !pendingConsentSession) {
       announceAccountScope(currentUser);
     }
     if (!currentUser) announceAccountScope();
     announceAccountReady();
+    refreshNotifications({ silent: true });
   }
 
   accountButton.addEventListener("click", openAccountDialog);

@@ -4,6 +4,9 @@ const ACCOUNT_STORAGE_PREFIX = `${STORAGE_KEY}:account:`;
 const DATA_VERSION = 9;
 const ROOT_STATE_VERSION = 2;
 const DEFAULT_BOOK_ID = "kaoyan";
+const VOCABULARY_INDEX_URL = "./data/vocabulary-index.json";
+const VOCABULARY_BUNDLE_URL = "./data/vocabulary-bundle.json";
+const VOCABULARY_CACHE_PREFIX = "sense-vocab-vocabulary-";
 const FAST_CALENDAR_LAST_VERSION = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TUTORIAL_STORAGE_PREFIX = "sense-vocab-tutorial-complete-v1:";
@@ -15,6 +18,13 @@ const TUTORIAL_HER_PROMPT_DELAY_MS = Number.isFinite(
 )
   ? Math.max(0, window.__SENSE_VOCAB_TUTORIAL_HER_PROMPT_DELAY_MS__)
   : 1000;
+const TUTORIAL_AUTO_START_DELAY_MS = 350;
+const TUTORIAL_AUTO_RETRY_MS = 500;
+const TUTORIAL_ACCOUNT_READY_GRACE_MS = Number.isFinite(
+  window.__SENSE_VOCAB_TUTORIAL_ACCOUNT_READY_GRACE_MS__,
+)
+  ? Math.max(0, window.__SENSE_VOCAB_TUTORIAL_ACCOUNT_READY_GRACE_MS__)
+  : 3000;
 const TUTORIAL_NON_INTERACTIVE_STEPS = new Set([
   "recall-wait",
   "examples-wait",
@@ -149,6 +159,7 @@ const backPlanResetButton = document.querySelector("#backPlanResetButton");
 const planResetBookName = document.querySelector("#planResetBookName");
 const homeBookName = document.querySelector("#homeBookName");
 const wordListBookName = document.querySelector("#wordListBookName");
+const vocabularyStatus = document.querySelector("#vocabularyStatus");
 
 const resetDialog = document.querySelector("#resetDialog");
 const resetOptions = document.querySelector("#resetOptions");
@@ -187,6 +198,11 @@ let wordById = new Map();
 let state = null;
 let rootState = null;
 let vocabularyBundle = null;
+let vocabularyIndex = null;
+let vocabularyDetailsReady = false;
+let vocabularyDetailsPromise = null;
+let vocabularyDetailsError = null;
+let vocabularyBlockingIntent = null;
 let bookById = new Map();
 let poolWordById = new Map();
 let activeStorageKey = STORAGE_KEY;
@@ -203,6 +219,12 @@ let wordListQuery = "";
 let heatmapPositionedBookId = null;
 let tutorialRuntime = null;
 let tutorialAutoScheduledScope = null;
+let tutorialAutoTimer = null;
+let tutorialAutoWaitScope = null;
+let tutorialAutoWaitStartedAt = 0;
+let tutorialOverlayFrameId = null;
+let tutorialOverlayGeometryKey = "";
+let initialGuestHadLearningData = null;
 let membershipAccess = {
   loggedIn: false,
   active: true,
@@ -210,17 +232,110 @@ let membershipAccess = {
   expiresAt: null,
 };
 
-async function loadVocabularyBundle() {
-  const response = await fetch("./data/vocabulary-bundle.json", { cache: "no-store" });
+function validateVocabularyData(data, label) {
+  if (!Array.isArray(data?.words) || !Array.isArray(data?.books)) {
+    throw new Error(`${label} has an invalid schema.`);
+  }
+  return data;
+}
+
+async function loadVocabularyIndex() {
+  const response = await fetch(VOCABULARY_INDEX_URL, { cache: "no-cache" });
+  if (!response.ok) {
+    throw new Error(`Vocabulary index failed to load: ${response.status}`);
+  }
+  const data = validateVocabularyData(
+    await response.json(),
+    "Vocabulary index",
+  );
+  if (typeof data.bundleVersion !== "string" || !data.bundleVersion) {
+    throw new Error("Vocabulary index is missing its bundle version.");
+  }
+  return data;
+}
+
+async function removeOldVocabularyCaches(currentName) {
+  if (!("caches" in window)) return;
+  const names = await caches.keys();
+  await Promise.all(
+    names
+      .filter((name) => (
+        name.startsWith(VOCABULARY_CACHE_PREFIX) && name !== currentName
+      ))
+      .map((name) => caches.delete(name)),
+  );
+}
+
+async function loadVocabularyBundle(index, { forceNetwork = false } = {}) {
+  const version = index?.bundleVersion || "legacy";
+  const cacheName = `${VOCABULARY_CACHE_PREFIX}${version.slice(0, 16)}`;
+  const url = new URL(VOCABULARY_BUNDLE_URL, window.location.href);
+  url.searchParams.set("v", version);
+  const request = new Request(url.href, { credentials: "same-origin" });
+  let cache = null;
+
+  if ("caches" in window) {
+    try {
+      cache = await caches.open(cacheName);
+      if (!forceNetwork) {
+        const cached = await cache.match(request);
+        if (cached) {
+          try {
+            return validateVocabularyData(
+              await cached.json(),
+              "Cached vocabulary bundle",
+            );
+          } catch (error) {
+            console.warn("Discarding an invalid cached vocabulary bundle.", error);
+            await cache.delete(request);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn("Vocabulary cache is unavailable.", error);
+      cache = null;
+    }
+  }
+
+  const response = await fetch(request, {
+    cache: forceNetwork ? "reload" : "default",
+  });
   if (!response.ok) {
     throw new Error(`Vocabulary bundle failed to load: ${response.status}`);
   }
+  const cacheCopy = response.clone();
+  const data = validateVocabularyData(
+    await response.json(),
+    "Vocabulary bundle",
+  );
 
-  const data = await response.json();
-  if (!Array.isArray(data?.words) || !Array.isArray(data?.books)) {
-    throw new Error("Vocabulary bundle has an invalid schema.");
+  if (cache) {
+    cache.put(request, cacheCopy)
+      .then(() => removeOldVocabularyCaches(cacheName))
+      .catch((error) => {
+        console.warn("Vocabulary bundle could not be cached.", error);
+      });
   }
   return data;
+}
+
+function normalizeVocabularyIndex(data) {
+  return data
+    .filter((entry) => entry?.id && entry?.word && Array.isArray(entry.senses))
+    .map((entry) => ({
+      id: entry.id,
+      word: entry.word,
+      morphology: null,
+      senses: entry.senses
+        .filter((sense) => sense?.id)
+        .map((sense, index) => ({
+          id: sense.id,
+          importance: Number.isFinite(sense.importance)
+            ? sense.importance
+            : Math.max(1, 100 - index * 3),
+        })),
+    }))
+    .filter((word) => word.senses.length > 0);
 }
 
 function normalizeWordList(data) {
@@ -279,6 +394,97 @@ function normalizeWordList(data) {
   return Array.from(merged.values())
     .filter((word) => word.senses.length > 0)
     .map(({ seenSenses, ...word }) => word);
+}
+
+function installVocabularyData(data, { details = false } = {}) {
+  vocabularyBundle = data;
+  bookById = new Map(data.books.map((book) => [book.id, book]));
+  const normalizedPool = details
+    ? normalizeWordList(data.words)
+    : normalizeVocabularyIndex(data.words);
+  poolWordById = new Map(normalizedPool.map((word) => [word.id, word]));
+
+  if (rootState) {
+    activateBookScope(rootState.activeBookId, { sanitize: false });
+  }
+}
+
+function renderBookOptions() {
+  bookSelect.replaceChildren(
+    ...vocabularyBundle.books.map((book) => {
+      const option = document.createElement("option");
+      option.value = book.id;
+      option.textContent = String(book.displayName ?? book.name)
+        .replace(/[《》]/g, "");
+      return option;
+    }),
+  );
+}
+
+function setVocabularyStatus(message = "", { error = false } = {}) {
+  if (!vocabularyStatus) return;
+  vocabularyStatus.textContent = message;
+  vocabularyStatus.hidden = !message;
+  vocabularyStatus.classList.toggle("is-error", error);
+}
+
+function beginVocabularyDetailsLoad({ forceNetwork = false } = {}) {
+  if (vocabularyDetailsReady) return Promise.resolve(true);
+  if (vocabularyDetailsPromise) return vocabularyDetailsPromise;
+
+  vocabularyDetailsError = null;
+  document.documentElement.dataset.vocabularyReady = "loading";
+  setVocabularyStatus(
+    "计划、日历和单词列表已可使用，学习内容正在后台加载。",
+  );
+  vocabularyDetailsPromise = loadVocabularyBundle(
+    vocabularyIndex,
+    { forceNetwork },
+  )
+    .then((data) => {
+      installVocabularyData(data, { details: true });
+      vocabularyDetailsReady = true;
+      vocabularyDetailsError = null;
+      document.documentElement.dataset.vocabularyReady = "true";
+      setVocabularyStatus();
+      if (state) render();
+      window.dispatchEvent(
+        new CustomEvent("sensevocab:vocabulary-ready"),
+      );
+      return true;
+    })
+    .catch((error) => {
+      console.warn(error);
+      vocabularyDetailsError = error;
+      document.documentElement.dataset.vocabularyReady = "error";
+      setVocabularyStatus(
+        "学习内容加载失败。计划和历史记录不受影响，点击开始学习时会自动重试。",
+        { error: true },
+      );
+      return false;
+    })
+    .finally(() => {
+      vocabularyDetailsPromise = null;
+    });
+  return vocabularyDetailsPromise;
+}
+
+async function ensureVocabularyDetailsReady(intent = "study") {
+  if (vocabularyDetailsReady) return true;
+
+  vocabularyBlockingIntent = intent;
+  setVocabularyStatus(
+    vocabularyDetailsError
+      ? "正在重新连接并加载学习内容…"
+      : "正在准备学习内容…",
+  );
+  if (state) renderHome();
+  const ready = await beginVocabularyDetailsLoad({
+    forceNetwork: Boolean(vocabularyDetailsError),
+  });
+  vocabularyBlockingIntent = null;
+  if (state) render();
+  return ready;
 }
 
 function activeBookId() {
@@ -1826,6 +2032,14 @@ function renderHome() {
   advanceStudyButton.hidden = !hasPlan() || !ensureTodaySession().baseCompleted || remaining === 0;
   advanceStudyButton.disabled = !canStartAdvanceStudy();
   advanceStudyButton.textContent = scheduleDeltaDays() > 0 ? "再提前一天" : "提前学习";
+  if (vocabularyBlockingIntent === "study") {
+    startStudyButton.textContent = "正在加载…";
+    startStudyButton.disabled = true;
+  }
+  if (vocabularyBlockingIntent === "advance") {
+    advanceStudyButton.textContent = "正在加载…";
+    advanceStudyButton.disabled = true;
+  }
 }
 
 function heatmapDateRange() {
@@ -1896,6 +2110,9 @@ function positionHeatmapAtLatest(force = false) {
 function renderHeatmap() {
   heatmapGrid.replaceChildren();
   heatmapMonths.replaceChildren();
+  if (heatmapTooltip.textContent.includes("正在加载")) {
+    heatmapTooltip.textContent = "将鼠标移到日期上查看";
+  }
   const { start } = heatmapDateRange();
   let previousMonth = -1;
 
@@ -1941,13 +2158,24 @@ function renderHeatmap() {
 }
 
 function wordLearningInfo(word) {
+  const introduced = state.introducedWords.includes(word.id);
+  if (!introduced) {
+    return {
+      firstLearned: null,
+      firstOrder: -1,
+      mastered: false,
+      masteredOn: null,
+      duration: 0,
+    };
+  }
+
   const keys = allSenseKeysForWord(word);
   const seenDates = keys
     .map((key) => state.progress[key]?.firstSeenActual ?? state.progress[key]?.firstSeen)
     .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ""))
     .sort();
   let firstLearned = seenDates[0] ?? null;
-  if (!firstLearned && state.introducedWords.includes(word.id)) {
+  if (!firstLearned) {
     firstLearned = Object.entries(state.activityLog)
       .filter(([, activity]) => activity.newWords.includes(word.id))
       .map(([date]) => date)
@@ -2081,6 +2309,29 @@ function renderWordList() {
 function renderStudy() {
   const session = ensureTodaySession();
   const browsing = Boolean(state.wordBrowse);
+  if (state.view === "study" && !vocabularyDetailsReady) {
+    studyFeedbackButton.hidden = true;
+    studyTopbar.hidden = browsing;
+    studyProgressRow.hidden = false;
+    queueProgress.hidden = browsing;
+    resetButton.hidden = true;
+    reviewCount.textContent = "0/0";
+    newCount.textContent = "0/0";
+    learningCount.textContent = "0/0";
+    queueProgress.textContent = browsing ? "单词卡片" : "正在准备";
+    senseList.replaceChildren();
+    morphologyPanel.replaceChildren();
+    senseArea.hidden = true;
+    nextButton.disabled = true;
+    audioButton.hidden = true;
+    revealButton.disabled = true;
+    revealButton.classList.remove("is-finished", "is-mastered");
+    wordText.textContent = "正在加载学习内容";
+    cardMode.textContent = "请稍候";
+    revealButton.setAttribute("aria-label", "正在加载学习内容");
+    scheduleWordFit();
+    return;
+  }
   const card = currentCard();
   const historyViewing = isHistoryView();
   if (card && !historyViewing) {
@@ -2385,12 +2636,15 @@ function renderMorphology(word) {
   }
 }
 
-function startStudy() {
-  if (tutorialRuntime?.active && tutorialRuntime.step === "start") {
+async function startStudy() {
+  const tutorialStart =
+    tutorialRuntime?.active && tutorialRuntime.step === "start";
+  if (!tutorialStart && (!membershipAllowsStudy() || !hasPlan())) return;
+  if (!await ensureVocabularyDetailsReady("study")) return;
+  if (tutorialStart) {
     beginTutorialStudy();
     return;
   }
-  if (!membershipAllowsStudy() || !hasPlan()) return;
 
   startStudyWindow();
   const session = ensureTodaySession();
@@ -2437,8 +2691,9 @@ function startStudy() {
   render();
 }
 
-function startAdvanceStudy() {
+async function startAdvanceStudy() {
   if (!canStartAdvanceStudy()) return;
+  if (!await ensureVocabularyDetailsReady("advance")) return;
 
   startStudyWindow();
   const session = ensureTodaySession();
@@ -2488,8 +2743,9 @@ function closeWordList() {
   render();
 }
 
-function openWordCard(wordId) {
+async function openWordCard(wordId) {
   if (!wordById.has(wordId)) return;
+  if (!await ensureVocabularyDetailsReady("word-card")) return;
   state.wordBrowse = { wordId };
   state.view = "study";
   saveState();
@@ -3343,17 +3599,20 @@ function tutorialVisualRect(target) {
   };
 }
 
-function positionTutorialOverlay() {
+function positionTutorialOverlay(options = {}) {
   if (!tutorialRuntime?.active || tutorialOverlay.hidden) return;
 
   const hint = TUTORIAL_HINTS[tutorialRuntime.step] ?? "";
-  tutorialTip.textContent = hint;
+  if (tutorialTip.textContent !== hint) tutorialTip.textContent = hint;
   tutorialTip.hidden = !hint;
   const target = tutorialTargetForStep();
   const viewportWidth = document.documentElement.clientWidth;
   const viewportHeight = document.documentElement.clientHeight;
 
   if (!target) {
+    const geometryKey = `${tutorialRuntime.step}|none|${viewportWidth}|${viewportHeight}`;
+    if (options?.force !== true && geometryKey === tutorialOverlayGeometryKey) return;
+    tutorialOverlayGeometryKey = geometryKey;
     setTutorialMaskRect(tutorialMasks.top, 0, 0, viewportWidth, viewportHeight);
     setTutorialMaskRect(tutorialMasks.right, 0, 0, 0, 0);
     setTutorialMaskRect(tutorialMasks.bottom, 0, 0, 0, 0);
@@ -3367,10 +3626,22 @@ function positionTutorialOverlay() {
 
   const padding = 8;
   const rect = tutorialVisualRect(target);
-  const left = Math.max(0, rect.left - padding);
-  const top = Math.max(0, rect.top - padding);
-  const right = Math.min(viewportWidth, rect.right + padding);
-  const bottom = Math.min(viewportHeight, rect.bottom + padding);
+  const geometryKey = [
+    tutorialRuntime.step,
+    viewportWidth,
+    viewportHeight,
+    rect.left.toFixed(2),
+    rect.top.toFixed(2),
+    rect.right.toFixed(2),
+    rect.bottom.toFixed(2),
+  ].join("|");
+  if (options?.force !== true && geometryKey === tutorialOverlayGeometryKey) return;
+  tutorialOverlayGeometryKey = geometryKey;
+
+  const left = Math.min(viewportWidth, Math.max(0, rect.left - padding));
+  const top = Math.min(viewportHeight, Math.max(0, rect.top - padding));
+  const right = Math.max(0, Math.min(viewportWidth, rect.right + padding));
+  const bottom = Math.max(0, Math.min(viewportHeight, rect.bottom + padding));
   const width = Math.max(0, right - left);
   const height = Math.max(0, bottom - top);
 
@@ -3410,15 +3681,35 @@ function positionTutorialOverlay() {
       : Math.max(12, top - tipHeight - 14)}px`;
 }
 
+function stopTutorialOverlayTracking() {
+  if (tutorialOverlayFrameId !== null) {
+    window.cancelAnimationFrame(tutorialOverlayFrameId);
+  }
+  tutorialOverlayFrameId = null;
+  tutorialOverlayGeometryKey = "";
+}
+
+function startTutorialOverlayTracking() {
+  if (tutorialOverlayFrameId !== null) return;
+  const track = () => {
+    tutorialOverlayFrameId = null;
+    if (!tutorialRuntime?.active || tutorialOverlay.hidden) return;
+    positionTutorialOverlay();
+    tutorialOverlayFrameId = window.requestAnimationFrame(track);
+  };
+  tutorialOverlayFrameId = window.requestAnimationFrame(track);
+}
+
 function scheduleTutorialOverlayPosition({ scroll = false } = {}) {
   if (!tutorialRuntime?.active) return;
   window.requestAnimationFrame(() => {
     const target = tutorialTargetForStep();
     if (scroll && target) {
-      target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
-      window.setTimeout(positionTutorialOverlay, 260);
+      target.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
     }
-    positionTutorialOverlay();
+    tutorialOverlayGeometryKey = "";
+    positionTutorialOverlay({ force: true });
+    startTutorialOverlayTracking();
   });
 }
 
@@ -3534,6 +3825,7 @@ function startTutorial({ replay = false } = {}) {
   render();
   tutorialDoneDialog.hidden = true;
   tutorialOverlay.hidden = false;
+  stopTutorialOverlayTracking();
   setTutorialStep("plan");
   return true;
 }
@@ -3545,6 +3837,7 @@ function finishTutorial() {
   const realRootState = tutorialRuntime.realRootState;
   const realStorageKey = tutorialRuntime.realStorageKey;
   stopWordAudio();
+  stopTutorialOverlayTracking();
   tutorialRuntime = null;
   tutorialOverlay.hidden = true;
   tutorialDoneDialog.hidden = true;
@@ -3560,36 +3853,83 @@ function finishTutorial() {
 
 function showTutorialCompletedDialog() {
   if (!tutorialRuntime?.active) return;
+  stopTutorialOverlayTracking();
   tutorialOverlay.hidden = true;
   tutorialDoneDialog.hidden = false;
 }
 
-function maybeStartAutomaticTutorial() {
-  if (navigator.webdriver || tutorialRuntime?.active) return;
-  if (
-    document.documentElement.dataset.appReady !== "true" ||
-    document.documentElement.dataset.accountReady !== "true"
-  ) return;
-  if (!document.querySelector("#accountConflictView").hidden) return;
+function automaticTutorialAllowed() {
+  return !navigator.webdriver ||
+    window.__SENSE_VOCAB_ALLOW_AUTOMATIC_TUTORIAL__ === true;
+}
+
+function clearAutomaticTutorialSchedule() {
+  if (tutorialAutoTimer !== null) {
+    window.clearTimeout(tutorialAutoTimer);
+  }
+  tutorialAutoTimer = null;
+  tutorialAutoScheduledScope = null;
+}
+
+function maybeStartAutomaticTutorial(delay = TUTORIAL_AUTO_START_DELAY_MS) {
+  if (!automaticTutorialAllowed() || tutorialRuntime?.active) return;
 
   const scopeId = tutorialScopeId();
-  if (tutorialAutoScheduledScope === scopeId) return;
-  if (localStorage.getItem(tutorialStorageKey(scopeId))) return;
-  if (scopeId === "guest" && stateHasLearningData(rootState)) {
-    localStorage.setItem(tutorialStorageKey(scopeId), "completed");
+  if (tutorialAutoWaitScope !== scopeId) {
+    tutorialAutoWaitScope = scopeId;
+    tutorialAutoWaitStartedAt = Date.now();
+  }
+  if (localStorage.getItem(tutorialStorageKey(scopeId))) {
+    if (tutorialAutoScheduledScope === scopeId) {
+      clearAutomaticTutorialSchedule();
+    }
     return;
+  }
+  if (tutorialAutoTimer !== null) {
+    if (tutorialAutoScheduledScope === scopeId) return;
+    clearAutomaticTutorialSchedule();
   }
 
   tutorialAutoScheduledScope = scopeId;
-  window.setTimeout(() => {
-    if (
-      !tutorialRuntime?.active &&
-      tutorialScopeId() === scopeId &&
-      !localStorage.getItem(tutorialStorageKey(scopeId))
-    ) {
-      startTutorial();
+  tutorialAutoTimer = window.setTimeout(() => {
+    tutorialAutoTimer = null;
+    tutorialAutoScheduledScope = null;
+
+    const activeScope = tutorialScopeId();
+    if (tutorialRuntime?.active) return;
+    if (activeScope !== scopeId) {
+      maybeStartAutomaticTutorial();
+      return;
     }
-  }, 350);
+    if (localStorage.getItem(tutorialStorageKey(scopeId))) return;
+
+    const appReady = document.documentElement.dataset.appReady === "true";
+    const accountReady =
+      document.documentElement.dataset.accountReady === "true";
+    const accountConflictOpen =
+      !document.querySelector("#accountConflictView").hidden;
+    const accountDialogOpen =
+      !document.querySelector("#accountDialog").hidden;
+    const accountReadyGraceElapsed =
+      Date.now() - tutorialAutoWaitStartedAt >= TUTORIAL_ACCOUNT_READY_GRACE_MS;
+    if (
+      !appReady ||
+      accountConflictOpen ||
+      accountDialogOpen ||
+      (!accountReady && !accountReadyGraceElapsed) ||
+      document.visibilityState === "hidden"
+    ) {
+      maybeStartAutomaticTutorial(TUTORIAL_AUTO_RETRY_MS);
+      return;
+    }
+    if (scopeId === "guest" && initialGuestHadLearningData === true) {
+      localStorage.setItem(tutorialStorageKey(scopeId), "completed");
+      return;
+    }
+    if (!startTutorial()) {
+      maybeStartAutomaticTutorial(TUTORIAL_AUTO_RETRY_MS);
+    }
+  }, Math.max(0, delay));
 }
 
 function handleTutorialInteraction(event) {
@@ -3667,55 +4007,82 @@ async function initializeApp() {
   wordText.textContent = "加载中";
   cardMode.textContent = "词汇学习";
   startStudyButton.disabled = true;
+  planButton.disabled = true;
+  wordListButton.disabled = true;
+  moreButton.disabled = true;
   nextButton.disabled = true;
   audioButton.hidden = true;
+  document.documentElement.dataset.vocabularyReady = "loading";
+  setVocabularyStatus("正在加载词库索引和本地学习记录…");
 
   try {
-    vocabularyBundle = await loadVocabularyBundle();
-    bookById = new Map(
-      vocabularyBundle.books.map((book) => [book.id, book]),
-    );
-    const normalizedPool = normalizeWordList(vocabularyBundle.words);
-    poolWordById = new Map(normalizedPool.map((word) => [word.id, word]));
-  } catch (error) {
-    console.warn(error);
-    vocabularyBundle = {
-      defaultBookId: DEFAULT_BOOK_ID,
-      books: [
-        {
-          id: DEFAULT_BOOK_ID,
-          name: "考研词汇",
-          displayName: "考研词汇",
-          entries: FALLBACK_WORDS.map((word) => ({
-            wordId: word.id,
-            senseIds: word.senses.map((sense) => sense.id),
-          })),
-        },
-      ],
-      words: FALLBACK_WORDS,
-    };
-    bookById = new Map(vocabularyBundle.books.map((book) => [book.id, book]));
-    const normalizedPool = normalizeWordList(vocabularyBundle.words);
-    poolWordById = new Map(normalizedPool.map((word) => [word.id, word]));
+    vocabularyIndex = await loadVocabularyIndex();
+    installVocabularyData(vocabularyIndex);
+  } catch (indexError) {
+    console.warn(indexError);
+    try {
+      const legacyIndex = { bundleVersion: "legacy" };
+      const data = await loadVocabularyBundle(legacyIndex, {
+        forceNetwork: true,
+      });
+      vocabularyIndex = {
+        ...data,
+        bundleVersion: "legacy",
+      };
+      installVocabularyData(data, { details: true });
+      vocabularyDetailsReady = true;
+      document.documentElement.dataset.vocabularyReady = "true";
+    } catch (bundleError) {
+      console.warn(bundleError);
+      vocabularyIndex = {
+        defaultBookId: DEFAULT_BOOK_ID,
+        bundleVersion: "fallback",
+        books: [
+          {
+            id: DEFAULT_BOOK_ID,
+            name: "考研词汇",
+            displayName: "考研词汇",
+            entries: FALLBACK_WORDS.map((word) => ({
+              wordId: word.id,
+              senseIds: word.senses.map((sense) => sense.id),
+            })),
+          },
+        ],
+        words: FALLBACK_WORDS,
+      };
+      installVocabularyData(vocabularyIndex, { details: true });
+      vocabularyDetailsReady = true;
+      vocabularyDetailsError = bundleError;
+      document.documentElement.dataset.vocabularyReady = "fallback";
+      setVocabularyStatus(
+        "完整词库暂时无法连接，当前仅显示离线应急内容。刷新页面即可重试，已有学习记录不会被改动。",
+        { error: true },
+      );
+    }
   }
 
-  bookSelect.replaceChildren(
-    ...vocabularyBundle.books.map((book) => {
-      const option = document.createElement("option");
-      option.value = book.id;
-      option.textContent = String(book.displayName ?? book.name).replace(/[《》]/g, "");
-      return option;
-    }),
-  );
+  renderBookOptions();
   rootState = loadState();
+  initialGuestHadLearningData = stateHasLearningData(rootState);
   activateBookScope(rootState.activeBookId);
   applyWordDeepLink();
-  saveState();
+  if (document.documentElement.dataset.vocabularyReady !== "fallback") {
+    saveState();
+  }
   render();
   scheduleMidnightRefresh();
+  planButton.disabled = false;
+  wordListButton.disabled = false;
+  moreButton.disabled = false;
+  homePanel.setAttribute("aria-busy", "false");
   document.documentElement.dataset.appReady = "true";
   window.dispatchEvent(new CustomEvent("sensevocab:app-ready"));
   maybeStartAutomaticTutorial();
+  if (!vocabularyDetailsReady) {
+    beginVocabularyDetailsLoad();
+  } else if (!vocabularyDetailsError) {
+    setVocabularyStatus();
+  }
 }
 
 planButton.addEventListener("click", openPlanDialog);
@@ -3778,10 +4145,14 @@ wordSortSelect.addEventListener("change", () => {
   saveState();
   renderWordList();
 });
-wordList.addEventListener("click", (event) => {
+wordList.addEventListener("click", async (event) => {
   const item = event.target.closest(".word-list-item");
   if (!item) return;
-  openWordCard(item.dataset.wordId);
+  item.classList.add("is-loading");
+  item.setAttribute("aria-busy", "true");
+  await openWordCard(item.dataset.wordId);
+  item.classList.remove("is-loading");
+  item.removeAttribute("aria-busy");
 });
 
 senseList.addEventListener("click", (event) => {
@@ -3835,12 +4206,24 @@ window.addEventListener("resize", () => {
   positionTutorialOverlay();
   positionHeatmapAtLatest();
 });
-window.visualViewport?.addEventListener("resize", updateAppViewportHeight);
+window.visualViewport?.addEventListener("resize", () => {
+  updateAppViewportHeight();
+  positionTutorialOverlay({ force: true });
+});
+window.visualViewport?.addEventListener("scroll", () => {
+  positionTutorialOverlay({ force: true });
+});
 window.addEventListener("orientationchange", updateAppViewportHeight);
 finishTutorialButton.addEventListener("click", finishTutorial);
 window.addEventListener("sensevocab:app-ready", maybeStartAutomaticTutorial);
 window.addEventListener("sensevocab:account-ready", maybeStartAutomaticTutorial);
 window.addEventListener("sensevocab:account-scope", maybeStartAutomaticTutorial);
+window.addEventListener("pageshow", maybeStartAutomaticTutorial);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    maybeStartAutomaticTutorial();
+  }
+});
 window.addEventListener("sensevocab:membership", (event) => {
   membershipAccess = {
     loggedIn: Boolean(event.detail?.loggedIn),

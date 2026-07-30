@@ -944,6 +944,76 @@ test("completed activity counts survive relearning and repair previously shorten
   expect(saved.activityLog["2026-07-24"].newWords).toContain("act");
 });
 
+test("pending-new words ignore stale dates from an earlier learning cycle", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    const NativeDate = Date;
+    class TestDate extends NativeDate {
+      constructor(...args) {
+        if (args.length) {
+          super(...args);
+          return;
+        }
+        super("2026-07-30T12:00:00Z");
+      }
+
+      static now() {
+        return new TestDate().getTime();
+      }
+    }
+    window.Date = TestDate;
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 6,
+      view: "home",
+      plan: {
+        dailyTarget: 40,
+        startedOn: "2026-07-24",
+        createdOn: "2026-07-24",
+        updatedOn: "2026-07-24",
+      },
+      introducedWords: [],
+      progress: {
+        "act:v-1": {
+          status: "new",
+          misses: 0,
+          dueDate: null,
+          firstSeen: "2026-07-24",
+          lastSeen: "2026-07-24",
+          masteredOn: null,
+          firstSeenActual: "2026-07-24",
+          lastSeenActual: "2026-07-24",
+          masteredOnActual: null,
+        },
+      },
+      activityLog: {
+        "2026-07-24": {
+          newWords: ["act"],
+          reviewWords: [],
+          newCount: 1,
+          reviewCount: 0,
+          baseCompleted: false,
+          overtime: false,
+          target: 40,
+          learningDays: [1],
+        },
+      },
+      learningDayCounter: 1,
+    }));
+  }, STORAGE_KEY);
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#wordListButton").click();
+  await page.locator("#wordSearchInput").fill("act");
+
+  const row = page.locator('.word-list-item[data-word-id="act"]');
+  await expect(row.locator(".is-duration")).toHaveText("学习0天");
+  await expect(row.locator(".is-new")).toHaveText("待新学");
+
+  const saved = await readState(page);
+  expect(saved.activityLog["2026-07-24"].newWords).toContain("act");
+  expect(saved.progress["act:v-1"].firstSeenActual).toBe("2026-07-24");
+});
+
 test("legacy calendar dates migrate back once and preserve corrected July totals", async ({ page }) => {
   await page.addInitScript((storageKey) => {
     const NativeDate = Date;

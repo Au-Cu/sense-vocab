@@ -79,6 +79,10 @@ async function installFakeCloud(page, remote = null) {
           type: "feedback_reply",
           title: "你的反馈收到了答复",
           body: "问题已经修复，请刷新后重试。",
+          images: [{
+            path: "notice-1/1.jpg",
+            url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2Q==",
+          }],
           createdAt: "2026-07-29T10:00:00.000Z",
           readAt: null,
         }],
@@ -345,14 +349,22 @@ test("account membership, invite code, and two-way notifications are visible wit
   await expect(page.locator("#accountDataActions")).not.toContainText("条款");
   await page.locator("#closeAccountButton").click();
 
+  await expect(page.locator("#moreButton")).toHaveClass(/has-unread/);
+  await expect(page.locator("#moreButton")).toHaveAttribute(
+    "aria-label",
+    /1 .*未读消息/,
+  );
   await page.locator("#moreButton").click();
   await expect(page.locator("#notificationBadge")).toHaveText("1");
   await page.locator("#notificationsButton").click();
   await expect(page.locator("#notificationsDialog")).toBeVisible();
   await expect(page.locator(".notification-item")).toContainText("问题已经修复");
+  await expect(page.locator(".notification-images img")).toHaveCount(1);
   await expect.poll(async () => {
     return page.evaluate(() => window.__fakeCloud.markedNotifications);
   }).toEqual([{ kind: "direct", id: "notice-1" }]);
+  await expect(page.locator("#moreButton")).not.toHaveClass(/has-unread/);
+  await expect(page.locator("#notificationBadge")).toBeHidden();
 });
 
 test("an expired signed-in membership disables study while guest mode stays available", async ({ page }) => {

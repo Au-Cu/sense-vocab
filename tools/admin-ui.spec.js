@@ -19,6 +19,8 @@ async function installAdminCloud(page, isAdmin = true) {
       updated: [],
       replies: [],
       announcements: [],
+      announcementImageCounts: [],
+      deletedAnnouncements: [],
       membershipUpdates: [],
       extendAllCalls: 0,
       signedOut: false,
@@ -123,16 +125,30 @@ async function installAdminCloud(page, isAdmin = true) {
       },
       async loadAdminAnnouncements() {
         return {
-          items: window.__fakeAdmin.announcements.map((item, index) => ({
-            id: `announcement-${index + 1}`,
+          items: window.__fakeAdmin.announcements.map((item) => ({
             ...item,
             publishedAt: "2026-07-29T10:00:00.000Z",
           })),
         };
       },
-      async publishAnnouncement(title, body) {
-        window.__fakeAdmin.announcements.unshift({ title, body });
+      async publishAnnouncement(title, body, files = []) {
+        window.__fakeAdmin.announcementImageCounts.push(files.length);
+        window.__fakeAdmin.announcements.unshift({
+          id: "11111111-1111-4111-8111-111111111111",
+          title,
+          body,
+          images: Array.from(files).map((file, index) => ({
+            path: `announcement-${index + 1}.jpg`,
+            url: URL.createObjectURL(file),
+          })),
+        });
         return { ok: true };
+      },
+      async deleteAnnouncement(id) {
+        window.__fakeAdmin.deletedAnnouncements.push(id);
+        window.__fakeAdmin.announcements =
+          window.__fakeAdmin.announcements.filter((item) => item.id !== id);
+        return { ok: true, deleted: true, imageCleanupFailed: false };
       },
       async setUserMembershipDays(userId, days) {
         window.__fakeAdmin.membershipUpdates.push({ userId, days });
@@ -226,8 +242,28 @@ test("the admin dashboard renders metrics, user details, and feedback", async ({
   await page.locator("#announcementsTab").click();
   await page.locator("#announcementTitle").fill("版本更新");
   await page.locator("#announcementBody").fill("新增会员与消息通知功能。");
+  await page.locator("#announcementImageInput").setInputFiles({
+    name: "announcement.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+      "base64",
+    ),
+  });
+  await expect(page.locator("#announcementImageCount")).toHaveText("1 / 4");
+  await expect(page.locator("#announcementImagePreview img")).toHaveCount(1);
   await page.locator("#publishAnnouncementButton").click();
   await expect(page.locator(".announcement-item")).toContainText("版本更新");
+  await expect(page.locator(".announcement-item .announcement-images img")).toHaveCount(1);
+  await expect.poll(async () => {
+    return page.evaluate(() => window.__fakeAdmin.announcementImageCounts);
+  }).toEqual([1]);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator(".announcement-delete-button").click();
+  await expect(page.locator(".announcement-item")).toHaveCount(0);
+  await expect.poll(async () => {
+    return page.evaluate(() => window.__fakeAdmin.deletedAnnouncements);
+  }).toEqual(["11111111-1111-4111-8111-111111111111"]);
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.locator("#extendAllMembershipsButton").click();
