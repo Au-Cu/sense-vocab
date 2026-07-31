@@ -440,8 +440,7 @@ test("familiar senses move to the bottom and word-level resets restore the right
 
   await page.locator("#resetButton").click();
   await page.locator("#resetMarkingButton").click();
-  await expect(page.locator("#resetConfirmCopy")).toContainText("进入本词时的状态");
-  await page.locator("#confirmResetButton").click();
+  await expect(page.locator("#resetDialog")).toBeHidden();
   await expect(page.locator(`.sense-item[data-key="${firstKey}"]`)).not.toHaveClass(/is-mastered|is-confirmed/);
   let saved = await readState(page);
   expect(saved.progress[firstKey]).toBeUndefined();
@@ -461,7 +460,7 @@ test("familiar senses move to the bottom and word-level resets restore the right
   // The snapshot belongs to this reinforcement encounter, not the start of the day.
   await page.locator("#resetButton").click();
   await page.locator("#resetMarkingButton").click();
-  await page.locator("#confirmResetButton").click();
+  await expect(page.locator("#resetDialog")).toBeHidden();
   reinforcementState = await readState(page);
   expect(reinforcementState.progress[firstKey].status).toBe("mastered");
   expect(reinforcementState.progress[reinforcementKey].status).toBe("reinforce");
@@ -580,12 +579,18 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
     expect(value).toMatch(/^\/.+\/$/);
   }
 
+  const firstSenseKey = await page.locator(".sense-item").first().getAttribute("data-key");
+  const firstSense = page.locator(`.sense-item[data-key="${firstSenseKey}"]`);
+  await firstSense.click();
+  await expect(firstSense).toHaveClass(/is-mastered/);
   await page.locator("#resetButton").click();
   await expect(page.locator("#resetDialog")).toBeVisible();
   await expect(page.locator("#resetDialog")).toContainText("重置本次标记");
   await expect(page.locator("#resetDialog")).toContainText("重学该单词");
   await expect(page.locator("#resetDialog")).not.toContainText("重置全部进度");
-  await page.locator("#cancelResetButton").click();
+  await page.locator("#resetMarkingButton").click();
+  await expect(page.locator("#resetDialog")).toBeHidden();
+  await expect(firstSense).not.toHaveClass(/is-mastered/);
 
   await page.locator("#exitStudyButton").click();
   await expect(page.locator("#returnDialog")).toBeVisible();
@@ -1275,6 +1280,7 @@ test("a study window crossing midnight stays on its start date and requires retu
 
   await page.goto(APP_URL);
   await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await expect(page.locator("#startStudyButton")).toBeEnabled();
   let todayColor = await page.locator('.heatmap-day[data-date="2026-07-26"]')
     .evaluate((element) => element.style.getPropertyValue("--heat-color"));
   expect(todayColor).toBe("#ecefeb");

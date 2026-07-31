@@ -509,6 +509,27 @@ test("first login copies guest history into an isolated account cache and upload
 
 test("existing cloud history is never overwritten silently by guest history", async ({ page }) => {
   const remoteState = makeState(55);
+  remoteState.introducedWords = ["act"];
+  remoteState.progress["act:v-1"] = { status: "mastered" };
+  remoteState.activityLog["2026-07-28"] = {
+    newWords: ["act"],
+    reviewWords: [],
+    newCount: 1,
+    reviewCount: 0,
+    target: 55,
+    learningDays: [1],
+  };
+  const localState = makeState(23);
+  localState.introducedWords = ["abandon"];
+  localState.progress["abandon:v-1"] = { status: "reinforce" };
+  localState.activityLog["2026-07-29"] = {
+    newWords: ["abandon"],
+    reviewWords: [],
+    newCount: 1,
+    reviewCount: 0,
+    target: 23,
+    learningDays: [1],
+  };
   await installFakeCloud(page, {
     found: true,
     revision: 4,
@@ -519,18 +540,45 @@ test("existing cloud history is never overwritten silently by guest history", as
   await page.evaluate(({ key, state }) => {
     localStorage.clear();
     localStorage.setItem(key, JSON.stringify(state));
-  }, { key: STORAGE_KEY, state: makeState(23) });
+  }, { key: STORAGE_KEY, state: localState });
   await page.reload();
   await waitForAccount(page);
 
   await login(page);
   await expect(page.locator("#accountConflictView")).toBeVisible();
+  await expect(page.locator("#mergeStateButton")).toContainText("合并两边记录");
+  await expect(page.locator("#cloudRecordSummary")).toContainText("1");
+  await expect(page.locator("#cloudRecordPlan")).toContainText("每天 55 词");
+  await expect(page.locator("#localRecordSummary")).toContainText("1");
+  await expect(page.locator("#localRecordPlan")).toContainText("每天 23 词");
+  await expect(page.locator("#accountConflictDifference")).toHaveText(
+    /本机独有 1 个已学单词，云端独有 1 个/,
+  );
+  await page.screenshot({
+    path: "test-results/account-conflict-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator("#accountConflictView")).toBeVisible();
+  const mobileLayout = await page.locator("#accountDialog .account-dialog").evaluate((dialog) => ({
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: document.documentElement.clientWidth,
+    dialogRight: dialog.getBoundingClientRect().right,
+  }));
+  expect(mobileLayout.documentWidth).toBeLessThanOrEqual(mobileLayout.viewportWidth);
+  expect(mobileLayout.dialogRight).toBeLessThanOrEqual(mobileLayout.viewportWidth);
+  await page.screenshot({
+    path: "test-results/account-conflict-mobile.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1100, height: 850 });
   expect(await page.evaluate(() => window.__fakeCloud.saves.length)).toBe(0);
 
   await page.locator("#closeAccountButton").click();
   await openAccount(page);
   await expect(page.locator("#accountConflictView")).toBeVisible();
 
+  await page.locator(".sync-conflict-advanced summary").click();
   await page.locator("#useCloudStateButton").click();
   const result = await page.evaluate(({ guestKey, accountKey }) => ({
     activeKey: window.SenseVocabApp.getActiveStorageKey(),
@@ -542,7 +590,50 @@ test("existing cloud history is never overwritten silently by guest history", as
   expect(result.activeKey).toBe(ACCOUNT_KEY);
   expect(result.guest.plan.dailyTarget).toBe(23);
   expect(result.account.plan.dailyTarget).toBe(55);
+  expect(result.guest.introducedWords).toContain("abandon");
+  expect(result.account.introducedWords).toContain("act");
   expect(result.saves).toBe(0);
+});
+
+test("recommended conflict merge preserves unique learning from both records", async ({ page }) => {
+  const remoteState = makeState(40);
+  remoteState.introducedWords = ["act"];
+  remoteState.progress["act:v-1"] = { status: "mastered" };
+  const localState = makeState(30);
+  localState.introducedWords = ["abandon"];
+  localState.progress["abandon:v-1"] = { status: "reinforce" };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 7,
+    state: remoteState,
+    updatedAt: "2026-07-28T00:00:00.000Z",
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(({ key, state }) => {
+    localStorage.clear();
+    localStorage.setItem(key, JSON.stringify(state));
+  }, { key: STORAGE_KEY, state: localState });
+  await page.reload();
+  await waitForAccount(page);
+
+  await login(page);
+  await expect(page.locator("#accountConflictView")).toBeVisible();
+  await page.locator("#mergeStateButton").click();
+  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect.poll(async () => {
+    return page.evaluate(() => window.__fakeCloud.remote.revision);
+  }).toBe(8);
+
+  const result = await page.evaluate(({ guestKey }) => ({
+    activeWords: window.SenseVocabApp.getState().introducedWords,
+    remoteWords: window.__fakeCloud.remote.state.introducedWords,
+    guestWords: JSON.parse(localStorage.getItem(guestKey)).introducedWords,
+    lastSave: window.__fakeCloud.saves.at(-1),
+  }), { guestKey: STORAGE_KEY });
+  expect(result.activeWords.sort()).toEqual(["abandon", "act"]);
+  expect(result.remoteWords.sort()).toEqual(["abandon", "act"]);
+  expect(result.guestWords).toEqual(["abandon"]);
+  expect(result.lastSave.force).toBe(false);
 });
 
 test("a CAS conflict automatically merges independent device learning", async ({ page }) => {

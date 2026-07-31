@@ -3406,33 +3406,22 @@ function showResetOptions() {
   resetConfirm.hidden = true;
 }
 
-function showResetConfirmation(type) {
+function showRelearnConfirmation() {
   const card = resettableCard();
   const word = card ? wordById.get(card.wordId) : null;
 
-  pendingResetType = type;
+  pendingResetType = "relearn";
   resetOptions.hidden = true;
   resetConfirm.hidden = false;
-
-  if (type === "marking") {
-    resetConfirmTitle.textContent = "确认重置本次标记？";
-    resetConfirmCopy.textContent = word
-      ? `${word.word} 的所有义项会回到进入本词时的状态，本次标记将被撤销。`
-      : "当前没有可重置的单词。";
-    confirmResetButton.textContent = "确认重置本次标记";
-  } else {
-    resetConfirmTitle.textContent = "确认重学该单词？";
-    resetConfirmCopy.textContent = word
-      ? `${word.word} 的所有义项会回到待新学状态，并重新按初始顺序学习。`
-      : "当前没有可重学的单词。";
-    confirmResetButton.textContent = "确认重学该单词";
-  }
+  resetConfirmTitle.textContent = "确认重学该单词？";
+  resetConfirmCopy.textContent = word
+    ? `${word.word} 的所有义项会回到待新学状态，并重新按初始顺序学习。`
+    : "当前没有可重学的单词。";
+  confirmResetButton.textContent = "确认重学该单词";
 }
 
 function confirmPendingReset() {
-  if (pendingResetType === "marking") {
-    resetCurrentMarking();
-  } else if (pendingResetType === "relearn") {
+  if (pendingResetType === "relearn") {
     relearnCurrentWord();
   }
 }
@@ -3960,10 +3949,7 @@ function handleTutorialInteraction(event) {
   } else if (step === "reset" && event.target.closest("#resetButton")) {
     window.setTimeout(() => setTutorialStep("reset-marking"), 0);
   } else if (step === "reset-marking" && event.target.closest("#resetMarkingButton")) {
-    window.setTimeout(() => {
-      resetCurrentMarking();
-      setTutorialStep("complete");
-    }, 0);
+    window.setTimeout(() => setTutorialStep("complete"), 0);
   } else if (step === "complete" && event.target.closest("#nextButton")) {
     window.setTimeout(() => beginTutorialWait("examples-wait", "act-next"), 0);
   } else if (step === "act-next" && event.target.closest("#nextButton")) {
@@ -4190,8 +4176,8 @@ senseList.addEventListener("click", (event) => {
 
 nextButton.addEventListener("click", handleProgressButton);
 resetButton.addEventListener("click", openResetDialog);
-resetMarkingButton.addEventListener("click", () => showResetConfirmation("marking"));
-relearnWordButton.addEventListener("click", () => showResetConfirmation("relearn"));
+resetMarkingButton.addEventListener("click", resetCurrentMarking);
+relearnWordButton.addEventListener("click", showRelearnConfirmation);
 confirmResetButton.addEventListener("click", confirmPendingReset);
 backResetButton.addEventListener("click", showResetOptions);
 cancelResetButton.addEventListener("click", closeResetDialog);

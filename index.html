@@ -474,18 +474,53 @@
           </div>
 
           <div class="account-conflict-view" id="accountConflictView" hidden>
-            <p class="confirm-title">请选择要保留的学习记录</p>
+            <p class="confirm-title">发现两份不同的学习记录</p>
             <p class="confirm-copy">
-              当前浏览器和云端都有学习记录。为避免误覆盖，程序不会自动替你选择。
+              先比较下面的数据。通常选择合并最稳妥，两边已有的学习记录都会保留。
+            </p>
+            <div class="sync-record-comparison">
+              <article class="sync-record-card">
+                <div class="sync-record-heading">
+                  <strong>云端记录</strong>
+                  <span id="cloudRecordLatest">最近学习 —</span>
+                </div>
+                <div class="sync-record-stats" id="cloudRecordSummary"></div>
+                <p class="sync-record-plan" id="cloudRecordPlan"></p>
+              </article>
+              <article class="sync-record-card">
+                <div class="sync-record-heading">
+                  <strong>本机记录</strong>
+                  <span id="localRecordLatest">最近学习 —</span>
+                </div>
+                <div class="sync-record-stats" id="localRecordSummary"></div>
+                <p class="sync-record-plan" id="localRecordPlan"></p>
+              </article>
+            </div>
+            <p class="sync-conflict-difference" id="accountConflictDifference"></p>
+            <p class="sync-conflict-safety">
+              合并会汇总两边的学习历史与进度，并保留较新的计划；同一义项状态不一致时按较谨慎的状态保留，避免误判为已掌握。
             </p>
             <div class="account-action-list">
-              <button class="primary-button" id="useCloudStateButton" type="button">
-                使用云端记录
-              </button>
-              <button class="secondary-button" id="useLocalStateButton" type="button">
-                使用本机记录并上传
+              <button class="primary-button sync-merge-button" id="mergeStateButton" type="button">
+                <strong>合并两边记录</strong>
+                <span>推荐，不遗漏任一侧已有进度</span>
               </button>
             </div>
+            <details class="sync-conflict-advanced">
+              <summary>高级选项：只保留其中一份</summary>
+              <p>以下操作会舍弃另一侧当前记录，仅在你确定另一份数据无用时选择。</p>
+              <div class="account-action-list">
+                <button class="secondary-button" id="useCloudStateButton" type="button">
+                  只使用云端记录
+                </button>
+                <button class="danger-outline-button" id="useLocalStateButton" type="button">
+                  只使用本机记录并上传
+                </button>
+              </div>
+            </details>
+            <p class="sync-conflict-backup">
+              若本机侧是游客记录，该游客副本不会被删除；覆盖云端前也会自动保留恢复快照。
+            </p>
           </div>
 
           <div class="account-delete-confirm" id="accountDeleteConfirm" hidden>

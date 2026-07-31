@@ -8,6 +8,7 @@
   --accent: #0f766e;
   --accent-strong: #115e59;
   --warm: #c77d2d;
+  --danger: #b42318;
   --shadow: 0 18px 60px rgba(24, 35, 40, 0.12);
 }
 
@@ -1105,6 +1106,10 @@ button {
   overflow-y: auto;
 }
 
+.modal-backdrop.has-conflict .account-dialog {
+  width: min(760px, 100%);
+}
+
 .account-dialog-heading {
   display: flex;
   align-items: center;
@@ -1145,6 +1150,139 @@ button {
 .account-action-list {
   display: grid;
   gap: 12px;
+}
+
+.sync-record-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sync-record-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf7;
+}
+
+.sync-record-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sync-record-heading strong {
+  font-size: 1rem;
+}
+
+.sync-record-heading span,
+.sync-record-plan,
+.sync-conflict-safety,
+.sync-conflict-backup,
+.sync-conflict-advanced > p {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.sync-record-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sync-record-stat {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(214, 211, 202, 0.78);
+  background: white;
+}
+
+.sync-record-stat strong {
+  color: var(--accent-strong);
+  font-size: 1rem;
+}
+
+.sync-record-stat span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.sync-record-plan,
+.sync-conflict-safety,
+.sync-conflict-backup,
+.sync-conflict-advanced > p {
+  margin: 0;
+}
+
+.sync-conflict-difference {
+  margin: 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--accent);
+  background: #edf7f5;
+  color: var(--ink);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.sync-merge-button {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  height: auto;
+  min-height: 58px;
+  padding-block: 10px;
+}
+
+.sync-merge-button span {
+  font-size: 0.72rem;
+  font-weight: 560;
+  opacity: 0.88;
+}
+
+.sync-conflict-advanced {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.sync-conflict-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.sync-conflict-advanced > p {
+  margin: 8px 0 10px;
+}
+
+.danger-outline-button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(194, 35, 25, 0.48);
+  border-radius: 8px;
+  background: white;
+  color: var(--danger);
+  cursor: pointer;
+  font-weight: 720;
+}
+
+.danger-outline-button:hover,
+.danger-outline-button:focus-visible {
+  border-color: var(--danger);
+  background: #fff3f1;
+  outline: none;
+}
+
+.danger-outline-button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 .registration-consents {
@@ -1968,6 +2106,46 @@ button {
 
   .account-membership-summary {
     grid-template-columns: 1fr;
+  }
+
+  .modal-backdrop.has-conflict .account-dialog {
+    padding: 14px;
+  }
+
+  .sync-record-comparison {
+    gap: 7px;
+  }
+
+  .sync-record-card {
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .sync-record-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sync-record-heading span {
+    font-size: 0.68rem;
+  }
+
+  .sync-record-stats {
+    gap: 5px;
+  }
+
+  .sync-record-stat {
+    padding: 7px 5px;
+  }
+
+  .sync-record-stat strong {
+    font-size: 0.9rem;
+  }
+
+  .sync-record-stat span,
+  .sync-record-plan {
+    font-size: 0.64rem;
   }
 
   .notification-item-heading {

@@ -48,8 +48,18 @@
   const confirmDeleteAccountButton = document.querySelector("#confirmDeleteAccountButton");
   const cancelDeleteAccountButton = document.querySelector("#cancelDeleteAccountButton");
   const deleteAccountConfirmation = document.querySelector("#deleteAccountConfirmation");
+  const mergeStateButton = document.querySelector("#mergeStateButton");
   const useCloudStateButton = document.querySelector("#useCloudStateButton");
   const useLocalStateButton = document.querySelector("#useLocalStateButton");
+  const cloudRecordLatest = document.querySelector("#cloudRecordLatest");
+  const cloudRecordSummary = document.querySelector("#cloudRecordSummary");
+  const cloudRecordPlan = document.querySelector("#cloudRecordPlan");
+  const localRecordLatest = document.querySelector("#localRecordLatest");
+  const localRecordSummary = document.querySelector("#localRecordSummary");
+  const localRecordPlan = document.querySelector("#localRecordPlan");
+  const accountConflictDifference = document.querySelector(
+    "#accountConflictDifference",
+  );
   const exportDataButton = document.querySelector("#exportDataButton");
   const importDataButton = document.querySelector("#importDataButton");
   const importDataInput = document.querySelector("#importDataInput");
@@ -97,6 +107,7 @@
   let currentUser = null;
   let cloudRevision = null;
   let pendingConflict = null;
+  let conflictBusy = false;
   let syncTimer = null;
   let syncPromise = null;
   let refreshPromise = null;
@@ -176,6 +187,164 @@
       month: "2-digit",
       day: "2-digit",
     }).format(date);
+  }
+
+  function formatStudyDate(value) {
+    const match = String(value ?? "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return "—";
+    return `${Number(match[2])}月${Number(match[3])}日`;
+  }
+
+  function stateBookEntries(candidate) {
+    if (
+      candidate?.bookStates &&
+      typeof candidate.bookStates === "object" &&
+      !Array.isArray(candidate.bookStates)
+    ) {
+      return Object.entries(candidate.bookStates);
+    }
+    return [[candidate?.activeBookId || "kaoyan", candidate ?? {}]];
+  }
+
+  function bookLabel(bookId) {
+    return {
+      kaoyan: "考研词汇",
+      ielts: "雅思词汇",
+    }[bookId] ?? bookId;
+  }
+
+  function stateSummary(candidate, updatedAt = null) {
+    const learnedWords = new Set();
+    const studyDates = new Set();
+    const plans = [];
+    let masteredSenses = 0;
+    let pendingSenses = 0;
+
+    stateBookEntries(candidate).forEach(([bookId, bookState]) => {
+      const introducedWords = Array.isArray(bookState?.introducedWords)
+        ? bookState.introducedWords
+        : [];
+      introducedWords.forEach((wordId) => learnedWords.add(`${bookId}:${wordId}`));
+
+      Object.values(bookState?.progress ?? {}).forEach((progress) => {
+        if (progress?.status === "mastered") {
+          masteredSenses += 1;
+        } else if (progress?.status && progress.status !== "new") {
+          pendingSenses += 1;
+        }
+      });
+
+      Object.keys(bookState?.activityLog ?? {})
+        .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+        .forEach((date) => studyDates.add(date));
+      (Array.isArray(bookState?.studyWindows) ? bookState.studyWindows : [])
+        .forEach((studyWindow) => {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(studyWindow?.activityDate ?? "")) {
+            studyDates.add(studyWindow.activityDate);
+          }
+        });
+
+      const dailyTarget = Number(bookState?.plan?.dailyTarget);
+      if (Number.isFinite(dailyTarget) && dailyTarget > 0) {
+        plans.push(`${bookLabel(bookId)}：每天 ${dailyTarget} 词`);
+      }
+    });
+
+    const latestStudyDate = [...studyDates].sort().at(-1) ?? null;
+    return {
+      learnedWords,
+      learnedWordCount: learnedWords.size,
+      masteredSenses,
+      pendingSenses,
+      studyDayCount: studyDates.size,
+      latestStudyDate,
+      fallbackUpdatedAt: updatedAt,
+      planCopy: plans.length ? plans.join("；") : "尚未选择计划",
+    };
+  }
+
+  function renderStateSummary(container, summary) {
+    const stats = [
+      [summary.learnedWordCount, "已学单词"],
+      [summary.masteredSenses, "掌握义项"],
+      [summary.pendingSenses, "待巩固义项"],
+      [summary.studyDayCount, "学习天数"],
+    ];
+    container.replaceChildren(...stats.map(([value, label]) => {
+      const item = document.createElement("div");
+      item.className = "sync-record-stat";
+      const number = document.createElement("strong");
+      number.textContent = String(value);
+      const copy = document.createElement("span");
+      copy.textContent = label;
+      item.append(number, copy);
+      return item;
+    }));
+  }
+
+  function countStatusDifferences(leftState, rightState) {
+    const statusByKey = (candidate) => {
+      const result = new Map();
+      stateBookEntries(candidate).forEach(([bookId, bookState]) => {
+        Object.entries(bookState?.progress ?? {}).forEach(([senseKey, progress]) => {
+          result.set(`${bookId}:${senseKey}`, progress?.status ?? "new");
+        });
+      });
+      return result;
+    };
+    const left = statusByKey(leftState);
+    const right = statusByKey(rightState);
+    const keys = new Set([...left.keys(), ...right.keys()]);
+    return [...keys].filter((key) => left.get(key) !== right.get(key)).length;
+  }
+
+  function renderConflictComparison() {
+    if (!pendingConflict) return;
+    const cloudSummary = stateSummary(
+      pendingConflict.remote?.state,
+      pendingConflict.remote?.updatedAt,
+    );
+    const localSummary = stateSummary(pendingConflict.localState);
+    renderStateSummary(cloudRecordSummary, cloudSummary);
+    renderStateSummary(localRecordSummary, localSummary);
+    cloudRecordPlan.textContent = cloudSummary.planCopy;
+    localRecordPlan.textContent = localSummary.planCopy;
+    cloudRecordLatest.textContent = cloudSummary.latestStudyDate
+      ? `最近学习 ${formatStudyDate(cloudSummary.latestStudyDate)}`
+      : cloudSummary.fallbackUpdatedAt
+        ? `云端更新 ${formatAccountDate(cloudSummary.fallbackUpdatedAt)}`
+        : "暂无学习日期";
+    localRecordLatest.textContent = localSummary.latestStudyDate
+      ? `最近学习 ${formatStudyDate(localSummary.latestStudyDate)}`
+      : "暂无学习日期";
+
+    const localOnly = [...localSummary.learnedWords]
+      .filter((key) => !cloudSummary.learnedWords.has(key)).length;
+    const cloudOnly = [...cloudSummary.learnedWords]
+      .filter((key) => !localSummary.learnedWords.has(key)).length;
+    const statusDifferences = countStatusDifferences(
+      pendingConflict.localState,
+      pendingConflict.remote?.state,
+    );
+    if (localOnly || cloudOnly) {
+      accountConflictDifference.textContent =
+        `本机独有 ${localOnly} 个已学单词，云端独有 ${cloudOnly} 个；` +
+        "建议合并，避免遗漏任一侧。";
+    } else if (statusDifferences) {
+      accountConflictDifference.textContent =
+        `两边已学单词范围相同，但有 ${statusDifferences} 个义项状态不同；` +
+        "建议合并后按较谨慎状态继续学习。";
+    } else {
+      accountConflictDifference.textContent =
+        "两边的核心学习进度基本一致；合并不会遗漏记录，也无需判断哪份更新。";
+    }
+  }
+
+  function setConflictBusy(busy) {
+    conflictBusy = busy;
+    [mergeStateButton, useCloudStateButton, useLocalStateButton].forEach((button) => {
+      button.disabled = busy;
+    });
   }
 
   function formatNotificationTime(value) {
@@ -763,14 +932,17 @@
   function showPrimaryAccountView() {
     const hasConflict = Boolean(pendingConflict);
     const needsConsent = Boolean(pendingConsentSession);
+    accountDialog.classList.toggle("has-conflict", hasConflict);
     accountConflictView.hidden = !hasConflict;
     accountConsentView.hidden = !needsConsent;
     accountAuthView.hidden = hasConflict || needsConsent || Boolean(currentUser);
     accountUserView.hidden = hasConflict || needsConsent || !currentUser;
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = true;
-    accountDataActions.hidden = needsConsent;
+    accountDataActions.hidden = needsConsent || hasConflict;
     if (!deleting) resetDeleteConfirmation();
+    if (hasConflict) renderConflictComparison();
+    if (!hasConflict && conflictBusy) setConflictBusy(false);
 
     accountStateBadge.textContent = needsConsent
       ? "待确认"
@@ -1460,23 +1632,77 @@
     updateLegalConsentButton();
   }
 
+  function withoutDeletionTombstones(candidate) {
+    const cleaned = JSON.parse(JSON.stringify(candidate ?? {}));
+    const cleanScope = (scope) => {
+      const records = scope?._sync?.records;
+      if (!records || typeof records !== "object") return;
+      Object.entries(records).forEach(([domain, recordOrMap]) => {
+        if (!recordOrMap || typeof recordOrMap !== "object") return;
+        if (Object.prototype.hasOwnProperty.call(recordOrMap, "deleted")) {
+          if (recordOrMap.deleted) delete records[domain];
+          return;
+        }
+        Object.entries(recordOrMap).forEach(([key, record]) => {
+          if (record?.deleted) delete recordOrMap[key];
+        });
+      });
+    };
+    cleanScope(cleaned);
+    Object.values(cleaned.bookStates ?? {}).forEach(cleanScope);
+    return cleaned;
+  }
+
+  async function mergeConflictStates() {
+    if (!pendingConflict || !currentUser || conflictBusy) return;
+    const { localState, localSource, remote } = pendingConflict;
+    setConflictBusy(true);
+    setMessage("正在合并两边的学习记录……");
+    try {
+      const safeLocalState = localSource === "guest"
+        ? withoutDeletionTombstones(localState)
+        : localState;
+      const merged = app.mergeStates(safeLocalState, remote.state);
+      if (localSource === "guest") rememberGuestDecision(currentUser.id);
+      activateAccountState(currentUser, merged, remote.revision, true);
+      await syncNow();
+      setMessage("两边记录已合并，云端与本机新增进度均已保留。");
+      resumePendingFeedback();
+    } catch (error) {
+      setMessage(error?.message ?? "合并失败，两边原记录均未删除。", "error");
+      showPrimaryAccountView();
+    } finally {
+      setConflictBusy(false);
+    }
+  }
+
   async function useCloudState() {
-    if (!pendingConflict || !currentUser) return;
-    const { remote, remoteNeedsUpload } = pendingConflict;
-    rememberGuestDecision(currentUser.id);
-    activateAccountState(
-      currentUser,
-      remote.state,
-      remote.revision,
-      Boolean(remoteNeedsUpload),
-    );
-    if (remoteNeedsUpload) await syncNow();
-    setMessage("已使用云端学习记录。");
-    resumePendingFeedback();
+    if (!pendingConflict || !currentUser || conflictBusy) return;
+    const { remote, remoteNeedsUpload, localSource } = pendingConflict;
+    setConflictBusy(true);
+    try {
+      rememberGuestDecision(currentUser.id);
+      activateAccountState(
+        currentUser,
+        remote.state,
+        remote.revision,
+        Boolean(remoteNeedsUpload),
+      );
+      if (remoteNeedsUpload) await syncNow();
+      setMessage(localSource === "guest"
+        ? "已只使用云端学习记录。本机游客记录仍保留在当前浏览器。"
+        : "已只使用云端学习记录。");
+      resumePendingFeedback();
+    } catch (error) {
+      setMessage(error?.message ?? "读取云端记录失败，请稍后重试。", "error");
+      showPrimaryAccountView();
+    } finally {
+      setConflictBusy(false);
+    }
   }
 
   async function useLocalState() {
-    if (!pendingConflict || !currentUser) return;
+    if (!pendingConflict || !currentUser || conflictBusy) return;
     const { localState, localSource, remote } = pendingConflict;
     if (
       app.hasLearningData(remote?.state) &&
@@ -1488,11 +1714,19 @@
       );
       return;
     }
-    if (localSource === "guest") rememberGuestDecision(currentUser.id);
-    activateAccountState(currentUser, localState, remote.revision, true);
-    setMessage("正在将本机学习记录上传到云端……");
-    await syncNow({ replace: true });
-    resumePendingFeedback();
+    setConflictBusy(true);
+    try {
+      if (localSource === "guest") rememberGuestDecision(currentUser.id);
+      activateAccountState(currentUser, localState, remote.revision, true);
+      setMessage("正在将本机学习记录上传到云端……");
+      await syncNow({ replace: true });
+      resumePendingFeedback();
+    } catch (error) {
+      setMessage(error?.message ?? "上传本机记录失败，请稍后重试。", "error");
+      showPrimaryAccountView();
+    } finally {
+      setConflictBusy(false);
+    }
   }
 
   async function logout() {
@@ -1716,6 +1950,7 @@
       deleteAccountConfirmation.value.trim() !== "删除账户";
   });
   confirmDeleteAccountButton.addEventListener("click", deleteAccount);
+  mergeStateButton.addEventListener("click", mergeConflictStates);
   useCloudStateButton.addEventListener("click", useCloudState);
   useLocalStateButton.addEventListener("click", useLocalState);
   exportDataButton.addEventListener("click", exportData);
