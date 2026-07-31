@@ -3,11 +3,7 @@ const { test, expect } = require("@playwright/test");
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
 const ADMIN_URL = new URL("admin.html", APP_URL).href;
 
-test.use({
-  launchOptions: {
-    executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  },
-  viewport: { width: 1280, height: 900 },
+test.use({viewport: { width: 1280, height: 900 },
 });
 
 async function installAdminCloud(page, isAdmin = true) {

@@ -17,6 +17,7 @@ module.exports = defineConfig({
     "compliance-rights.spec.js",
     "public-attribution.spec.js",
     "dashboard.spec.js",
+    "user-journey.spec.js",
   ],
   fullyParallel: false,
   workers: 1,
