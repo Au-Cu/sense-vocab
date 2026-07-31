@@ -13,6 +13,7 @@ module.exports = defineConfig({
     "mobile-tutorial.spec.js",
     "security-hardening.spec.js",
     "confusion-globe.spec.js",
+    "user-journey.spec.js",
   ],
   fullyParallel: false,
   workers: 1,

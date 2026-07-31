@@ -9,11 +9,7 @@ const FEEDBACK_IMAGE_PATH = path.resolve(
   "../assets/app-icon-zoomed.png",
 );
 
-test.use({
-  launchOptions: {
-    executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  },
-  viewport: { width: 1100, height: 850 },
+test.use({viewport: { width: 1100, height: 850 },
 });
 
 function makeState(dailyTarget) {

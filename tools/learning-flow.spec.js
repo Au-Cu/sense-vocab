@@ -4,11 +4,7 @@ const wordData = require("../data/kaoyan-words.json");
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
 
-test.use({
-  launchOptions: {
-    executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  },
-  viewport: { width: 1100, height: 850 },
+test.use({viewport: { width: 1100, height: 850 },
 });
 
 async function reveal(page) {
