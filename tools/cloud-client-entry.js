@@ -203,11 +203,11 @@ window.SenseVocabCloud = {
         return assertResult(await client.rpc("load_user_state"));
       },
 
-      async saveState(state, expectedRevision = null) {
+      async saveState(state, expectedRevision = null, force = false) {
         return assertResult(await client.rpc("save_user_state", {
           p_state: state,
           p_expected_revision: expectedRevision,
-          p_force: false,
+          p_force: Boolean(force),
         }));
       },
 

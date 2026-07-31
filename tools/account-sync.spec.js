@@ -88,6 +88,7 @@ async function installFakeCloud(page, remote = null) {
         }],
       },
       markedNotifications: [],
+      blockNextDestructiveWrite: false,
     };
     window.__SENSE_VOCAB_CLOUD_FACTORY__ = () => ({
       async getSession() {
@@ -193,6 +194,16 @@ async function installFakeCloud(page, remote = null) {
           return {
             ok: false,
             conflict: true,
+            revision: currentRevision,
+          };
+        }
+        if (window.__fakeCloud.blockNextDestructiveWrite && !force) {
+          window.__fakeCloud.blockNextDestructiveWrite = false;
+          return {
+            ok: false,
+            conflict: false,
+            destructiveBlocked: true,
+            reason: "undeclared_deletions",
             revision: currentRevision,
           };
         }
@@ -817,4 +828,128 @@ test("automatic sync restores cloud data instead of uploading an empty account c
   expect(result.remoteTarget).toBe(61);
   expect(result.remoteWords).toContain("abandon");
   expect(result.saves).toBe(savesBefore);
+});
+
+test("fallback vocabulary freezes account persistence and cloud writes", async ({ page }) => {
+  const remoteState = makeState(40);
+  remoteState.introducedWords = ["abandon"];
+  remoteState.progress["abandon:v-1"] = {
+    status: "review",
+    misses: 0,
+    firstSeen: "2026-07-30",
+    lastSeen: "2026-07-30",
+  };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 12,
+    state: remoteState,
+    updatedAt: "2026-07-30T12:00:00.000Z",
+  });
+  await page.route("**/data/vocabulary-index.json*", (route) => route.abort());
+  await page.route("**/data/vocabulary-bundle.json*", (route) => route.abort());
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await expect(page.locator("#accountUserView")).toBeVisible();
+
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "sense-vocab-cloud-sync-v1:user-1",
+      JSON.stringify({ revision: 12, dirty: true }),
+    );
+    window.dispatchEvent(new Event("online"));
+  });
+  await page.waitForTimeout(900);
+
+  const result = await page.evaluate(() => {
+    const snapshot = window.SenseVocabApp.getState();
+    const active = snapshot.bookStates[snapshot.activeBookId];
+    return {
+      persistenceSafe: window.SenseVocabApp.isPersistenceSafe(),
+      introducedWords: active.introducedWords,
+      progress: active.progress,
+      saves: window.__fakeCloud.saves.length,
+      remoteWords: window.__fakeCloud.remote.state.introducedWords,
+    };
+  });
+  expect(result.persistenceSafe).toBe(false);
+  expect(result.introducedWords).toContain("abandon");
+  expect(result.progress["abandon:v-1"]?.status).toBe("review");
+  expect(result.saves).toBe(0);
+  expect(result.remoteWords).toContain("abandon");
+  await expect(page.locator("#planButton")).toBeDisabled();
+  await expect(page.locator("#wordListButton")).toBeDisabled();
+});
+
+test("clean visibility and online events do not rewrite the cloud snapshot", async ({ page }) => {
+  const remoteState = makeState(44);
+  remoteState.introducedWords = ["abandon"];
+  await installFakeCloud(page, {
+    found: true,
+    revision: 20,
+    state: remoteState,
+    updatedAt: "2026-07-30T12:00:00.000Z",
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await expect(page.locator("#accountUserView")).toBeVisible();
+
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await page.locator("#syncNowButton").click();
+  await page.waitForTimeout(900);
+
+  expect(await page.evaluate(() => window.__fakeCloud.saves.length)).toBe(0);
+});
+
+test("a blocked destructive shrink restores remote records before retrying", async ({ page }) => {
+  const remoteState = makeState(52);
+  remoteState.introducedWords = ["abandon"];
+  remoteState.progress["abandon:v-1"] = {
+    status: "review",
+    misses: 0,
+    firstSeen: "2026-07-30",
+    lastSeen: "2026-07-30",
+  };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 30,
+    state: remoteState,
+    updatedAt: "2026-07-30T12:00:00.000Z",
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await expect(page.locator("#accountUserView")).toBeVisible();
+
+  await page.evaluate(() => {
+    window.__fakeCloud.blockNextDestructiveWrite = true;
+    const next = window.SenseVocabApp.getState();
+    next.introducedWords = [];
+    next.progress = {};
+    next.bookStates[next.activeBookId].introducedWords = [];
+    next.bookStates[next.activeBookId].progress = {};
+    window.SenseVocabApp.replaceActiveState(next, {
+      stampSync: false,
+      notify: true,
+    });
+  });
+
+  await expect.poll(async () => page.evaluate(() => {
+    return window.SenseVocabApp.getState().introducedWords.includes("abandon");
+  })).toBe(true);
+  const result = await page.evaluate(() => ({
+    progress: window.SenseVocabApp.getState().progress,
+    remoteWords: window.__fakeCloud.remote.state.introducedWords,
+    forceFlags: window.__fakeCloud.saves.map((save) => save.force),
+  }));
+  expect(result.progress["abandon:v-1"]?.status).toBe("review");
+  expect(result.remoteWords).toContain("abandon");
+  expect(result.forceFlags.every((force) => force === false)).toBe(true);
 });

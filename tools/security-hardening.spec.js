@@ -48,6 +48,36 @@ test("database writes are revision-gated and feedback uploads are row-bound", as
   expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
 });
 
+test("account snapshots block undeclared record loss and keep recovery copies private", async () => {
+  const migration = await read(
+    "supabase/migrations/202607310001_state_recovery_guard.sql",
+  );
+  expect(migration).toContain(
+    "create table if not exists public.user_state_snapshots",
+  );
+  expect(migration).toContain("public.state_has_undeclared_deletions");
+  expect(migration).toContain("'destructiveBlocked', true");
+  expect(migration).toContain("'before_blocked_write'");
+  expect(migration).toContain(
+    "revoke all on table public.user_state_snapshots from public, anon, authenticated",
+  );
+  expect(migration).toContain(
+    "grant execute on function public.save_user_state(jsonb, bigint, boolean)",
+  );
+  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+});
+
+test("admin analytics aggregate book states without rewriting learning data", async () => {
+  const migration = await read(
+    "supabase/migrations/20260731015734_book_aware_admin_analytics.sql",
+  );
+  expect(migration).toContain("public.internal_user_activity_rows");
+  expect(migration).toContain("public.internal_user_book_stats");
+  expect(migration).toContain("meta.extra_state -> 'bookStates'");
+  expect(migration).not.toContain("update public.user_state_meta");
+  expect(migration).not.toContain("delete from public.sense_progress");
+});
+
 test("feedback is created before files are uploaded and then attached atomically", async () => {
   const client = await read("tools/cloud-client-entry.js");
   const createIndex = client.indexOf('client.rpc("submit_feedback"');

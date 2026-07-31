@@ -983,13 +983,30 @@
     if (!cloud || !currentUser || pendingConflict || pendingConsentSession) {
       return null;
     }
+    if (typeof app.isPersistenceSafe === "function" && !app.isPersistenceSafe()) {
+      setSyncStatus("完整词库尚未载入，云端同步已暂停", "pending");
+      return {
+        ok: false,
+        skipped: true,
+        reason: "vocabulary_not_authoritative",
+      };
+    }
     if (syncPromise) return syncPromise;
 
     clearTimeout(syncTimer);
-    setSyncStatus("正在同步……", "pending");
     const syncUserId = currentUser.id;
+    const syncMeta = loadSyncMeta(syncUserId);
     let expectedRevision = cloudRevision;
     const replaceRemote = Boolean(options.replace);
+    if (!replaceRemote && !syncMeta.dirty) {
+      setSyncStatus("云端记录已同步");
+      return {
+        ok: true,
+        skipped: true,
+        revision: cloudRevision,
+      };
+    }
+    setSyncStatus("正在同步……", "pending");
 
     syncPromise = (async () => {
       try {
@@ -1063,7 +1080,11 @@
           }
 
           const snapshotSignature = app.stateSignature(snapshot);
-          const result = await cloud.saveState(snapshot, expectedRevision);
+          const result = await cloud.saveState(
+            snapshot,
+            expectedRevision,
+            replaceRemote,
+          );
           if (result?.conflict) {
             const remote = normalizedRemote(await cloud.loadState());
             if (replaceRemote) {
@@ -1089,6 +1110,43 @@
             });
             setSyncStatus("已合并另一台设备的更新，正在重试……", "pending");
             continue;
+          }
+
+          if (result?.destructiveBlocked) {
+            const remote = normalizedRemote(await cloud.loadState());
+            if (!remote.found) {
+              throw new Error("云端拒绝了异常缩减，但未能重新读取原记录。");
+            }
+            const merged = app.mergeStates(app.getState(), remote.state);
+            const needsUpload = app.stateSignature(merged) !==
+              app.stateSignature(remote.state);
+            app.replaceActiveState(merged, {
+              notify: false,
+              stampSync: false,
+              preserveNavigation: true,
+            });
+            cloudRevision = remote.revision;
+            expectedRevision = remote.revision;
+            saveSyncMeta(syncUserId, {
+              revision: remote.revision,
+              dirty: needsUpload,
+              lastSyncedAt: needsUpload
+                ? loadSyncMeta(syncUserId).lastSyncedAt
+                : new Date().toISOString(),
+            });
+            setSyncStatus(
+              needsUpload
+                ? "已拦截异常缩减并恢复云端记录，新增内容等待上传"
+                : "已拦截异常缩减并恢复云端记录",
+              needsUpload ? "pending" : "",
+            );
+            setMessage("检测到本机记录异常缩减，已自动恢复云端学习数据。");
+            if (needsUpload) scheduleSync();
+            return {
+              ...result,
+              restoredRemote: true,
+              revision: remote.revision,
+            };
           }
 
           cloudRevision = Number(result?.revision) || cloudRevision || 1;

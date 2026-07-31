@@ -203,6 +203,7 @@ let vocabularyDetailsReady = false;
 let vocabularyDetailsPromise = null;
 let vocabularyDetailsError = null;
 let vocabularyBlockingIntent = null;
+let vocabularyCatalogAuthoritative = false;
 let bookById = new Map();
 let poolWordById = new Map();
 let activeStorageKey = STORAGE_KEY;
@@ -515,6 +516,11 @@ function wordsForBook(bookId) {
   }).filter((entry) => entry?.senses?.length);
 }
 
+function isPersistenceSafe() {
+  return vocabularyCatalogAuthoritative &&
+    document.documentElement.dataset.vocabularyReady !== "fallback";
+}
+
 function activateBookScope(bookId, options = {}) {
   const targetId = bookById.has(bookId) ? bookId : DEFAULT_BOOK_ID;
   rootState.activeBookId = targetId;
@@ -524,7 +530,7 @@ function activateBookScope(bookId, options = {}) {
   state = rootState.bookStates[targetId];
   words = wordsForBook(targetId);
   wordById = new Map(words.map((word) => [word.id, word]));
-  if (options.sanitize !== false) {
+  if (options.sanitize !== false && isPersistenceSafe()) {
     sanitizeState();
     ensureTodaySession();
   }
@@ -771,6 +777,7 @@ function loadState(storageKey = activeStorageKey) {
 
 function saveState(options = {}) {
   if (tutorialRuntime?.active) return;
+  if (!isPersistenceSafe()) return;
   const notify = options.notify !== false;
   try {
     rootState.bookStates[activeBookId()] = state;
@@ -1286,6 +1293,7 @@ function cloudStateSnapshot() {
     return cloneSerializable(tutorialRuntime.realRootState);
   }
   const snapshot = cloneSerializable(rootState);
+  if (!isPersistenceSafe()) return snapshot;
   const activeScope = {
     ...cloneSerializable(state),
     view: "home",
@@ -1335,6 +1343,7 @@ window.SenseVocabApp = {
   getGuestState: () => loadState(STORAGE_KEY),
   getAccountState: (userId) => loadState(accountStorageKey(userId)),
   hasLearningData: stateHasLearningData,
+  isPersistenceSafe,
   stateSignature,
   mergeStates: (localState, remoteState) => {
     if (!window.SenseVocabSync) return cloneSerializable(remoteState);
@@ -4017,6 +4026,7 @@ async function initializeApp() {
 
   try {
     vocabularyIndex = await loadVocabularyIndex();
+    vocabularyCatalogAuthoritative = true;
     installVocabularyData(vocabularyIndex);
   } catch (indexError) {
     console.warn(indexError);
@@ -4029,11 +4039,13 @@ async function initializeApp() {
         ...data,
         bundleVersion: "legacy",
       };
+      vocabularyCatalogAuthoritative = true;
       installVocabularyData(data, { details: true });
       vocabularyDetailsReady = true;
       document.documentElement.dataset.vocabularyReady = "true";
     } catch (bundleError) {
       console.warn(bundleError);
+      vocabularyCatalogAuthoritative = false;
       vocabularyIndex = {
         defaultBookId: DEFAULT_BOOK_ID,
         bundleVersion: "fallback",
@@ -4071,8 +4083,13 @@ async function initializeApp() {
   }
   render();
   scheduleMidnightRefresh();
-  planButton.disabled = false;
-  wordListButton.disabled = false;
+  const persistenceSafe = isPersistenceSafe();
+  planButton.disabled = !persistenceSafe;
+  wordListButton.disabled = !persistenceSafe;
+  if (!persistenceSafe) {
+    startStudyButton.disabled = true;
+    advanceStudyButton.disabled = true;
+  }
   moreButton.disabled = false;
   homePanel.setAttribute("aria-busy", "false");
   document.documentElement.dataset.appReady = "true";
