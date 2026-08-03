@@ -2098,6 +2098,10 @@ button {
   background: rgba(244, 244, 240, 0.56);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
+  /* Masks intercept clicks outside the spotlight, replacing the old
+     blockNonTutorialClick JS capture listener. The overlay container stays
+     pointer-events: none so only the masks are hit targets. */
+  pointer-events: auto;
 }
 
 .tutorial-spotlight {
@@ -2108,6 +2112,8 @@ button {
     0 0 0 4px rgba(255, 255, 255, 0.88),
     0 10px 32px rgba(15, 118, 110, 0.28);
   animation: tutorialPulse 1.8s ease-in-out infinite;
+  /* Clicks pass through the spotlight hole to the target underneath. */
+  pointer-events: none;
 }
 
 .tutorial-exclusion-mask {
@@ -2134,6 +2140,7 @@ button {
   font-weight: 720;
   line-height: 1.5;
   text-align: center;
+  pointer-events: none;
 }
 
 .tutorial-tip.is-centered {

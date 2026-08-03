@@ -7,11 +7,7 @@ const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const ROOT_DIR = path.resolve(__dirname, "..");
 
-test.use({
-  launchOptions: {
-    executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  },
-  viewport: { width: 1280, height: 900 },
+test.use({viewport: { width: 1280, height: 900 },
 });
 
 async function openFreshApp(page) {
