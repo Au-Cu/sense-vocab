@@ -18,6 +18,10 @@ sense-vocab-web.zip
 *.tmp
 __pycache__/
 *.py[cod]
+
+# Claude
+CLAUDE.md
+
 .env
 .env.*
 !.env.example

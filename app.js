@@ -7,7 +7,6 @@ const DEFAULT_BOOK_ID = "kaoyan";
 const VOCABULARY_INDEX_URL = "./data/vocabulary-index.json";
 const VOCABULARY_BUNDLE_URL = "./data/vocabulary-bundle.json";
 const VOCABULARY_CACHE_PREFIX = "sense-vocab-vocabulary-";
-const FAST_CALENDAR_LAST_VERSION = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TUTORIAL_STORAGE_PREFIX = "sense-vocab-tutorial-complete-v1:";
 const TUTORIAL_WAIT_MS = Number.isFinite(window.__SENSE_VOCAB_TUTORIAL_WAIT_MS__)
@@ -30,26 +29,6 @@ const TUTORIAL_NON_INTERACTIVE_STEPS = new Set([
   "examples-wait",
   "her-wait",
 ]);
-const LOCAL_HISTORY_NEW_COUNT_CORRECTIONS = Object.freeze({
-  "2026-07-18": 40,
-  "2026-07-19": 0,
-  "2026-07-21": 40,
-  "2026-07-22": 40,
-  "2026-07-23": 40,
-  "2026-07-24": 40,
-});
-const LOCAL_JULY_NEW_HISTORY = Object.freeze({
-  "2026-07-16": 0,
-  "2026-07-17": 79,
-  "2026-07-18": 40,
-  "2026-07-19": 40,
-  "2026-07-20": 40,
-  "2026-07-21": 40,
-  "2026-07-22": 40,
-  "2026-07-23": 40,
-  "2026-07-24": 40,
-  "2026-07-25": 0,
-});
 const SENSE_STATUS = Object.freeze({
   NEW: "new",
   REINFORCE: "reinforce",
@@ -991,67 +970,7 @@ function addActivityWord(kind, wordId, date = currentActivityDate()) {
   }
 }
 
-function migrateFastLegacyCalendar() {
-  const shouldShift = state.dataVersion >= 3 &&
-    state.dataVersion <= FAST_CALENDAR_LAST_VERSION &&
-    Object.keys(state.activityLog).length > 0;
-  if (!shouldShift) return;
-
-  Object.entries(LOCAL_HISTORY_NEW_COUNT_CORRECTIONS).forEach(([date, count]) => {
-    const activity = state.activityLog[date];
-    if (!activity) return;
-    activity.newCount = count;
-    activity.newCountLocked = true;
-    activity.baseCompleted = count > 0;
-    activity.overtime = false;
-    if (count > 0 && !Number.isFinite(activity.target)) {
-      activity.target = state.plan?.dailyTarget ?? count;
-    }
-  });
-
-  state.activityLog = Object.fromEntries(
-    Object.entries(state.activityLog).map(([date, activity]) => {
-      return [addDays(date, -1), activity];
-    }),
-  );
-
-  Object.values(state.progress).forEach((progress) => {
-    if (!progress || typeof progress !== "object") return;
-    if (!progress.firstSeenActual && /^\d{4}-\d{2}-\d{2}$/.test(progress.firstSeen ?? "")) {
-      progress.firstSeenActual = addDays(progress.firstSeen, -1);
-    }
-    if (!progress.lastSeenActual && /^\d{4}-\d{2}-\d{2}$/.test(progress.lastSeen ?? "")) {
-      progress.lastSeenActual = addDays(progress.lastSeen, -1);
-    }
-    if (!progress.masteredOnActual && /^\d{4}-\d{2}-\d{2}$/.test(progress.masteredOn ?? "")) {
-      progress.masteredOnActual = addDays(progress.masteredOn, -1);
-    }
-  });
-}
-
-function reconcileLocalJulyHistory() {
-  if (
-    state.dataVersion >= DATA_VERSION ||
-    state.introducedWords.length < 359
-  ) {
-    return false;
-  }
-
-  Object.entries(LOCAL_JULY_NEW_HISTORY).forEach(([date, count]) => {
-    const activity = normalizeActivityEntry(state.activityLog[date]);
-    activity.newCount = count;
-    activity.newCountLocked = true;
-    activity.target = 40;
-    activity.baseCompleted = count >= 40;
-    activity.overtime = count > 40;
-    state.activityLog[date] = activity;
-  });
-  return true;
-}
-
 function migrateLegacyActivity() {
-  migrateFastLegacyCalendar();
-  const reconciledLocalHistory = reconcileLocalJulyHistory();
   Object.entries(state.activityLog).forEach(([date, entry]) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       delete state.activityLog[date];
@@ -1061,7 +980,7 @@ function migrateLegacyActivity() {
   });
 
   if (
-    (reconciledLocalHistory || state.dataVersion >= DATA_VERSION) &&
+    state.dataVersion >= DATA_VERSION &&
     Object.keys(state.activityLog).length > 0
   ) {
     state.dataVersion = DATA_VERSION;

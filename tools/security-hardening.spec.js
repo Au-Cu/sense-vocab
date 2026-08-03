@@ -251,14 +251,16 @@ test("announcement images are bounded, admin-only to upload, and publicly render
     read("account.js"),
   ]);
 
-  expect(migration).toContain("'announcement-images'");
-  expect(migration).toContain("true,\n  5242880");
-  expect(migration).toContain("cardinality(image_paths) between 0 and 4");
-  expect(migration).toContain("public.can_upload_announcement_image(name)");
-  expect(migration).toContain("and public.is_admin()");
-  expect(migration).toContain("Invalid or missing announcement image");
-  expect(migration).toContain("'imagePaths', image_paths");
-  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+  // Normalize CRLF → LF so assertions work on both Windows and Unix checkouts
+  const migrationLF = migration.replace(/\r\n/g, "\n");
+  expect(migrationLF).toContain("'announcement-images'");
+  expect(migrationLF).toContain("true,\n  5242880");
+  expect(migrationLF).toContain("cardinality(image_paths) between 0 and 4");
+  expect(migrationLF).toContain("public.can_upload_announcement_image(name)");
+  expect(migrationLF).toContain("and public.is_admin()");
+  expect(migrationLF).toContain("Invalid or missing announcement image");
+  expect(migrationLF).toContain("'imagePaths', image_paths");
+  expect(migrationLF).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
 
   expect(client).toContain('const ANNOUNCEMENT_BUCKET = "announcement-images"');
   expect(client).toContain(".getPublicUrl(normalizedPath)");
