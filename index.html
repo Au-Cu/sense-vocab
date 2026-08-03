@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260730-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260803-5" />
   </head>
   <body>
     <main class="app-shell">
@@ -113,6 +113,16 @@
             placeholder="搜索单词"
           />
         </label>
+        <div class="word-list-filter-bar">
+          <span class="word-list-filter-label">熟悉程度</span>
+          <div class="word-list-filters" id="wordListFilters" role="group" aria-label="按熟悉程度筛选">
+            <button class="word-list-filter is-active" type="button" data-status="all" aria-pressed="true">全部</button>
+            <button class="word-list-filter" type="button" data-status="new" aria-pressed="false">待新学</button>
+            <button class="word-list-filter" type="button" data-status="reinforce" aria-pressed="false">待强化</button>
+            <button class="word-list-filter" type="button" data-status="review" aria-pressed="false">待复习</button>
+            <button class="word-list-filter" type="button" data-status="mastered" aria-pressed="false">已掌握</button>
+          </div>
+        </div>
         <p class="word-list-empty" id="wordListEmpty" hidden>没有找到匹配的单词</p>
         <div class="word-list" id="wordList"></div>
         <div class="actions">
@@ -185,6 +195,36 @@
             <button class="primary-button" id="nextButton" type="button">完成</button>
           </div>
         </div>
+      </section>
+
+      <section class="study-panel confusion-panel" id="confusionPanel" aria-live="polite" hidden>
+        <header class="confusion-header">
+          <button class="secondary-button confusion-back-button" id="confusionBackButton" type="button">
+            返回
+          </button>
+          <div class="confusion-heading">
+            <p>易混词</p>
+            <h1 id="confusionTitle">当前单词</h1>
+          </div>
+          <span class="confusion-count" id="confusionCount">1 个词</span>
+        </header>
+        <div class="confusion-globe-stage" id="confusionGlobeStage"></div>
+        <section class="confusion-builder" aria-label="添加易混词">
+          <label class="word-search-field confusion-search-field" for="confusionSearchInput">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m20 20-3.5-3.5"></path>
+            </svg>
+            <input
+              id="confusionSearchInput"
+              type="search"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="搜索并添加单词"
+            />
+          </label>
+          <div class="confusion-search-results" id="confusionSearchResults"></div>
+        </section>
       </section>
 
       <div class="modal-backdrop" id="planDialog" hidden>
@@ -653,6 +693,7 @@
         <div class="tutorial-mask" data-mask="bottom"></div>
         <div class="tutorial-mask" data-mask="left"></div>
         <div class="tutorial-spotlight" id="tutorialSpotlight"></div>
+        <div class="tutorial-exclusion-mask" id="tutorialExclusionMask" hidden></div>
         <p class="tutorial-tip" id="tutorialTip"></p>
       </div>
 
@@ -666,9 +707,9 @@
     </main>
 
     <script src="./cloud-config.js?v=20260728-2"></script>
-    <script src="./cloud-client.js?v=20260730-1"></script>
+    <script src="./cloud-client.js?v=20260803-5"></script>
     <script src="./sync-state.js?v=20260728-3"></script>
-    <script src="./app.js?v=20260730-3"></script>
-    <script src="./account.js?v=20260730-2"></script>
+    <script src="./app.js?v=20260803-4"></script>
+    <script src="./account.js?v=20260803-5"></script>
   </body>
 </html>

@@ -477,7 +477,9 @@
     announcementImageInput.disabled = announcementBusy;
     publishAnnouncementButton.disabled = announcementBusy;
     announcementList
-      .querySelectorAll(".announcement-delete-button")
+      .querySelectorAll(
+        ".announcement-pin-button, .announcement-delete-button",
+      )
       .forEach((button) => {
         button.disabled = announcementBusy;
       });
@@ -662,6 +664,7 @@
     items.forEach((announcement) => {
       const item = document.createElement("article");
       item.className = "announcement-item";
+      item.classList.toggle("is-pinned", Boolean(announcement.isPinned));
       const heading = document.createElement("div");
       heading.className = "announcement-item-heading";
       const title = document.createElement("strong");
@@ -670,6 +673,16 @@
       time.textContent = formatDate(announcement.publishedAt, true);
       const actions = document.createElement("div");
       actions.className = "announcement-item-actions";
+      const pinButton = document.createElement("button");
+      pinButton.className = "announcement-pin-button";
+      pinButton.type = "button";
+      pinButton.textContent = announcement.isPinned ? "取消置顶" : "置顶";
+      pinButton.dataset.announcementId = announcement.id;
+      pinButton.dataset.announcementPinned = String(Boolean(announcement.isPinned));
+      pinButton.setAttribute(
+        "aria-label",
+        `${announcement.isPinned ? "取消置顶" : "置顶"}公告：${announcement.title}`,
+      );
       const deleteButton = document.createElement("button");
       deleteButton.className = "announcement-delete-button";
       deleteButton.type = "button";
@@ -677,7 +690,7 @@
       deleteButton.dataset.announcementId = announcement.id;
       deleteButton.dataset.announcementTitle = announcement.title;
       deleteButton.setAttribute("aria-label", `删除公告：${announcement.title}`);
-      actions.append(time, deleteButton);
+      actions.append(time, pinButton, deleteButton);
       heading.append(title, actions);
       const body = document.createElement("p");
       body.textContent = announcement.body;
@@ -906,6 +919,21 @@
     }
   }
 
+  async function setAnnouncementPinned(announcementId, pinned) {
+    announcementBusy = true;
+    updateAnnouncementFormState();
+    try {
+      await cloud.setAnnouncementPinned(announcementId, pinned);
+      await loadAnnouncements();
+      setMessage(pinned ? "公告已置顶。" : "公告已取消置顶。");
+    } catch (error) {
+      setMessage(error?.message ?? "公告置顶状态更新失败。", "error");
+    } finally {
+      announcementBusy = false;
+      updateAnnouncementFormState();
+    }
+  }
+
   async function initialize() {
     if (!cloud) {
       showLogin();
@@ -938,11 +966,20 @@
     await addAnnouncementFiles(announcementImageInput.files);
   });
   announcementList.addEventListener("click", async (event) => {
-    const button = event.target.closest(".announcement-delete-button");
-    if (!button || announcementBusy) return;
+    if (announcementBusy) return;
+    const pinButton = event.target.closest(".announcement-pin-button");
+    if (pinButton) {
+      await setAnnouncementPinned(
+        pinButton.dataset.announcementId,
+        pinButton.dataset.announcementPinned !== "true",
+      );
+      return;
+    }
+    const deleteButton = event.target.closest(".announcement-delete-button");
+    if (!deleteButton) return;
     await deleteAnnouncement(
-      button.dataset.announcementId,
-      button.dataset.announcementTitle,
+      deleteButton.dataset.announcementId,
+      deleteButton.dataset.announcementTitle,
     );
   });
   setMembershipButton.addEventListener("click", updateSelectedMembership);

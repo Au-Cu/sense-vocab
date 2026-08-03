@@ -73,6 +73,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await expect(page.locator("#reviewCount")).toHaveText("0/0");
   await expect(page.locator("#newCount")).toHaveText("0/4");
   await expect(page.locator("#learningCount")).toHaveText("0/0");
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 1");
 
   // Day 1: one sense is familiar immediately; the other three need reinforcement.
   await reveal(page);
@@ -81,6 +82,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await completeAndAdvance(page);
   await expect(page.locator("#cardMode")).toHaveText("强化");
   await expect(page.locator("#wordText")).toHaveText("act");
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 1");
   await expect(page.locator("#newCount")).toHaveText("4/4");
   await expect(page.locator("#learningCount")).toHaveText("0/3");
 
@@ -107,6 +109,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await setStudyDate(page, "2026-07-17T12:00:00Z");
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#cardMode")).toHaveText("复习");
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 1");
   await reveal(page);
   await expect(page.locator('[data-key="act:v-1"]')).toHaveClass(/is-mastered/);
   await expect(page.locator(".sense-item").last()).toHaveAttribute("data-key", "act:v-1");
@@ -837,15 +840,26 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   await expect(page.locator("#wordListPanel")).toBeVisible();
   const firstRow = page.locator(".word-list-item").first();
   await expect(firstRow.locator(".word-list-name")).toHaveText("act");
-  await expect(firstRow.locator(".is-duration")).toHaveText("学习3天");
+  await expect(firstRow.locator(".is-duration")).toHaveText("学习2天");
   await expect(firstRow.locator(".is-reinforce")).toHaveText("待强化");
   await expect(firstRow.locator(".is-review")).toHaveText("待复习");
   await expect(firstRow.locator(".is-mastered")).toHaveCount(0);
+  await page.locator('.word-list-filter[data-status="review"]').click();
+  await expect(page.locator(".word-list-item")).toHaveCount(1);
+  await expect(page.locator(".word-list-name")).toHaveText("act");
+  await page.locator("#wordSortSelect").selectOption("time-desc");
+  await expect(page.locator(".word-list-item")).toHaveCount(1);
+  await expect(page.locator(".word-list-name")).toHaveText("act");
+  await page.locator('.word-list-filter[data-status="all"]').click();
   await page.screenshot({ path: "test-results/word-list-desktop.png", fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => {
     return document.documentElement.scrollWidth <= document.documentElement.clientWidth;
   })).toBe(true);
+  expect(await page.locator(".word-list-filter-bar").evaluate((bar) => {
+    const filters = bar.querySelector(".word-list-filters");
+    return Math.abs(bar.getBoundingClientRect().width - filters.getBoundingClientRect().width);
+  })).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "test-results/word-list-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1100, height: 850 });
 
@@ -856,8 +870,9 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   await expect(page.locator("#cardMode")).toHaveText("单词卡片");
   await expect(page.locator("#wordText")).toHaveText("action");
   await expect(page.locator("#senseArea")).toBeVisible();
-  await expect(page.locator("#nextButton")).toHaveText("返回单词列表");
-  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toBeHidden();
+  await expect(page.locator("#exitStudyButton")).toHaveText("返回");
+  await page.locator("#exitStudyButton").click();
   await expect(page.locator("#wordListPanel")).toBeVisible();
 });
 
@@ -949,7 +964,7 @@ test("completed activity counts survive relearning and repair previously shorten
   expect(saved.activityLog["2026-07-24"].newWords).toContain("act");
 });
 
-test("pending-new words ignore stale dates from an earlier learning cycle", async ({ page }) => {
+test("pending-new words use their recorded encounter span even after relearning", async ({ page }) => {
   await page.addInitScript((storageKey) => {
     const NativeDate = Date;
     class TestDate extends NativeDate {
@@ -1011,12 +1026,122 @@ test("pending-new words ignore stale dates from an earlier learning cycle", asyn
   await page.locator("#wordSearchInput").fill("act");
 
   const row = page.locator('.word-list-item[data-word-id="act"]');
-  await expect(row.locator(".is-duration")).toHaveText("学习0天");
+  await expect(row.locator(".is-duration")).toHaveText("学习1天");
   await expect(row.locator(".is-new")).toHaveText("待新学");
 
   const saved = await readState(page);
   expect(saved.activityLog["2026-07-24"].newWords).toContain("act");
   expect(saved.progress["act:v-1"].firstSeenActual).toBe("2026-07-24");
+});
+
+test("introduced words with explicit pending-new senses rejoin tomorrow's new queue", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 9,
+      view: "home",
+      plan: {
+        dailyTarget: 1,
+        startedOn: "2026-08-01",
+        createdOn: "2026-08-01",
+        updatedOn: "2026-08-01",
+      },
+      introducedWords: ["act"],
+      progress: {
+        "act:v-1": { status: "new", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18" },
+        "act:v-2": { status: "mastered", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18", masteredOnActual: "2026-07-18", masteredOn: "2026-07-18" },
+        "act:n-3": { status: "mastered", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18", masteredOnActual: "2026-07-18", masteredOn: "2026-07-18" },
+        "act:n-4": { status: "mastered", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18", masteredOnActual: "2026-07-18", masteredOn: "2026-07-18" },
+      },
+      activityLog: {},
+      studyWindows: [],
+      learningDayCounter: 1,
+      wordListSort: "mastery",
+    }));
+  }, STORAGE_KEY);
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await expect(page.locator("#todayNewCount")).toHaveText("1");
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("act");
+  await page.locator("#revealButton").click();
+  await expect(page.locator(".sense-item")).toHaveCount(4);
+  await expect(page.locator('.sense-item[data-key="act:v-1"]')).toBeEnabled();
+  await expect(page.locator(".sense-item.is-mastered")).toHaveCount(3);
+  await page.locator('.sense-item[data-key="act:v-1"]').click();
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await page.locator("#nextButton").click();
+
+  const saved = await readState(page);
+  expect(saved.introducedWords.filter((wordId) => wordId === "act")).toHaveLength(1);
+  expect(saved.activityLog["2026-08-03"]?.newWords ?? []).not.toContain("act");
+});
+
+test("reinforcement cards keep inactive mastered senses visible before and after marking", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-test-date", "2026-08-03");
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 10,
+      view: "study",
+      plan: {
+        dailyTarget: 1,
+        startedOn: "2026-08-01",
+        createdOn: "2026-08-01",
+        updatedOn: "2026-08-01",
+      },
+      introducedWords: ["act"],
+      progress: {
+        "act:v-1": { status: "reinforce", dueDate: "2026-08-03", dueLearningDay: 2 },
+        "act:v-2": { status: "mastered", masteredOn: "2026-08-02" },
+        "act:n-3": { status: "mastered", masteredOn: "2026-08-02" },
+        "act:n-4": { status: "mastered", masteredOn: "2026-08-02" },
+      },
+      activityLog: {},
+      studyWindows: [],
+      learningDayCounter: 2,
+      wordListSort: "mastery",
+      session: {
+        date: "2026-08-03",
+        queue: [{
+          type: "reinforcement",
+          wordId: "act",
+          activeSenseKeys: ["act:v-1"],
+          senseKeys: ["act:v-1"],
+          confirmedKeys: [],
+          expandedMasteredKeys: [],
+        }],
+        currentIndex: 0,
+        revealed: true,
+        cardPhase: "select",
+        baseNewAdded: true,
+        baseCompleted: false,
+        activeBatchType: "planned",
+        activePlanDate: "2026-08-03",
+        reinforcementAdded: true,
+        reinforcedKeys: [],
+        activeLearningDay: 2,
+        baseLearningDay: 2,
+        snapshotTimingVersion: 2,
+      },
+    }));
+  }, STORAGE_KEY);
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator(".sense-item")).toHaveCount(4);
+  await expect(page.locator(".sense-item.is-mastered")).toHaveCount(3);
+  await expect(page.locator('.sense-item[data-key="act:v-1"]')).toBeEnabled();
+
+  await page.locator('.sense-item[data-key="act:v-1"]').click();
+  await page.waitForTimeout(500);
+  await page.locator("#nextButton").click();
+  await expect(page.locator(".sense-item")).toHaveCount(4);
+  await expect(page.locator(".sense-item.is-mastered, .sense-item.is-confirmed")).toHaveCount(4);
 });
 
 test("legacy calendar dates migrate back once and preserve corrected July totals", async ({ page }) => {
@@ -1123,7 +1248,7 @@ test("legacy calendar dates migrate back once and preserve corrected July totals
   await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
 
   let saved = await readState(page);
-  expect(saved.dataVersion).toBe(9);
+  expect(saved.dataVersion).toBe(10);
   expect(saved.activityLog["2026-07-17"].newCount).toBe(40);
   expect(saved.activityLog["2026-07-18"].newCount).toBe(0);
   expect(saved.activityLog["2026-07-20"].newCount).toBe(40);

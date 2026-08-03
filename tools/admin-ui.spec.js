@@ -20,6 +20,7 @@ async function installAdminCloud(page, isAdmin = true) {
       replies: [],
       announcements: [],
       announcementImageCounts: [],
+      pinnedAnnouncements: [],
       deletedAnnouncements: [],
       membershipUpdates: [],
       extendAllCalls: 0,
@@ -125,10 +126,13 @@ async function installAdminCloud(page, isAdmin = true) {
       },
       async loadAdminAnnouncements() {
         return {
-          items: window.__fakeAdmin.announcements.map((item) => ({
-            ...item,
-            publishedAt: "2026-07-29T10:00:00.000Z",
-          })),
+          items: window.__fakeAdmin.announcements
+            .slice()
+            .sort((left, right) => Number(Boolean(right.isPinned)) - Number(Boolean(left.isPinned)))
+            .map((item) => ({
+              ...item,
+              publishedAt: "2026-07-29T10:00:00.000Z",
+            })),
         };
       },
       async publishAnnouncement(title, body, files = []) {
@@ -137,12 +141,21 @@ async function installAdminCloud(page, isAdmin = true) {
           id: "11111111-1111-4111-8111-111111111111",
           title,
           body,
+          isPinned: false,
           images: Array.from(files).map((file, index) => ({
             path: `announcement-${index + 1}.jpg`,
             url: URL.createObjectURL(file),
           })),
         });
         return { ok: true };
+      },
+      async setAnnouncementPinned(id, pinned) {
+        window.__fakeAdmin.pinnedAnnouncements.push({ id, pinned });
+        const announcement = window.__fakeAdmin.announcements.find(
+          (item) => item.id === id,
+        );
+        if (announcement) announcement.isPinned = pinned;
+        return { ok: true, id, isPinned: pinned, changed: true };
       },
       async deleteAnnouncement(id) {
         window.__fakeAdmin.deletedAnnouncements.push(id);
@@ -187,8 +200,9 @@ test("a feedback word link opens the matching read-only word card", async ({ pag
   await expect(page.locator("#wordText")).toHaveText("shepherd");
   await expect(page.locator("#cardMode")).toHaveText("单词卡片");
   await expect(page.locator("#senseArea")).toBeVisible();
-  await expect(page.locator("#nextButton")).toHaveText("返回首页");
-  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toBeHidden();
+  await expect(page.locator("#exitStudyButton")).toHaveText("返回");
+  await page.locator("#exitStudyButton").click();
   await expect(page.locator("#homePanel")).toBeVisible();
   await expect(page).not.toHaveURL(/word=shepherd/);
 });
@@ -258,6 +272,15 @@ test("the admin dashboard renders metrics, user details, and feedback", async ({
   await expect.poll(async () => {
     return page.evaluate(() => window.__fakeAdmin.announcementImageCounts);
   }).toEqual([1]);
+  await page.locator(".announcement-pin-button").click();
+  await expect(page.locator(".announcement-item")).toHaveClass(/is-pinned/);
+  await expect(page.locator(".announcement-pin-button")).toHaveText("取消置顶");
+  await expect.poll(async () => {
+    return page.evaluate(() => window.__fakeAdmin.pinnedAnnouncements);
+  }).toEqual([{
+    id: "11111111-1111-4111-8111-111111111111",
+    pinned: true,
+  }]);
   page.once("dialog", (dialog) => dialog.accept());
   await page.locator(".announcement-delete-button").click();
   await expect(page.locator(".announcement-item")).toHaveCount(0);

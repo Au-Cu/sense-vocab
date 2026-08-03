@@ -378,6 +378,52 @@ test("account membership, invite code, and two-way notifications are visible wit
   await expect(page.locator("#notificationBadge")).toBeHidden();
 });
 
+test("announcements show only title and date until explicitly expanded", async ({ page }) => {
+  await installFakeCloud(page);
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+  await page.evaluate(() => {
+    window.__fakeCloud.notifications = {
+      authenticated: false,
+      unreadCount: 0,
+      items: [{
+        id: "22222222-2222-4222-8222-222222222222",
+        kind: "announcement",
+        type: "announcement",
+        title: "置顶公告",
+        body: "这段正文默认不应显示。",
+        isPinned: true,
+        images: [{
+          path: "22222222-2222-4222-8222-222222222222/1.jpg",
+          url: "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2Q==",
+        }],
+        createdAt: "2026-08-03T10:00:00.000Z",
+        readAt: null,
+      }],
+    };
+  });
+
+  await page.locator("#moreButton").click();
+  await page.locator("#notificationsButton").click();
+  const announcement = page.locator(".notification-item");
+  await expect(announcement.locator(".notification-item-heading")).toContainText(
+    "置顶公告",
+  );
+  await expect(announcement.locator(".notification-item-content")).toBeHidden();
+  await expect(announcement.locator(".notification-expand-button")).toHaveText("展开");
+
+  await announcement.locator(".notification-expand-button").click();
+  await expect(announcement.locator(".notification-item-content")).toBeVisible();
+  await expect(announcement).toContainText("这段正文默认不应显示。");
+  await expect(announcement.locator(".notification-images img")).toHaveCount(1);
+  await expect(announcement.locator(".notification-expand-button")).toHaveText("收起");
+
+  await announcement.locator(".notification-expand-button").click();
+  await expect(announcement.locator(".notification-item-content")).toBeHidden();
+});
+
 test("an expired signed-in membership disables study while guest mode stays available", async ({ page }) => {
   await installFakeCloud(page);
   await page.goto(APP_URL);

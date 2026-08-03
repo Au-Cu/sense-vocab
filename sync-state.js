@@ -19,6 +19,7 @@
     "progress",
     "activityLog",
     "studyWindows",
+    "confusionLinks",
   ];
   let fallbackDeviceId = null;
 
@@ -100,6 +101,7 @@
         progress: {},
         activityLog: {},
         studyWindows: {},
+        confusionLinks: {},
       },
     };
   }
@@ -177,6 +179,11 @@
     Object.keys(windowsById(state.studyWindows)).forEach((id) => {
       if (!metadata.records.studyWindows[id]) {
         metadata.records.studyWindows[id] = normalizeRecord(null);
+      }
+    });
+    Object.keys(state.confusionLinks ?? {}).forEach((key) => {
+      if (!metadata.records.confusionLinks[key]) {
+        metadata.records.confusionLinks[key] = normalizeRecord(null);
       }
     });
 
@@ -346,6 +353,14 @@
       metadata,
       previousMetadata,
       "studyWindows",
+      writer,
+    );
+    stampMap(
+      nextState.confusionLinks ?? {},
+      previous.confusionLinks ?? {},
+      metadata,
+      previousMetadata,
+      "confusionLinks",
       writer,
     );
     return nextState;
@@ -704,6 +719,16 @@
         ) || String(leftWindow.id).localeCompare(String(rightWindow.id));
       })
       .slice(-500);
+
+    const confusionLinks = mergeMap(
+      "confusionLinks",
+      left.confusionLinks ?? {},
+      right.confusionLinks ?? {},
+      leftMetadata.records.confusionLinks,
+      rightMetadata.records.confusionLinks,
+    );
+    result.confusionLinks = confusionLinks.values;
+    metadata.records.confusionLinks = confusionLinks.records;
 
     result.dataVersion = Math.max(
       Number(left.dataVersion) || 0,

@@ -573,6 +573,11 @@ button {
   padding: 16px;
 }
 
+.announcement-item.is-pinned {
+  border-color: rgba(15, 118, 110, 0.52);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .announcement-item-heading {
   display: flex;
   align-items: baseline;
@@ -592,21 +597,35 @@ button {
   gap: 12px;
 }
 
+.announcement-pin-button,
 .announcement-delete-button {
   min-width: 52px;
-  border: 1px solid rgba(180, 35, 24, 0.32);
   border-radius: 5px;
   background: #fff;
-  color: var(--danger);
   padding: 6px 10px;
   font-weight: 700;
   cursor: pointer;
+}
+
+.announcement-pin-button {
+  border: 1px solid rgba(15, 118, 110, 0.32);
+  color: var(--accent-dark);
+}
+
+.announcement-delete-button {
+  border: 1px solid rgba(180, 35, 24, 0.32);
+  color: var(--danger);
+}
+
+.announcement-pin-button:hover {
+  background: #f2faf8;
 }
 
 .announcement-delete-button:hover {
   background: #fff4f2;
 }
 
+.announcement-pin-button:disabled,
 .announcement-delete-button:disabled {
   cursor: wait;
   opacity: 0.55;

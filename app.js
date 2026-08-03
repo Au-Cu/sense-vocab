@@ -1,7 +1,7 @@
 const DEFAULT_DAILY_TARGET = 20;
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const ACCOUNT_STORAGE_PREFIX = `${STORAGE_KEY}:account:`;
-const DATA_VERSION = 9;
+const DATA_VERSION = 10;
 const ROOT_STATE_VERSION = 2;
 const DEFAULT_BOOK_ID = "kaoyan";
 const VOCABULARY_INDEX_URL = "./data/vocabulary-index.json";
@@ -123,9 +123,18 @@ const replayTutorialButton = document.querySelector("#replayTutorialButton");
 const wordListPanel = document.querySelector("#wordListPanel");
 const wordSortSelect = document.querySelector("#wordSortSelect");
 const wordSearchInput = document.querySelector("#wordSearchInput");
+const wordListFilters = document.querySelector("#wordListFilters");
 const wordListEmpty = document.querySelector("#wordListEmpty");
 const wordList = document.querySelector("#wordList");
 const wordListBackButton = document.querySelector("#wordListBackButton");
+
+const confusionPanel = document.querySelector("#confusionPanel");
+const confusionBackButton = document.querySelector("#confusionBackButton");
+const confusionTitle = document.querySelector("#confusionTitle");
+const confusionCount = document.querySelector("#confusionCount");
+const confusionGlobeStage = document.querySelector("#confusionGlobeStage");
+const confusionSearchInput = document.querySelector("#confusionSearchInput");
+const confusionSearchResults = document.querySelector("#confusionSearchResults");
 
 const wordText = document.querySelector("#wordText");
 const revealButton = document.querySelector("#revealButton");
@@ -135,6 +144,7 @@ const morphologyPanel = document.querySelector("#morphologyPanel");
 const senseHint = document.querySelector("#senseHint");
 const senseList = document.querySelector("#senseList");
 const nextButton = document.querySelector("#nextButton");
+const studyPrimaryActions = studyPanel.querySelector(".study-primary-actions");
 const studyFeedbackButton = document.querySelector("#studyFeedbackButton");
 const exitStudyButton = document.querySelector("#exitStudyButton");
 const resetButton = document.querySelector("#resetButton");
@@ -184,6 +194,7 @@ const cancelReturnButton = document.querySelector("#cancelReturnButton");
 const tutorialOverlay = document.querySelector("#tutorialOverlay");
 const tutorialSpotlight = document.querySelector("#tutorialSpotlight");
 const tutorialTip = document.querySelector("#tutorialTip");
+const tutorialExclusionMask = document.querySelector("#tutorialExclusionMask");
 const tutorialMasks = Object.fromEntries(
   [...tutorialOverlay.querySelectorAll("[data-mask]")].map((mask) => [
     mask.dataset.mask,
@@ -217,6 +228,7 @@ let wordFitFrame = null;
 let pendingCrossDayReturn = false;
 let midnightRefreshTimer = null;
 let wordListQuery = "";
+let wordListFilter = "all";
 let heatmapPositionedBookId = null;
 let tutorialRuntime = null;
 let tutorialAutoScheduledScope = null;
@@ -225,7 +237,13 @@ let tutorialAutoWaitScope = null;
 let tutorialAutoWaitStartedAt = 0;
 let tutorialOverlayFrameId = null;
 let tutorialOverlayGeometryKey = "";
+let tutorialLiveTarget = null;
 let initialGuestHadLearningData = null;
+let confusionRuntime = null;
+let confusionGlobe = null;
+let confusionGlobeSignature = null;
+let confusionTransitioning = false;
+let confusionGlobeLoader = null;
 let membershipAccess = {
   loggedIn: false,
   active: true,
@@ -614,12 +632,40 @@ function activeSenseKeysForCard(card) {
 }
 
 function refreshCardDisplayKeys(card) {
-  const displayKeys = [
-    ...activeSenseKeysForCard(card),
-    ...masteredSenseKeysForWord(card.wordId),
-  ];
+  const word = wordById.get(card.wordId);
+  const displayKeys = word
+    ? allSenseKeysForWord(word)
+    : [
+        ...activeSenseKeysForCard(card),
+        ...masteredSenseKeysForWord(card.wordId),
+      ];
   card.senseKeys = sortSenseKeysByImportance([...new Set(displayKeys)]);
   return card;
+}
+
+function confusionPairKey(leftWordId, rightWordId) {
+  return [leftWordId, rightWordId]
+    .map((wordId) => encodeURIComponent(wordId))
+    .sort()
+    .join("|");
+}
+
+function normalizeConfusionLinks(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const links = {};
+  Object.values(value).forEach((entry) => {
+    const left = String(entry?.left ?? "");
+    const right = String(entry?.right ?? "");
+    if (!left || !right || left === right) return;
+    links[confusionPairKey(left, right)] = {
+      left,
+      right,
+      createdAt: typeof entry?.createdAt === "string"
+        ? entry.createdAt
+        : null,
+    };
+  });
+  return links;
 }
 
 function createEncounterSnapshot(wordId) {
@@ -664,6 +710,7 @@ function createState() {
     progress: {},
     activityLog: {},
     studyWindows: [],
+    confusionLinks: {},
     learningDayCounter: 0,
     wordListSort: "mastery",
     wordBrowse: null,
@@ -702,6 +749,7 @@ function normalizeLoadedState(saved) {
       ? saved.activityLog
       : {},
     studyWindows: Array.isArray(saved.studyWindows) ? saved.studyWindows : [],
+    confusionLinks: normalizeConfusionLinks(saved.confusionLinks),
     learningDayCounter: Number.isFinite(saved.learningDayCounter)
       ? saved.learningDayCounter
       : 0,
@@ -742,6 +790,7 @@ function normalizeRootState(saved) {
       "progress",
       "activityLog",
       "studyWindows",
+      "confusionLinks",
       "learningDayCounter",
       "wordListSort",
       "wordBrowse",
@@ -1196,6 +1245,11 @@ function sanitizeState() {
       }))
       .slice(-500)
     : [];
+  state.confusionLinks = Object.fromEntries(
+    Object.entries(normalizeConfusionLinks(state.confusionLinks)).filter(([, link]) => {
+      return wordById.has(link.left) && wordById.has(link.right);
+    }),
+  );
   migrateLegacyActivity();
   state.wordListSort = [
     "mastery",
@@ -1253,6 +1307,7 @@ function stateHasLearningData(candidate) {
     (Array.isArray(candidate.introducedWords) && candidate.introducedWords.length) ||
     Object.keys(candidate.progress ?? {}).length ||
     Object.keys(candidate.activityLog ?? {}).length ||
+    Object.keys(candidate.confusionLinks ?? {}).length ||
     (Array.isArray(candidate.studyWindows) && candidate.studyWindows.length),
   );
 }
@@ -1592,10 +1647,22 @@ function plannedCompletionDate(dailyTarget = state.plan?.dailyTarget ?? DEFAULT_
 
 function nextNewWords(limit) {
   if (limit <= 0) return [];
+  const introduced = new Set(state.introducedWords);
+  const pendingIntroduced = words.filter((word) => {
+    return introduced.has(word.id) && pendingNewSenseKeysForWord(word).length > 0;
+  });
+  const untouched = words.filter((word) => !introduced.has(word.id));
+  return [...pendingIntroduced, ...untouched].slice(0, limit);
+}
 
-  return words
-    .filter((word) => !state.introducedWords.includes(word.id))
-    .slice(0, limit);
+function pendingNewSenseKeysForWord(word) {
+  return allSenseKeysForWord(word).filter((key) => {
+    return state.progress[key]?.status === SENSE_STATUS.NEW;
+  });
+}
+
+function availableNewWordCount() {
+  return nextNewWords(Number.MAX_SAFE_INTEGER).length;
 }
 
 function sortSenseKeysByImportance(keys) {
@@ -1621,7 +1688,12 @@ function buildReviewCards(reviewLearningDay = upcomingLearningDay()) {
 
 function buildNewCards(limit, type) {
   return nextNewWords(limit)
-    .map((word) => createStudyCard(type, word.id, allSenseKeysForWord(word)))
+    .map((word) => {
+      const keys = state.introducedWords.includes(word.id)
+        ? pendingNewSenseKeysForWord(word)
+        : allSenseKeysForWord(word);
+      return createStudyCard(type, word.id, keys);
+    })
     .filter((card) => card.senseKeys.length > 0);
 }
 
@@ -1846,7 +1918,7 @@ function todayNewWordCount() {
   }
 
   if (!session.baseNewAdded && !session.baseCompleted) {
-    return Math.min(state.plan.dailyTarget, remainingWordCount());
+    return Math.min(state.plan.dailyTarget, availableNewWordCount());
   }
 
   return 0;
@@ -1927,6 +1999,27 @@ function currentQueueCounts() {
   return counts;
 }
 
+function currentStageWordProgress() {
+  const session = ensureTodaySession();
+  if (session.queue.length === 0) return { current: 0, total: 0 };
+
+  const currentIndex = Math.min(
+    Math.max(0, session.currentIndex),
+    session.queue.length - 1,
+  );
+  const category = cardProgressCategory(session.queue[currentIndex]);
+  if (!category) return { current: 0, total: 0 };
+
+  const stageIndexes = session.queue
+    .map((card, index) => cardProgressCategory(card) === category ? index : -1)
+    .filter((index) => index >= 0);
+  const stageIndex = stageIndexes.indexOf(currentIndex);
+  return {
+    current: stageIndex >= 0 ? stageIndex + 1 : 0,
+    total: stageIndexes.length,
+  };
+}
+
 function studyButtonState() {
   if (!membershipAllowsStudy()) {
     return { label: "会员已到期", disabled: true };
@@ -1936,7 +2029,7 @@ function studyButtonState() {
   }
 
   const session = ensureTodaySession();
-  const hasRemaining = remainingWordCount() > 0;
+  const hasRemaining = availableNewWordCount() > 0;
   const hasDueReviews = dueReviewKeys().length > 0;
 
   if (hasUnfinishedQueue()) {
@@ -1958,7 +2051,7 @@ function studyButtonState() {
 }
 
 function canStartAdvanceStudy() {
-  if (!membershipAllowsStudy() || !hasPlan() || remainingWordCount() === 0) {
+  if (!membershipAllowsStudy() || !hasPlan() || availableNewWordCount() === 0) {
     return false;
   }
   const session = ensureTodaySession();
@@ -1969,12 +2062,14 @@ function render() {
   if (!state) return;
 
   ensureTodaySession();
-  renderHome();
-  renderStudy();
-  if (state.view === "word-list") renderWordList();
   homePanel.hidden = state.view !== "home";
   studyPanel.hidden = state.view !== "study";
   wordListPanel.hidden = state.view !== "word-list";
+  confusionPanel.hidden = state.view !== "confusion";
+  renderHome();
+  renderStudy();
+  if (state.view === "word-list") renderWordList();
+  if (state.view === "confusion") renderConfusionPanel();
 }
 
 function fitWordText() {
@@ -2168,28 +2263,37 @@ function renderHeatmap() {
 
 function wordLearningInfo(word) {
   const introduced = state.introducedWords.includes(word.id);
-  if (!introduced) {
-    return {
-      firstLearned: null,
-      firstOrder: -1,
-      mastered: false,
-      masteredOn: null,
-      duration: 0,
-    };
-  }
-
   const keys = allSenseKeysForWord(word);
-  const seenDates = keys
-    .map((key) => state.progress[key]?.firstSeenActual ?? state.progress[key]?.firstSeen)
-    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ""))
-    .sort();
-  let firstLearned = seenDates[0] ?? null;
-  if (!firstLearned) {
-    firstLearned = Object.entries(state.activityLog)
-      .filter(([, activity]) => activity.newWords.includes(word.id))
-      .map(([date]) => date)
-      .sort()[0] ?? state.plan?.startedOn ?? currentDate();
-  }
+  const isDate = (date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? "");
+  const actualProgressDates = keys.flatMap((key) => {
+    const progress = state.progress[key];
+    return [
+      progress?.firstSeenActual,
+      progress?.lastSeenActual,
+      progress?.masteredOnActual,
+    ].filter(isDate);
+  });
+  const legacyProgressDates = keys.flatMap((key) => {
+    const progress = state.progress[key];
+    return [progress?.firstSeen, progress?.lastSeen, progress?.masteredOn]
+      .filter(isDate);
+  });
+  const activityDates = Object.entries(state.activityLog)
+    .filter(([, activity]) => {
+      return activity?.newWords?.includes(word.id) ||
+        activity?.reviewWords?.includes(word.id);
+    })
+    .map(([date]) => date)
+    .filter(isDate);
+  const encounterDates = [
+    ...actualProgressDates,
+    ...activityDates,
+    ...(actualProgressDates.length || activityDates.length
+      ? []
+      : legacyProgressDates),
+  ].sort();
+  const firstLearned = encounterDates[0] ?? null;
+  const lastLearned = encounterDates.at(-1) ?? null;
 
   const masteredDates = keys.map((key) => {
     const progress = state.progress[key];
@@ -2200,12 +2304,15 @@ function wordLearningInfo(word) {
   const mastered = keys.length > 0 && masteredDates.every(Boolean);
   const masteredOn = mastered ? masteredDates.sort().at(-1) : null;
   const duration = firstLearned
-    ? daysBetween(firstLearned, masteredOn ?? currentDate()) + 1
-    : -1;
+    ? daysBetween(firstLearned, masteredOn ?? lastLearned ?? firstLearned) + 1
+    : 0;
+  const introducedOrder = state.introducedWords.indexOf(word.id);
 
   return {
     firstLearned,
-    firstOrder: state.introducedWords.indexOf(word.id),
+    lastLearned,
+    firstOrder: introducedOrder >= 0 ? introducedOrder : Number.MAX_SAFE_INTEGER,
+    introduced,
     mastered,
     masteredOn,
     duration,
@@ -2240,6 +2347,10 @@ function wordStatusBadges(word) {
 function sortedWordsForList() {
   const query = wordListQuery.trim().toLocaleLowerCase("en");
   const items = words
+    .filter((word) => {
+      return wordListFilter === "all" ||
+        wordStatusBadges(word).some(({ type }) => type === wordListFilter);
+    })
     .filter((word) => !query || word.word.toLocaleLowerCase("en").includes(query))
     .map((word) => ({ word, info: wordLearningInfo(word) }));
   const alpha = (left, right) => left.word.word.localeCompare(
@@ -2280,6 +2391,11 @@ function renderWordList() {
   if (wordListBookName) wordListBookName.textContent = bookDisplayName();
   wordSortSelect.value = state.wordListSort;
   wordSearchInput.value = wordListQuery;
+  [...wordListFilters.querySelectorAll(".word-list-filter")].forEach((button) => {
+    const active = button.dataset.status === wordListFilter;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
   wordList.replaceChildren();
   const fragment = document.createDocumentFragment();
   const items = sortedWordsForList();
@@ -2324,6 +2440,8 @@ function renderStudy() {
     studyProgressRow.hidden = false;
     queueProgress.hidden = browsing;
     resetButton.hidden = true;
+    nextButton.hidden = browsing;
+    studyPrimaryActions.classList.toggle("is-word-browse", browsing);
     reviewCount.textContent = "0/0";
     newCount.textContent = "0/0";
     learningCount.textContent = "0/0";
@@ -2348,6 +2466,7 @@ function renderStudy() {
   }
   const word = currentWord();
   const counts = currentQueueCounts();
+  const stageWordProgress = currentStageWordProgress();
   const finished = !card;
   const phase = historyViewing
     ? "examples"
@@ -2359,33 +2478,25 @@ function renderStudy() {
   studyProgressRow.hidden = false;
   queueProgress.hidden = browsing;
   resetButton.hidden = browsing;
+  nextButton.hidden = browsing;
+  studyPrimaryActions.classList.toggle("is-word-browse", browsing);
   reviewCount.textContent = `${counts.review.completed}/${counts.review.total}`;
   newCount.textContent = `${counts.new.completed}/${counts.new.total}`;
   learningCount.textContent =
     `${counts.reinforcement.completed}/${counts.reinforcement.total}`;
   queueProgress.textContent = browsing
     ? "单词卡片"
-    : finished
-    ? `${session.queue.length} / ${session.queue.length}`
-    : `${session.currentIndex + 1} / ${session.queue.length}`;
+    : `${stageWordProgress.current} / ${stageWordProgress.total}`;
 
   senseList.replaceChildren();
   morphologyPanel.replaceChildren();
   senseArea.hidden = browsing ? false : !session.revealed || finished;
-  nextButton.disabled = browsing ? false : !session.revealed || finished;
-  nextButton.textContent = browsing
-    ? requestedWordId()
-      ? wordDeepLinkReturnView === "study"
-        ? "回到当前词"
-        : wordDeepLinkReturnView === "word-list"
-          ? "返回单词列表"
-          : "返回首页"
-      : "返回单词列表"
-    : isHistoryView()
+  nextButton.disabled = browsing || !session.revealed || finished;
+  nextButton.textContent = !browsing && isHistoryView()
     ? "回到当前词"
     : phase === "examples" ? "下一词" : "完成";
   audioButton.hidden = finished;
-  revealButton.disabled = finished || browsing;
+  revealButton.disabled = finished;
   revealButton.classList.toggle("is-finished", finished);
   revealButton.classList.toggle("is-mastered", fullyMastered);
 
@@ -2417,7 +2528,12 @@ function renderStudy() {
     : card.type === "extra"
       ? "增量"
       : "新学";
-  revealButton.setAttribute("aria-label", `显示 ${word.word} 的义项`);
+  revealButton.setAttribute(
+    "aria-label",
+    !browsing && !session.revealed
+      ? `显示 ${word.word} 的义项`
+      : `打开 ${word.word} 的易混词球体`,
+  );
   if (!browsing) maybeAutoPlayCurrentWord();
 
   if (!session.revealed && !browsing) return;
@@ -2741,6 +2857,7 @@ function openWordList() {
   state.wordBrowse = null;
   state.view = "word-list";
   wordListQuery = "";
+  wordListFilter = "all";
   saveState();
   render();
 }
@@ -2750,6 +2867,523 @@ function closeWordList() {
   state.view = "home";
   saveState();
   render();
+}
+
+function confusionRelatedIds(rootWordId) {
+  const related = new Set();
+  Object.values(state.confusionLinks ?? {}).forEach((link) => {
+    if (link.left === rootWordId && wordById.has(link.right)) {
+      related.add(link.right);
+    } else if (link.right === rootWordId && wordById.has(link.left)) {
+      related.add(link.left);
+    }
+  });
+  return related;
+}
+
+function confusionWords(rootWordId) {
+  const related = confusionRelatedIds(rootWordId);
+  const root = wordById.get(rootWordId);
+  if (!root) return [];
+  return [
+    root,
+    ...words.filter((word) => related.has(word.id) && word.id !== rootWordId),
+  ];
+}
+
+function setConfusionRelation(rootWordId, relatedWordId, enabled) {
+  if (
+    !wordById.has(rootWordId) ||
+    !wordById.has(relatedWordId) ||
+    rootWordId === relatedWordId
+  ) return;
+  const key = confusionPairKey(rootWordId, relatedWordId);
+  if (enabled) {
+    state.confusionLinks[key] = {
+      left: rootWordId,
+      right: relatedWordId,
+      createdAt: new Date().toISOString(),
+    };
+  } else {
+    delete state.confusionLinks[key];
+  }
+  saveState();
+  renderConfusionPanel();
+}
+
+function renderConfusionSearchResults() {
+  confusionSearchResults.replaceChildren();
+  const rootWordId = confusionRuntime?.rootWordId;
+  if (!rootWordId) return;
+  const related = confusionRelatedIds(rootWordId);
+  const query = confusionSearchInput.value.trim().toLocaleLowerCase("en");
+  const candidates = (query
+    ? words.filter((word) => {
+        return word.id !== rootWordId &&
+          word.word.toLocaleLowerCase("en").includes(query);
+      })
+    : words.filter((word) => related.has(word.id)))
+    .slice(0, 10);
+
+  const fragment = document.createDocumentFragment();
+  candidates.forEach((word) => {
+    const row = document.createElement("div");
+    row.className = "confusion-search-result";
+
+    const name = document.createElement("strong");
+    name.textContent = word.word;
+
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "confusion-search-action";
+    action.dataset.wordId = word.id;
+    action.dataset.action = related.has(word.id) ? "remove" : "add";
+    action.classList.toggle("is-remove", related.has(word.id));
+    action.textContent = related.has(word.id) ? "移除" : "添加";
+    row.append(name, action);
+    fragment.append(row);
+  });
+  confusionSearchResults.append(fragment);
+}
+
+function renderConfusionPanel() {
+  if (state.view !== "confusion") return;
+  const rootWordId = confusionRuntime?.rootWordId;
+  const rootWord = wordById.get(rootWordId);
+  if (!rootWord) {
+    closeConfusionGlobe({ back: true, animate: false });
+    return;
+  }
+
+  const globeWords = confusionWords(rootWordId);
+  const globeSignature = JSON.stringify({
+    rootWordId,
+    focusWordId: confusionRuntime.focusWordId ?? rootWordId,
+    wordIds: globeWords.map((word) => word.id),
+  });
+  confusionTitle.textContent = rootWord.word;
+  confusionCount.textContent = `${globeWords.length} 个词`;
+  const shouldRebuildGlobe = !confusionGlobe || (
+    !confusionTransitioning && confusionGlobeSignature !== globeSignature
+  );
+  if (shouldRebuildGlobe) {
+    confusionGlobe?.destroy();
+    confusionGlobe = null;
+    confusionGlobeSignature = null;
+    if (window.SenseVocabConfusionGlobe) {
+      confusionGlobe = window.SenseVocabConfusionGlobe.create({
+        container: confusionGlobeStage,
+        words: globeWords,
+        currentWordId: confusionRuntime.focusWordId ?? rootWordId,
+        presentationProgress: confusionTransitioning ? 0 : 1,
+        onSelect: ({ wordId }) => closeConfusionGlobe({ wordId }),
+      });
+      confusionGlobeSignature = globeSignature;
+    } else {
+      confusionGlobeStage.replaceChildren();
+    }
+  }
+  renderConfusionSearchResults();
+}
+
+function ensureConfusionGlobeReady() {
+  if (window.SenseVocabConfusionGlobe) return Promise.resolve(true);
+  if (confusionGlobeLoader) return confusionGlobeLoader;
+  confusionGlobeLoader = new Promise((resolve) => {
+    const script = document.createElement("script");
+    script.src = "./confusion-globe.js?v=20260803-4";
+    script.async = true;
+    script.addEventListener("load", () => {
+      resolve(Boolean(window.SenseVocabConfusionGlobe));
+    }, { once: true });
+    script.addEventListener("error", () => resolve(false), { once: true });
+    document.head.append(script);
+  }).finally(() => {
+    if (!window.SenseVocabConfusionGlobe) confusionGlobeLoader = null;
+  });
+  return confusionGlobeLoader;
+}
+
+function nextAnimationFrame() {
+  return new Promise((resolve) => window.requestAnimationFrame(resolve));
+}
+
+function confusionSphereRect() {
+  const visualRect = confusionGlobe?.visualRect?.();
+  if (
+    visualRect &&
+    visualRect.width > 0 &&
+    visualRect.height > 0
+  ) return visualRect;
+  const stageRect = confusionGlobeStage.getBoundingClientRect();
+  const size = Math.max(120, Math.min(stageRect.width, stageRect.height) * 0.82);
+  return {
+    left: stageRect.left + (stageRect.width - size) / 2,
+    top: stageRect.top + (stageRect.height - size) / 2,
+    width: size,
+    height: size,
+  };
+}
+
+function confusionWordFontSize(wordId) {
+  const element = confusionGlobe?.wordElement?.(wordId);
+  return Number.parseFloat(element ? window.getComputedStyle(element).fontSize : "") || 14;
+}
+
+function createWordGlobeTransition(rect, text, fontSize) {
+  const transition = document.createElement("div");
+  transition.className = "word-globe-transition";
+  const word = document.createElement("span");
+  word.textContent = text;
+  transition.append(word);
+  Object.assign(transition.style, {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    fontSize: `${fontSize}px`,
+  });
+  document.body.append(transition);
+  return transition;
+}
+
+function reducedMotionPreferred() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function transitionAnimationFinished(animation) {
+  return animation.finished.catch(() => undefined);
+}
+
+function interpolateNumber(from, to, progress) {
+  return from + (to - from) * progress;
+}
+
+function smoothProgress(value) {
+  const progress = Math.min(1, Math.max(0, value));
+  return progress * progress * (3 - 2 * progress);
+}
+
+function animateFrameProgress(duration, onFrame) {
+  if (duration <= 0) {
+    onFrame(1);
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => {
+    let startedAt = null;
+    const tick = (now) => {
+      if (startedAt == null) startedAt = now;
+      const progress = Math.min(1, (now - startedAt) / duration);
+      onFrame(progress);
+      if (progress >= 1) {
+        window.requestAnimationFrame(resolve);
+      } else {
+        window.requestAnimationFrame(tick);
+      }
+    };
+    window.requestAnimationFrame(tick);
+  });
+}
+
+async function animateCardIntoGlobe(
+  transition,
+  fromRect,
+  toRect,
+  { fromFontSize, toFontSize, globe },
+) {
+  if (reducedMotionPreferred()) {
+    globe?.setPresentationProgress?.(1);
+    return;
+  }
+  const duration = 900;
+  await animateFrameProgress(duration, (overall) => {
+    const morphLinear = Math.min(1, overall / 0.58);
+    const morph = 1 - Math.pow(1 - morphLinear, 3);
+    const depth = smoothProgress((overall - 0.36) / 0.5);
+    // Keep the flat sphere fully visible until WebGL has reached the browser's
+    // compositor. A rendered canvas frame can still arrive one beat later on
+    // mobile WebViews, so fading here would expose the page background.
+    const handoffFloor = 1;
+    const flatOpacity = handoffFloor + (1 - handoffFloor) * (
+      1 - smoothProgress((overall - 0.6) / 0.4)
+    );
+    const width = interpolateNumber(fromRect.width, toRect.width, morph);
+    const height = interpolateNumber(fromRect.height, toRect.height, morph);
+    const radius = interpolateNumber(8, Math.min(width, height) / 2, morph);
+    const background = [
+      interpolateNumber(251, 231, morph),
+      interpolateNumber(250, 240, morph),
+      interpolateNumber(247, 237, morph),
+    ].map(Math.round);
+    Object.assign(transition.style, {
+      left: `${interpolateNumber(fromRect.left, toRect.left, morph)}px`,
+      top: `${interpolateNumber(fromRect.top, toRect.top, morph)}px`,
+      width: `${width}px`,
+      height: `${height}px`,
+      borderRadius: `${radius}px`,
+      borderColor: `rgba(${Math.round(interpolateNumber(221, 15, morph))}, ${Math.round(interpolateNumber(218, 118, morph))}, ${Math.round(interpolateNumber(207, 110, morph))}, ${interpolateNumber(1, 0.24, morph)})`,
+      background: `rgb(${background.join(", ")})`,
+      boxShadow: `0 ${interpolateNumber(18, 10, morph)}px ${interpolateNumber(48, 30, morph)}px rgba(38, 47, 51, ${interpolateNumber(0.13, 0.1, morph)})`,
+      fontSize: `${interpolateNumber(fromFontSize, toFontSize, morph)}px`,
+      opacity: String(flatOpacity),
+    });
+    globe?.setPresentationProgress?.(depth);
+  });
+}
+
+async function fadeOutWordGlobeTransition(transition, duration = 180) {
+  if (reducedMotionPreferred()) {
+    transition.style.opacity = "0";
+    return;
+  }
+  const fromOpacity = Number.parseFloat(
+    window.getComputedStyle(transition).opacity,
+  ) || 0;
+  await animateFrameProgress(duration, (progress) => {
+    transition.style.opacity = String(
+      interpolateNumber(fromOpacity, 0, smoothProgress(progress)),
+    );
+  });
+}
+
+async function waitForGlobeCompositorCommit() {
+  await nextAnimationFrame();
+  await new Promise((resolve) => window.setTimeout(resolve, 96));
+  await nextAnimationFrame();
+}
+
+async function flattenGlobeIntoTransition(
+  transition,
+  rect,
+  { fontSize, globe },
+) {
+  Object.assign(transition.style, {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    borderRadius: "50%",
+    borderColor: "rgba(15, 118, 110, 0.24)",
+    background: "rgba(231, 240, 237, 1)",
+    boxShadow: "0 10px 30px rgba(38, 47, 51, 0.1)",
+    fontSize: `${fontSize}px`,
+    opacity: "0",
+  });
+  if (reducedMotionPreferred()) {
+    globe?.setPresentationProgress?.(0);
+    Object.assign(transition.style, {
+      borderColor: "rgba(15, 118, 110, 0.24)",
+      background: "rgba(231, 240, 237, 1)",
+      opacity: "1",
+    });
+    return;
+  }
+
+  const duration = 360;
+  await animateFrameProgress(duration, (overall) => {
+    const circleOpacity = smoothProgress(overall / 0.55);
+    const globeProgress = 1 - smoothProgress((overall - 0.38) / 0.62);
+    transition.style.opacity = String(circleOpacity);
+    globe?.setPresentationProgress?.(globeProgress);
+  });
+  Object.assign(transition.style, {
+    borderColor: "rgba(15, 118, 110, 0.24)",
+    background: "rgba(231, 240, 237, 1)",
+    boxShadow: "0 10px 30px rgba(38, 47, 51, 0.1)",
+    opacity: "1",
+  });
+}
+
+async function animateFlatCircleIntoCard(
+  transition,
+  fromRect,
+  toRect,
+  { fromFontSize, toFontSize },
+) {
+  if (reducedMotionPreferred()) {
+    transition.remove();
+    return;
+  }
+  const animation = transition.animate(
+    [
+      {
+        left: `${fromRect.left}px`,
+        top: `${fromRect.top}px`,
+        width: `${fromRect.width}px`,
+        height: `${fromRect.height}px`,
+        borderRadius: "50%",
+        borderColor: "rgba(15, 118, 110, 0.24)",
+        background: "rgba(231, 240, 237, 1)",
+        boxShadow: "0 10px 30px rgba(38, 47, 51, 0.1)",
+        fontSize: `${fromFontSize}px`,
+      },
+      {
+        left: `${toRect.left}px`,
+        top: `${toRect.top}px`,
+        width: `${toRect.width}px`,
+        height: `${toRect.height}px`,
+        borderRadius: "8px",
+        borderColor: "rgba(221, 218, 207, 1)",
+        background: "rgba(251, 250, 247, 1)",
+        boxShadow: "0 18px 48px rgba(38, 47, 51, 0.13)",
+        fontSize: `${toFontSize}px`,
+      },
+    ],
+    {
+      duration: 560,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      fill: "forwards",
+    },
+  );
+  await transitionAnimationFinished(animation);
+  transition.remove();
+}
+
+function cloneNullable(value) {
+  return value == null ? null : cloneSerializable(value);
+}
+
+function confusionEntryForOpen(rootWordId, currentWordId) {
+  const inherited = state.wordBrowse?.confusionEntry;
+  if (
+    inherited?.rootWordId === rootWordId &&
+    wordById.has(inherited.entryWordId)
+  ) return cloneSerializable(inherited);
+  return {
+    rootWordId,
+    entryWordId: currentWordId,
+    entryWordBrowse: cloneNullable(state.wordBrowse),
+  };
+}
+
+async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) {
+  const globeReady = await ensureConfusionGlobeReady();
+  const currentWordId = currentWord()?.id;
+  const inheritedEntry = state.wordBrowse?.confusionEntry;
+  const returningFromRelatedCard =
+    (inheritedEntry?.rootWordId === rootWordId ||
+      state.wordBrowse?.confusionReturnRootId === rootWordId) &&
+    options.focusWordId === currentWordId;
+  if (
+    confusionTransitioning ||
+    tutorialRuntime?.active ||
+    state.view !== "study" ||
+    (currentWordId !== rootWordId && !returningFromRelatedCard) ||
+    !rootWordId ||
+    !wordById.has(rootWordId) ||
+    !globeReady
+  ) return;
+
+  const originWord = currentWord();
+  if (!originWord) return;
+  confusionTransitioning = true;
+  const sourceRect = revealButton.getBoundingClientRect();
+  const sourceFont = Number.parseFloat(window.getComputedStyle(wordText).fontSize) || 72;
+  const transition = createWordGlobeTransition(
+    sourceRect,
+    originWord.word,
+    sourceFont,
+  );
+  studyPanel.classList.add("is-transitioning");
+  const entry = confusionEntryForOpen(rootWordId, originWord.id);
+  confusionRuntime = {
+    rootWordId,
+    focusWordId: options.focusWordId ?? originWord.id,
+    entryWordId: entry.entryWordId,
+    entryWordBrowse: cloneNullable(entry.entryWordBrowse),
+  };
+  confusionSearchInput.value = "";
+  state.view = "confusion";
+  render();
+  confusionPanel.classList.add("is-transitioning");
+  await nextAnimationFrame();
+  const targetRect = confusionSphereRect();
+  const targetFont = confusionWordFontSize(confusionRuntime.focusWordId);
+  await animateCardIntoGlobe(transition, sourceRect, targetRect, {
+    fromFontSize: sourceFont,
+    toFontSize: targetFont,
+    globe: confusionGlobe,
+  });
+  confusionPanel.classList.remove("is-transitioning");
+  confusionGlobe?.setPresentationProgress?.(1);
+  if (confusionGlobe?.nextPaint) {
+    await confusionGlobe.nextPaint();
+  } else {
+    await nextAnimationFrame();
+  }
+  await waitForGlobeCompositorCommit();
+  await fadeOutWordGlobeTransition(transition, 220);
+  transition.remove();
+  studyPanel.classList.remove("is-transitioning");
+  confusionTransitioning = false;
+  renderConfusionPanel();
+}
+
+async function closeConfusionGlobe(options = {}) {
+  if (confusionTransitioning || !confusionRuntime) return;
+  const runtime = confusionRuntime;
+  const selectedWordId = options.back
+    ? runtime.entryWordId
+    : options.wordId ?? runtime.focusWordId ?? runtime.rootWordId;
+  const selectedWord = wordById.get(selectedWordId);
+  if (!selectedWord) return;
+
+  confusionTransitioning = true;
+  if (options.animate !== false) {
+    await confusionGlobe?.focusWord(selectedWordId);
+  }
+  const sourceRect = confusionSphereRect();
+  const sourceFont = confusionWordFontSize(selectedWordId);
+  const transition = createWordGlobeTransition(
+    sourceRect,
+    selectedWord.word,
+    sourceFont,
+  );
+  confusionGlobeStage.style.pointerEvents = "none";
+
+  if (options.animate !== false) {
+    await flattenGlobeIntoTransition(transition, sourceRect, {
+      fontSize: sourceFont,
+      globe: confusionGlobe,
+    });
+  }
+  confusionPanel.classList.add("is-transitioning");
+
+  if (options.back) {
+    state.wordBrowse = cloneNullable(runtime.entryWordBrowse);
+  } else {
+    state.wordBrowse = {
+      wordId: selectedWordId,
+      confusionEntry: {
+        rootWordId: runtime.rootWordId,
+        entryWordId: runtime.entryWordId,
+        entryWordBrowse: cloneNullable(runtime.entryWordBrowse),
+      },
+    };
+  }
+  state.view = "study";
+  confusionGlobe?.destroy();
+  confusionGlobe = null;
+  confusionGlobeSignature = null;
+  confusionRuntime = null;
+  render();
+  studyPanel.classList.add("is-transitioning");
+  await nextAnimationFrame();
+  await nextAnimationFrame();
+  const targetRect = revealButton.getBoundingClientRect();
+  const targetFont = Number.parseFloat(window.getComputedStyle(wordText).fontSize) || 72;
+  if (options.animate === false) {
+    transition.remove();
+  } else {
+    await animateFlatCircleIntoCard(transition, sourceRect, targetRect, {
+      fromFontSize: sourceFont,
+      toFontSize: targetFont,
+    });
+  }
+  confusionPanel.classList.remove("is-transitioning");
+  studyPanel.classList.remove("is-transitioning");
+  confusionGlobeStage.style.pointerEvents = "";
+  confusionTransitioning = false;
 }
 
 async function openWordCard(wordId) {
@@ -2865,6 +3499,16 @@ function revealSenses() {
   session.cardPhase = "select";
   saveState();
   render();
+}
+
+function handleWordSurfaceClick() {
+  if (!state || !currentCard()) return;
+  const session = ensureTodaySession();
+  if (!state.wordBrowse && !session.revealed) {
+    revealSenses();
+    return;
+  }
+  openConfusionGlobe(currentWord()?.id);
 }
 
 function stopWordAudio() {
@@ -3309,7 +3953,12 @@ function openPlanDialog() {
   planDialog.hidden = false;
 }
 
-function closePlanDialog() {
+function closePlanDialog(options = {}) {
+  if (
+    tutorialRuntime?.active &&
+    tutorialRuntime.step === "plan-form" &&
+    options.force !== true
+  ) return;
   planForm.hidden = false;
   planResetConfirm.hidden = true;
   planDialog.hidden = true;
@@ -3377,7 +4026,7 @@ function savePlan() {
     state.plan.updatedOn = date;
   }
 
-  closePlanDialog();
+  closePlanDialog({ force: true });
   saveState();
   render();
 }
@@ -3581,6 +4230,34 @@ function setTutorialMaskRect(mask, left, top, width, height) {
   mask.style.height = `${Math.max(0, height)}px`;
 }
 
+function setTutorialLiveTarget(target) {
+  if (tutorialLiveTarget === target) return;
+  tutorialLiveTarget?.classList.remove("is-tutorial-live-target");
+  tutorialLiveTarget = null;
+  if (target && !target.closest(".modal-backdrop")) {
+    tutorialLiveTarget = target;
+    tutorialLiveTarget.classList.add("is-tutorial-live-target");
+  }
+}
+
+function positionTutorialExclusionMask() {
+  const excludePlanCancel = tutorialRuntime?.step === "plan-form" &&
+    !planDialog.hidden &&
+    !cancelPlanButton.hidden &&
+    cancelPlanButton.getClientRects().length;
+  tutorialExclusionMask.hidden = !excludePlanCancel;
+  if (!excludePlanCancel) return;
+  const rect = cancelPlanButton.getBoundingClientRect();
+  const padding = 5;
+  Object.assign(tutorialExclusionMask.style, {
+    left: `${rect.left - padding}px`,
+    top: `${rect.top - padding}px`,
+    width: `${rect.width + padding * 2}px`,
+    height: `${rect.height + padding * 2}px`,
+    borderRadius: "10px",
+  });
+}
+
 function tutorialVisualRect(target) {
   const targets = tutorialRuntime?.step === "her-senses"
     ? [revealButton, senseArea]
@@ -3604,8 +4281,10 @@ function positionTutorialOverlay(options = {}) {
   if (tutorialTip.textContent !== hint) tutorialTip.textContent = hint;
   tutorialTip.hidden = !hint;
   const target = tutorialTargetForStep();
-  const viewportWidth = document.documentElement.clientWidth;
-  const viewportHeight = document.documentElement.clientHeight;
+  const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+  const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+  setTutorialLiveTarget(target);
+  positionTutorialExclusionMask();
 
   if (!target) {
     const geometryKey = `${tutorialRuntime.step}|none|${viewportWidth}|${viewportHeight}`;
@@ -3685,6 +4364,8 @@ function stopTutorialOverlayTracking() {
   }
   tutorialOverlayFrameId = null;
   tutorialOverlayGeometryKey = "";
+  setTutorialLiveTarget(null);
+  tutorialExclusionMask.hidden = true;
 }
 
 function startTutorialOverlayTracking() {
@@ -3718,6 +4399,10 @@ function setTutorialStep(step, options = {}) {
     tutorialRuntime.timer = null;
   }
   tutorialRuntime.step = step;
+  if (step === "plan-form" && planDialog.hidden) openPlanDialog();
+  if (step === "reset-marking" && resetDialog.hidden) openResetDialog();
+  if (step === "return-home" && returnDialog.hidden) openReturnDialog();
+  if (step === "account" && moreDialog.hidden) openMoreDialog();
   tutorialOverlay.hidden = false;
   scheduleTutorialOverlayPosition({ scroll: options.scroll !== false });
 }
@@ -3991,6 +4676,14 @@ function blockNonTutorialClick(event) {
   if (!tutorialRuntime?.active || tutorialDoneDialog.hidden === false) return;
   const target = tutorialTargetForStep();
   if (
+    tutorialRuntime.step === "plan-form" &&
+    event.target.closest("#cancelPlanButton, #resetAllPlanButton")
+  ) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    return;
+  }
+  if (
     target?.contains(event.target) &&
     !TUTORIAL_NON_INTERACTIVE_STEPS.has(tutorialRuntime.step)
   ) return;
@@ -4121,7 +4814,7 @@ planDialog.addEventListener("click", (event) => {
   if (event.target === planDialog) closePlanDialog();
 });
 
-revealButton.addEventListener("click", revealSenses);
+revealButton.addEventListener("click", handleWordSurfaceClick);
 audioButton.addEventListener("click", speakCurrentWord);
 studyFeedbackButton.addEventListener("click", () => {
   const context = currentFeedbackContext();
@@ -4131,16 +4824,43 @@ studyFeedbackButton.addEventListener("click", () => {
   }));
 });
 exitStudyButton.addEventListener("click", () => {
-  if (state.wordBrowse) {
+  const confusionRootWordId =
+    state.wordBrowse?.confusionEntry?.rootWordId ??
+    state.wordBrowse?.confusionReturnRootId;
+  if (confusionRootWordId) {
+    openConfusionGlobe(confusionRootWordId, {
+      focusWordId: state.wordBrowse.wordId,
+    });
+  } else if (state.wordBrowse) {
     closeWordCard();
   } else {
     openReturnDialog();
   }
 });
 
+confusionBackButton.addEventListener("click", () => {
+  closeConfusionGlobe({ back: true });
+});
+confusionSearchInput.addEventListener("input", renderConfusionSearchResults);
+confusionSearchResults.addEventListener("click", (event) => {
+  const action = event.target.closest(".confusion-search-action");
+  if (!action || !confusionRuntime) return;
+  setConfusionRelation(
+    confusionRuntime.rootWordId,
+    action.dataset.wordId,
+    action.dataset.action === "add",
+  );
+});
+
 wordListBackButton.addEventListener("click", closeWordList);
 wordSearchInput.addEventListener("input", () => {
   wordListQuery = wordSearchInput.value;
+  renderWordList();
+});
+wordListFilters.addEventListener("click", (event) => {
+  const button = event.target.closest(".word-list-filter");
+  if (!button || !wordListFilters.contains(button)) return;
+  wordListFilter = button.dataset.status;
   renderWordList();
 });
 wordSortSelect.addEventListener("change", () => {

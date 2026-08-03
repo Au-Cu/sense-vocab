@@ -24,6 +24,7 @@ for (const file of [
   "index.html",
   "styles.css",
   "sync-state.js",
+  "confusion-globe.js",
   "app.js",
   "account.js",
   "admin.html",

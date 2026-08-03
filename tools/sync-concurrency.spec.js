@@ -17,6 +17,7 @@ function baseState() {
     progress: {},
     activityLog: {},
     studyWindows: [],
+    confusionLinks: {},
     learningDayCounter: 0,
     wordListSort: "mastery",
     wordBrowse: null,
@@ -212,4 +213,36 @@ test("independent book changes merge into their own progress scopes", async ({ p
     .toEqual(["act"]);
   expect(result.bookStates.ielts.activityLog["2026-07-28"].newWords)
     .toEqual(["academic"]);
+});
+
+test("confusing-word links merge per pair without creating transitive relations", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((base) => {
+    const sync = window.SenseVocabSync;
+    const left = structuredClone(base);
+    const right = structuredClone(base);
+    left.confusionLinks["ability|act"] = {
+      left: "ability",
+      right: "act",
+      createdAt: "2026-08-03T10:00:00.000Z",
+    };
+    right.confusionLinks["abandon|act"] = {
+      left: "abandon",
+      right: "act",
+      createdAt: "2026-08-03T10:01:00.000Z",
+    };
+
+    sync.stampChanges(left, base, "device-a");
+    sync.stampChanges(right, base, "device-b");
+    const merged = sync.mergeStates(left, right);
+    const reverse = sync.mergeStates(right, left);
+    return {
+      keys: Object.keys(merged.confusionLinks).sort(),
+      reverseKeys: Object.keys(reverse.confusionLinks).sort(),
+    };
+  }, baseState());
+
+  expect(result.keys).toEqual(["abandon|act", "ability|act"]);
+  expect(result.reverseKeys).toEqual(result.keys);
+  expect(result.keys).not.toContain("abandon|ability");
 });

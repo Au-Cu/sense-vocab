@@ -459,22 +459,50 @@
       return;
     }
 
-    notificationSnapshot.items.forEach((notification) => {
+    notificationSnapshot.items.forEach((notification, index) => {
       const item = document.createElement("article");
       item.className = "notification-item";
       item.classList.toggle("is-unread", !notification.readAt && Boolean(currentUser));
+      item.classList.toggle(
+        "is-pinned",
+        notification.kind === "announcement" && Boolean(notification.isPinned),
+      );
 
       const heading = document.createElement("div");
       heading.className = "notification-item-heading";
       const title = document.createElement("strong");
       title.textContent = notification.title || "消息";
+      const headingMeta = document.createElement("div");
+      headingMeta.className = "notification-item-heading-meta";
       const time = document.createElement("span");
       time.textContent = formatNotificationTime(notification.createdAt);
-      heading.append(title, time);
+      headingMeta.append(time);
+
+      const isAnnouncement = notification.kind === "announcement";
+      const content = document.createElement("div");
+      content.className = "notification-item-content";
+      content.id = `notification-content-${index}-${notification.id || "item"}`;
+      content.hidden = isAnnouncement;
+      if (isAnnouncement) {
+        const expandButton = document.createElement("button");
+        expandButton.className = "notification-expand-button";
+        expandButton.type = "button";
+        expandButton.textContent = "展开";
+        expandButton.setAttribute("aria-expanded", "false");
+        expandButton.setAttribute("aria-controls", content.id);
+        expandButton.addEventListener("click", () => {
+          const shouldExpand = content.hidden;
+          content.hidden = !shouldExpand;
+          expandButton.textContent = shouldExpand ? "收起" : "展开";
+          expandButton.setAttribute("aria-expanded", String(shouldExpand));
+        });
+        headingMeta.append(expandButton);
+      }
+      heading.append(title, headingMeta);
 
       const body = document.createElement("p");
       body.textContent = notification.body || "";
-      item.append(heading, body);
+      content.append(body);
       if (notification.images?.length) {
         const images = document.createElement("div");
         images.className = "notification-images";
@@ -492,8 +520,9 @@
           link.append(image);
           images.append(link);
         });
-        if (images.childElementCount) item.append(images);
+        if (images.childElementCount) content.append(images);
       }
+      item.append(heading, content);
       notificationsList.append(item);
     });
   }

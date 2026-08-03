@@ -99,7 +99,7 @@ test("published vocabulary keeps stable word and sense identities", async () => 
 
   const packageJson = JSON.parse(await read("package.json"));
   expect(packageJson.scripts["build:web"]).toMatch(
-    /^npm run build:cloud-client && npm run build:vocabulary-index && npm run verify:content-identity && npm run audit:content && /,
+    /^npm run build:cloud-client && npm run build:confusion-globe && npm run build:vocabulary-index && npm run verify:content-identity && npm run audit:content && /,
   );
 });
 
@@ -288,4 +288,37 @@ test("announcement deletion is admin-only, audited, and cleans storage through i
   expect(client).toContain(".remove(imagePaths)");
   expect(adminScript).toContain("公告已删除");
   expect(adminScript).toContain("announcement-delete-button");
+});
+
+test("announcement pinning is admin-only, audited, and sorted ahead of newer items", async () => {
+  const [migration, client, adminScript, account] = await Promise.all([
+    read("supabase/migrations/20260803151307_announcement_pinning.sql"),
+    read("tools/cloud-client-entry.js"),
+    read("admin.js"),
+    read("account.js"),
+  ]);
+
+  expect(migration).toContain("add column if not exists is_pinned boolean");
+  expect(migration).toContain(
+    "order by is_pinned desc, created_at desc, id",
+  );
+  expect(migration).toContain(
+    "order by is_pinned desc, published_at desc, id",
+  );
+  expect(migration).toContain(
+    "create or replace function public.admin_set_announcement_pinned",
+  );
+  expect(migration).toContain("if v_admin_id is null or not public.is_admin()");
+  expect(migration).toContain("'announcement.pin'");
+  expect(migration).toContain("'announcement.unpin'");
+  expect(migration).toContain(
+    "revoke all on function public.admin_set_announcement_pinned(uuid, boolean)",
+  );
+  expect(migration).toContain("to authenticated;");
+  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+
+  expect(client).toContain('client.rpc("admin_set_announcement_pinned"');
+  expect(adminScript).toContain("announcement-pin-button");
+  expect(account).toContain('expandButton.textContent = "展开"');
+  expect(account).toContain("content.hidden = isAnnouncement");
 });

@@ -20419,6 +20419,18 @@ ${suffix}`;
           }));
           return hydrateAnnouncementImages(result);
         },
+        async setAnnouncementPinned(announcementId, pinned) {
+          const normalizedId = String(announcementId ?? "").trim();
+          if (!UUID_PATTERN.test(normalizedId)) {
+            throw new Error("\u516C\u544A\u7F16\u53F7\u65E0\u6548\u3002");
+          }
+          return assertResult(
+            await client.rpc("admin_set_announcement_pinned", {
+              p_announcement_id: normalizedId,
+              p_pinned: Boolean(pinned)
+            })
+          );
+        },
         async publishAnnouncement(title, body, files = []) {
           const images = Array.from(files ?? []);
           if (images.length > 4) {

@@ -406,6 +406,19 @@ window.SenseVocabCloud = {
         return hydrateAnnouncementImages(result);
       },
 
+      async setAnnouncementPinned(announcementId, pinned) {
+        const normalizedId = String(announcementId ?? "").trim();
+        if (!UUID_PATTERN.test(normalizedId)) {
+          throw new Error("公告编号无效。");
+        }
+        return assertResult(
+          await client.rpc("admin_set_announcement_pinned", {
+            p_announcement_id: normalizedId,
+            p_pinned: Boolean(pinned),
+          }),
+        );
+      },
+
       async publishAnnouncement(title, body, files = []) {
         const images = Array.from(files ?? []);
         if (images.length > 4) {

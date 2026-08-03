@@ -166,6 +166,38 @@ test("the first-run tutorial survives stalled account startup and early home int
   await expect(page.locator("html")).not.toHaveAttribute("data-account-ready", "true");
 });
 
+test("tutorial plan cancellation stays covered and cannot strand the overlay", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+  });
+  await page.goto(APP_URL);
+  await waitForApp(page);
+  await page.locator("#moreButton").click();
+  await page.locator("#replayTutorialButton").click();
+  await page.locator("#planButton").click();
+  await expectHint(page, "选择词书和每日计划");
+  await expect(page.locator("#planDialog")).toBeVisible();
+  await expect(page.locator("#tutorialExclusionMask")).toBeVisible();
+
+  const covered = await page.evaluate(() => {
+    const mask = document.querySelector("#tutorialExclusionMask").getBoundingClientRect();
+    const cancel = document.querySelector("#cancelPlanButton").getBoundingClientRect();
+    return mask.left <= cancel.left &&
+      mask.top <= cancel.top &&
+      mask.right >= cancel.right &&
+      mask.bottom >= cancel.bottom;
+  });
+  expect(covered).toBe(true);
+
+  await page.locator("#cancelPlanButton").click({ force: true });
+  await expect(page.locator("#planDialog")).toBeVisible();
+  await expect(page.locator("#tutorialOverlay")).toBeVisible();
+  await page.locator("#dailyTargetInput").fill("3");
+  await page.locator("#savePlanButton").click();
+  await expectHint(page, "试着学几个单词吧");
+});
+
 test("the guided tutorial is complete and never mutates real learning data", async ({ page }) => {
   await page.addInitScript(() => {
     window.__SENSE_VOCAB_TUTORIAL_WAIT_MS__ = 650;
