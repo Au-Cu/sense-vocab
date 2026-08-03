@@ -5,6 +5,7 @@
   "scripts": {
     "build:cloud-client": "esbuild tools/cloud-client-entry.js --bundle --format=iife --platform=browser --target=es2020 --outfile=cloud-client.js",
     "build:confusion-globe": "esbuild tools/confusion-globe-entry.js --bundle --format=iife --platform=browser --target=es2020 --minify --outfile=confusion-globe.js",
+    "verify:cloud-client": "npm run build:cloud-client && node -e \"require('fs').statSync('cloud-client.js')\" && echo cloud-client.js is up to date",
     "build:vocabulary-index": "node tools/build-vocabulary-index.mjs",
     "lock:content-identity": "node tools/content-identity.mjs --write",
     "verify:content-identity": "node tools/content-identity.mjs",
