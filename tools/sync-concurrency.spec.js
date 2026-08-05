@@ -246,3 +246,44 @@ test("confusing-word links merge per pair without creating transitive relations"
   expect(result.reverseKeys).toEqual(result.keys);
   expect(result.keys).not.toContain("abandon|ability");
 });
+
+test("legacy per-tab vector clocks collapse into stable device clocks", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((base) => {
+    const state = structuredClone(base);
+    state.progress["abandon::0"] = {
+      status: "review",
+      misses: 0,
+    };
+    state._sync = {
+      version: 1,
+      counters: {
+        "device-a.tab-1": 4,
+        "device-a.tab-2": 9,
+        "device-b.tab-3": 2,
+      },
+      records: {
+        progress: {
+          "abandon::0": {
+            vector: {
+              "device-a.tab-1": 4,
+              "device-a.tab-2": 7,
+              "device-b.tab-3": 2,
+            },
+            deleted: false,
+          },
+        },
+      },
+    };
+    window.SenseVocabSync.ensureMetadata(state);
+    return {
+      deviceId: window.SenseVocabSync.deviceId(),
+      counters: state._sync.counters,
+      vector: state._sync.records.progress["abandon::0"].vector,
+    };
+  }, baseState());
+
+  expect(result.deviceId).not.toContain(".");
+  expect(result.counters).toEqual({ "device-a": 9, "device-b": 2 });
+  expect(result.vector).toEqual({ "device-a": 7, "device-b": 2 });
+});

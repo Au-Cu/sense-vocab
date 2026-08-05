@@ -123,6 +123,9 @@
   let accountProfile = null;
   let notificationsBusy = false;
   let notificationSnapshot = { authenticated: false, unreadCount: 0, items: [] };
+  let localQuotaWarning = false;
+  const volatileSyncMeta = new Map();
+  const volatileGuestDecisions = new Map();
 
   function syncMetaKey(userId) {
     return `${SYNC_META_PREFIX}${userId}`;
@@ -146,25 +149,49 @@
       dirty: false,
       lastSyncedAt: null,
       ...readJson(syncMetaKey(userId), {}),
+      ...(volatileSyncMeta.get(userId) ?? {}),
     };
   }
 
   function saveSyncMeta(userId, next) {
-    localStorage.setItem(syncMetaKey(userId), JSON.stringify({
+    const merged = {
       ...loadSyncMeta(userId),
       ...next,
-    }));
+    };
+    try {
+      localStorage.setItem(syncMetaKey(userId), JSON.stringify(merged));
+      volatileSyncMeta.delete(userId);
+    } catch (error) {
+      volatileSyncMeta.set(userId, merged);
+      window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
+        detail: {
+          error,
+          storageKey: syncMetaKey(userId),
+          quotaExceeded: /quota|storage.*full|exceeded/i.test(
+            `${error?.name ?? ""} ${error?.message ?? ""}`,
+          ),
+        },
+      }));
+    }
   }
 
   function rememberGuestDecision(userId) {
     const guestState = app.getGuestState();
-    localStorage.setItem(migrationKey(userId), app.stateSignature(guestState));
+    const signature = app.stateSignature(guestState);
+    try {
+      localStorage.setItem(migrationKey(userId), signature);
+      volatileGuestDecisions.delete(userId);
+    } catch {
+      volatileGuestDecisions.set(userId, signature);
+      // The in-memory decision remains valid for this login session.
+    }
   }
 
   function hasUnconsideredGuestState(userId, guestState) {
     if (!app.hasLearningData(guestState)) return false;
-    return localStorage.getItem(migrationKey(userId)) !==
-      app.stateSignature(guestState);
+    const remembered = volatileGuestDecisions.get(userId) ??
+      localStorage.getItem(migrationKey(userId));
+    return remembered !== app.stateSignature(guestState);
   }
 
   function setMessage(message = "", type = "") {
@@ -1364,13 +1391,22 @@
             changedDuringSync ? "本机有新的记录等待同步" : "云端记录已同步",
             changedDuringSync ? "pending" : "",
           );
+          if (localQuotaWarning && !changedDuringSync) {
+            localQuotaWarning = false;
+            setMessage();
+          }
           if (changedDuringSync) scheduleSync();
           return result;
         }
         throw new Error("多台设备更新过于频繁，请稍后再次同步。");
       } catch (error) {
         saveSyncMeta(syncUserId, { dirty: true });
-        setSyncStatus("同步失败，本机记录已保留", "error");
+        setSyncStatus(
+          localQuotaWarning
+            ? "同步失败，请勿关闭当前页面并再次重试"
+            : "同步失败，本机记录已保留",
+          "error",
+        );
         setMessage(error?.message ?? "同步失败，请稍后重试。", "error");
         return null;
       } finally {
@@ -2018,12 +2054,32 @@
     if (!currentUser || pendingConsentSession) return;
     if (event.detail?.storageKey !== app.accountStorageKey(currentUser.id)) return;
     saveSyncMeta(currentUser.id, { dirty: true });
-    setSyncStatus("本机有尚未同步的更新", "pending");
+    setSyncStatus(
+      event.detail?.persisted === false
+        ? "本地空间已满，正在将更新保存到云端"
+        : "本机有尚未同步的更新",
+      "pending",
+    );
     scheduleSync();
   });
 
-  window.addEventListener("sensevocab:storage-error", () => {
-    setMessage("浏览器存储写入失败，请立即导出学习数据。", "error");
+  window.addEventListener("sensevocab:storage-error", (event) => {
+    if (!event.detail?.quotaExceeded) {
+      setMessage("浏览器存储写入失败，请立即导出学习数据。", "error");
+      return;
+    }
+    if (currentUser) {
+      localQuotaWarning = true;
+      setMessage(
+        "浏览器本地空间已满，本次更新将优先同步到云端。请保持登录，等待状态显示“云端记录已同步”。",
+        "error",
+      );
+      return;
+    }
+    setMessage(
+      "浏览器本地空间已满，本次更新暂未写入本机。请先导出学习数据，再清理该网站的旧缓存。",
+      "error",
+    );
   });
 
   document.addEventListener("visibilitychange", () => {

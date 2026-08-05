@@ -633,7 +633,7 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
   const resetState = await readState(page);
   expect(resetState.plan).toBeNull();
   expect(resetState.introducedWords).toEqual([]);
-  expect(resetState.bookStates.kaoyan.plan).toBeNull();
+  expect(resetState.bookStates.kaoyan).toBeUndefined();
 });
 
 test("partial new learning advances the sliding word window only by completed words", async ({ page }) => {
@@ -1081,8 +1081,22 @@ test("introduced words with explicit pending-new senses rejoin tomorrow's new qu
 
 test("reinforcement cards keep inactive mastered senses visible before and after marking", async ({ page }) => {
   await page.addInitScript((storageKey) => {
+    const NativeDate = Date;
+    class TestDate extends NativeDate {
+      constructor(...args) {
+        if (args.length) {
+          super(...args);
+          return;
+        }
+        super("2026-08-03T12:00:00+08:00");
+      }
+
+      static now() {
+        return new TestDate().getTime();
+      }
+    }
+    window.Date = TestDate;
     localStorage.clear();
-    localStorage.setItem("sense-vocab-test-date", "2026-08-03");
     localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
     localStorage.setItem(storageKey, JSON.stringify({
       dataVersion: 10,

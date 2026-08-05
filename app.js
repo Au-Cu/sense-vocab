@@ -816,64 +816,141 @@ function normalizeRootState(saved) {
   return migrated;
 }
 
-function loadState(storageKey = activeStorageKey) {
+function compactLocalState(candidate) {
+  const normalized = normalizeRootState(cloneSerializable(candidate));
+  const activeId = normalized.activeBookId;
+  const activeScope = cloneSerializable(
+    normalized.bookStates[activeId] ?? createState(),
+  );
+  const inactiveBookStates = Object.fromEntries(
+    Object.entries(normalized.bookStates)
+      .filter(([bookId]) => bookId !== activeId)
+      .map(([bookId, bookState]) => [bookId, cloneSerializable(bookState)]),
+  );
+  return {
+    schemaVersion: ROOT_STATE_VERSION,
+    activeBookId: activeId,
+    bookStates: inactiveBookStates,
+    ...activeScope,
+  };
+}
+
+function isStorageQuotaError(error) {
+  return Boolean(
+    error && (
+      error.name === "QuotaExceededError" ||
+      error.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      error.code === 22 ||
+      error.code === 1014 ||
+      /quota|storage.*full|exceeded/i.test(String(error.message ?? ""))
+    )
+  );
+}
+
+function readStoredState(storageKey) {
+  const raw = localStorage.getItem(storageKey);
+  if (!raw) return { raw: null, parsed: null };
   try {
-    return normalizeRootState(JSON.parse(localStorage.getItem(storageKey)));
+    return { raw, parsed: JSON.parse(raw) };
   } catch {
-    return createRootState();
+    return { raw, parsed: null };
   }
+}
+
+function migrateStoredStateToCompactFormat(storageKey, normalized, raw) {
+  if (!raw) return;
+  try {
+    const compact = JSON.stringify(compactLocalState(normalized));
+    if (compact.length < raw.length) {
+      localStorage.setItem(storageKey, compact);
+    }
+  } catch {
+    // A failed replacement leaves the previous localStorage value untouched.
+  }
+}
+
+function compactKnownStateCaches() {
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key === STORAGE_KEY || key?.startsWith(ACCOUNT_STORAGE_PREFIX)) {
+      keys.push(key);
+    }
+  }
+  keys.forEach((key) => {
+    const { raw, parsed } = readStoredState(key);
+    if (!parsed) return;
+    migrateStoredStateToCompactFormat(key, normalizeRootState(parsed), raw);
+  });
+}
+
+function loadState(storageKey = activeStorageKey) {
+  const { raw, parsed } = readStoredState(storageKey);
+  if (!parsed) return createRootState();
+  const normalized = normalizeRootState(parsed);
+  migrateStoredStateToCompactFormat(storageKey, normalized, raw);
+  return normalized;
 }
 
 function saveState(options = {}) {
   if (tutorialRuntime?.active) return;
   if (!isPersistenceSafe()) return;
   const notify = options.notify !== false;
+  let persisted = true;
+  let attemptedCharacters = 0;
+  let previousCharacters = 0;
   try {
     rootState.bookStates[activeBookId()] = state;
-    const storedState = cloneSerializable(rootState);
+    const nextRootState = cloneSerializable(rootState);
     if (state.wordBrowse && requestedWordId()) {
-      storedState.bookStates[activeBookId()] = {
-        ...storedState.bookStates[activeBookId()],
+      nextRootState.bookStates[activeBookId()] = {
+        ...nextRootState.bookStates[activeBookId()],
         view: wordDeepLinkReturnView ?? "home",
         wordBrowse: null,
       };
     }
-    Object.assign(storedState, storedState.bookStates[activeBookId()]);
-    let previousStoredState = null;
-    try {
-      previousStoredState = JSON.parse(localStorage.getItem(activeStorageKey));
-    } catch {
-      previousStoredState = null;
-    }
+    const previous = readStoredState(activeStorageKey);
+    const previousStoredState = previous.parsed;
+    previousCharacters = previous.raw?.length ?? 0;
     if (window.SenseVocabSync) {
       if (options.stampSync === false) {
-        window.SenseVocabSync.ensureMetadata(storedState);
+        window.SenseVocabSync.ensureMetadata(nextRootState);
       } else {
         window.SenseVocabSync.stampChanges(
-          storedState,
+          nextRootState,
           previousStoredState,
         );
       }
-      Object.entries(storedState.bookStates ?? {}).forEach(([bookId, bookState]) => {
+      Object.entries(nextRootState.bookStates ?? {}).forEach(([bookId, bookState]) => {
         if (rootState.bookStates[bookId] && bookState?._sync) {
           rootState.bookStates[bookId]._sync = cloneSerializable(bookState._sync);
         }
       });
       state = rootState.bookStates[activeBookId()];
     }
-    localStorage.setItem(activeStorageKey, JSON.stringify(storedState));
+    const serialized = JSON.stringify(compactLocalState(nextRootState));
+    attemptedCharacters = serialized.length;
+    localStorage.setItem(activeStorageKey, serialized);
   } catch (error) {
+    persisted = false;
     window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
-      detail: { error },
+      detail: {
+        error,
+        storageKey: activeStorageKey,
+        quotaExceeded: isStorageQuotaError(error),
+        attemptedCharacters,
+        previousCharacters,
+      },
     }));
-    throw error;
+    if (!isStorageQuotaError(error)) throw error;
   }
 
   if (notify) {
     window.dispatchEvent(new CustomEvent("sensevocab:state-saved", {
-      detail: { storageKey: activeStorageKey },
+      detail: { storageKey: activeStorageKey, persisted },
     }));
   }
+  return persisted;
 }
 
 function normalizeActivityEntry(entry = {}) {
@@ -4754,6 +4831,7 @@ async function initializeApp() {
 
   renderBookOptions();
   rootState = loadState();
+  compactKnownStateCaches();
   initialGuestHadLearningData = stateHasLearningData(rootState);
   activateBookScope(rootState.activeBookId);
   applyWordDeepLink();

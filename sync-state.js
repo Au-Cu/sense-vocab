@@ -1,7 +1,6 @@
 (() => {
   const SYNC_VERSION = 1;
   const DEVICE_KEY = "sense-vocab-device-v1";
-  const TAB_KEY = "sense-vocab-tab-v1";
   const STATUS_RANK = new Map([
     ["new", 0],
     ["reinforce", 1],
@@ -64,21 +63,25 @@
 
   function deviceId() {
     if (fallbackDeviceId) return fallbackDeviceId;
-    const device = readOrCreate(window.localStorage, DEVICE_KEY);
-    const tab = readOrCreate(window.sessionStorage, TAB_KEY);
-    fallbackDeviceId = `${device}.${tab}`;
+    fallbackDeviceId = readOrCreate(window.localStorage, DEVICE_KEY);
     return fallbackDeviceId;
+  }
+
+  function canonicalWriterId(value) {
+    const writer = String(value ?? "");
+    const separator = writer.indexOf(".");
+    return separator > 0 ? writer.slice(0, separator) : writer;
   }
 
   function normalizeVector(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([key, counter]) => {
-          return key && Number.isSafeInteger(counter) && counter >= 0;
-        })
-        .map(([key, counter]) => [key, counter]),
-    );
+    const normalized = {};
+    Object.entries(value).forEach(([key, counter]) => {
+      const writer = canonicalWriterId(key);
+      if (!writer || !Number.isSafeInteger(counter) || counter < 0) return;
+      normalized[writer] = Math.max(normalized[writer] ?? 0, counter);
+    });
+    return normalized;
   }
 
   function normalizeRecord(value, deleted = false) {
@@ -243,14 +246,15 @@
   }
 
   function stampRecord(metadata, record, deleted, writer) {
+    const writerId = canonicalWriterId(writer);
     const normalized = normalizeRecord(record, deleted);
     const current = Math.max(
-      metadata.counters[writer] ?? 0,
-      normalized.vector[writer] ?? 0,
+      metadata.counters[writerId] ?? 0,
+      normalized.vector[writerId] ?? 0,
     );
     const nextCounter = current + 1;
-    metadata.counters[writer] = nextCounter;
-    normalized.vector[writer] = nextCounter;
+    metadata.counters[writerId] = nextCounter;
+    normalized.vector[writerId] = nextCounter;
     normalized.deleted = Boolean(deleted);
     return normalized;
   }

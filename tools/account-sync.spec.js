@@ -249,6 +249,50 @@ async function login(page, email = "learner@example.com") {
   await page.locator("#accountSubmitButton").click();
 }
 
+test("a localStorage quota error does not abort an authenticated cloud sync", async ({ page }) => {
+  await page.addInitScript(() => {
+    const nativeSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function setItemWithQuota(key, value) {
+      if (
+        window.__forceAccountQuota && (
+          String(key).includes(":account:") ||
+          String(key).startsWith("sense-vocab-cloud-sync-v1:")
+        )
+      ) {
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      }
+      return nativeSetItem.call(this, key, value);
+    };
+  });
+  await installFakeCloud(page, {
+    found: true,
+    revision: 1,
+    state: makeState(20),
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await expect(page.locator("#accountUserView")).toBeVisible();
+  await page.locator("#closeAccountButton").click();
+
+  await page.evaluate(() => {
+    window.__forceAccountQuota = true;
+  });
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("27");
+  await page.locator("#savePlanButton").click();
+
+  await expect.poll(() => page.evaluate(() => {
+    return window.__fakeCloud.remote?.state?.plan?.dailyTarget ?? null;
+  })).toBe(27);
+  await expect(page.locator("#todayNewCount")).toHaveText("27");
+  await expect.poll(() => page.evaluate(() => {
+    return window.__fakeCloud.saves.at(-1)?.state?.plan?.dailyTarget ?? null;
+  })).toBe(27);
+});
+
 test("guest mode remains the default when cloud credentials are absent", async ({ page }) => {
   await page.addInitScript(() => {
     window.SENSE_VOCAB_CLOUD_CONFIG = {

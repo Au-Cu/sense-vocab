@@ -115,10 +115,11 @@ test("plans, progress, statistics, and word lists switch by book", async ({ page
   await expect(page.locator("#homeRemainingWords")).toHaveText("5042");
   const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
   expect(saved.activeBookId).toBe("kaoyan");
-  expect(saved.bookStates.kaoyan.plan.dailyTarget).toBe(40);
+  expect(saved.plan.dailyTarget).toBe(40);
   expect(saved.bookStates.ielts.plan.dailyTarget).toBe(30);
-  expect(saved.bookStates.kaoyan.introducedWords).toEqual([]);
+  expect(saved.introducedWords).toEqual([]);
   expect(saved.bookStates.ielts.introducedWords).toEqual([]);
+  expect(saved.bookStates.kaoyan).toBeUndefined();
 });
 
 test("legacy single-book history migrates only into Kaoyan", async ({ page }) => {
@@ -156,10 +157,11 @@ test("legacy single-book history migrates only into Kaoyan", async ({ page }) =>
   });
 
   const migrated = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
-  expect(migrated.bookStates.kaoyan.introducedWords).toContain("act");
-  expect(migrated.bookStates.kaoyan.progress["act:v-1"].status).toBe("mastered");
+  expect(migrated.introducedWords).toContain("act");
+  expect(migrated.progress["act:v-1"].status).toBe("mastered");
   expect(migrated.bookStates.ielts.introducedWords).toEqual([]);
   expect(migrated.bookStates.ielts.progress).toEqual({});
+  expect(migrated.bookStates.kaoyan).toBeUndefined();
 
   await page.locator("#planButton").click();
   await page.locator("#bookSelect").selectOption("ielts");
@@ -171,4 +173,62 @@ test("legacy single-book history migrates only into Kaoyan", async ({ page }) =>
   await page.locator("#bookSelect").selectOption("kaoyan");
   await page.locator("#savePlanButton").click();
   await expect(page.locator("#homeCompletedWords")).toHaveText("1");
+});
+
+test("duplicated multi-book local state is compacted without changing learning data", async ({ page }) => {
+  await page.goto(APP_URL);
+  const beforeCharacters = await page.evaluate(async (storageKey) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    const index = await fetch("./data/vocabulary-index.json").then((response) => response.json());
+    const wordIds = index.words.slice(0, 400).map((word) => word.id);
+    const activeScope = {
+      view: "home",
+      plan: { dailyTarget: 40 },
+      session: null,
+      introducedWords: wordIds,
+      progress: Object.fromEntries(wordIds.map((wordId) => [
+        `${wordId}:test`,
+        { status: "review", misses: 1, firstSeen: "2026-07-17" },
+      ])),
+      activityLog: {},
+      studyWindows: [],
+      confusionLinks: {},
+      learningDayCounter: 10,
+      wordListSort: "mastery",
+      wordBrowse: null,
+      dataVersion: 10,
+      _sync: { version: 1 },
+    };
+    const ieltsScope = {
+      ...activeScope,
+      plan: { dailyTarget: 30 },
+      introducedWords: [],
+      progress: {},
+    };
+    const duplicated = {
+      schemaVersion: 2,
+      activeBookId: "kaoyan",
+      bookStates: { kaoyan: activeScope, ielts: ieltsScope },
+      ...activeScope,
+    };
+    const raw = JSON.stringify(duplicated);
+    localStorage.setItem(storageKey, raw);
+    return raw.length;
+  }, STORAGE_KEY);
+
+  await page.reload();
+  await page.waitForFunction(() => {
+    return document.documentElement.dataset.appReady === "true";
+  });
+  const result = await page.evaluate((storageKey) => {
+    const raw = localStorage.getItem(storageKey);
+    return { rawLength: raw.length, state: JSON.parse(raw) };
+  }, STORAGE_KEY);
+
+  expect(result.state.plan.dailyTarget).toBe(40);
+  expect(result.state.introducedWords).toHaveLength(400);
+  expect(result.state.bookStates.kaoyan).toBeUndefined();
+  expect(result.state.bookStates.ielts.plan.dailyTarget).toBe(30);
+  expect(result.rawLength).toBeLessThan(beforeCharacters * 0.9);
 });
