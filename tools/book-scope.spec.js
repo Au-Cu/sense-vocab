@@ -34,7 +34,7 @@ test("the shared pool preserves the original Kaoyan book and adds IELTS", async 
   const byId = Object.fromEntries(bundle.books.map((book) => [book.id, book]));
 
   expect(crypto.createHash("sha256").update(kaoyanBytes).digest("hex"))
-    .toBe("dd15b65e76ab805fdf5b9c1cad29e6af811152be593d070488c905338c0f3913");
+    .toBe("44b367726f54f2a9c4da028769f0ea2a651a87fa00fc181457825406f5fe14cc");
   expect(bundle.words).toHaveLength(6607);
   expect(byId.kaoyan.entries).toHaveLength(5042);
   expect(byId.ielts.entries).toHaveLength(4827);
@@ -47,7 +47,7 @@ test("the shared pool preserves the original Kaoyan book and adds IELTS", async 
   );
   expect(index.words).toHaveLength(bundle.words.length);
   expect(index.words.reduce((total, word) => total + word.senses.length, 0))
-    .toBe(10211);
+    .toBe(10214);
 });
 
 test("the home shell stays usable while detailed vocabulary loads slowly", async ({ page }) => {

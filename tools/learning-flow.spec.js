@@ -119,7 +119,10 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await completeAndAdvance(page);
   await expect(page.locator("#cardMode")).toHaveText("强化");
   await reveal(page);
+  await expect(page.locator('[data-key="act:n-3"]')).toHaveClass(/is-confirmed/);
+  await expect(page.locator('[data-key="act:n-3"]')).toBeDisabled();
   await expect(page.locator('.sense-item[data-key="act:n-4"]')).toBeVisible();
+  await expect(page.locator('[data-key="act:n-4"]')).toBeEnabled();
   await page.locator('[data-key="act:n-4"]').click();
   await completeAndAdvance(page);
 
@@ -128,17 +131,32 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   expect(state.progress["act:n-3"].status).toBe("review");
   expect(state.progress["act:n-4"].status).toBe("review");
 
-  // Day 3: both pending-review senses need one more confirmation before leaving the pool.
+  // Day 3: an unconfirmed pending-review sense falls back to reinforcement that same day.
   await setStudyDate(page, "2026-07-18T12:00:00Z");
   await page.locator("#startStudyButton").click();
   await reveal(page);
-  await page.locator('[data-key="act:n-3"]').click();
   await page.locator('[data-key="act:n-4"]').click();
+  await completeAndAdvance(page);
+  await expect(page.locator("#cardMode")).toHaveText("强化");
+  await reveal(page);
+  await expect(page.locator('[data-key="act:n-3"]')).toBeEnabled();
+  await expect(page.locator('[data-key="act:n-3"]')).not.toHaveClass(/is-confirmed|is-mastered/);
+  await page.locator('[data-key="act:n-3"]').click();
+  await completeAndAdvance(page);
+
+  state = await readState(page);
+  expect(state.progress["act:n-3"].status).toBe("review");
+  expect(state.progress["act:n-4"].status).toBe("mastered");
+
+  // Day 4: the second morning confirmation finally moves the sense into mastery.
+  await setStudyDate(page, "2026-07-19T12:00:00Z");
+  await page.locator("#startStudyButton").click();
+  await reveal(page);
+  await page.locator('[data-key="act:n-3"]').click();
   await completeAndAdvance(page);
 
   state = await readState(page);
   expect(state.progress["act:n-3"].status).toBe("mastered");
-  expect(state.progress["act:n-4"].status).toBe("mastered");
   expect(Object.values(state.progress).filter((item) => item.status !== "mastered")).toEqual([]);
 });
 

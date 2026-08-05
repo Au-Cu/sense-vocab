@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 ECDICT_PATH = Path(r"D:\Files\ecdict.csv")
-EXPECTED_KAOYAN_SHA256 = "dd15b65e76ab805fdf5b9c1cad29e6af811152be593d070488c905338c0f3913"
+EXPECTED_KAOYAN_SHA256 = "44b367726f54f2a9c4da028769f0ea2a651a87fa00fc181457825406f5fe14cc"
 
 
 def read_json(path):

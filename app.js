@@ -680,6 +680,9 @@ function createEncounterSnapshot(wordId) {
     reinforcedKeys: ensureTodaySession().reinforcedKeys.filter((key) => {
       return splitSenseKey(key).wordId === wordId;
     }),
+    reviewPromotedKeys: ensureTodaySession().reviewPromotedKeys.filter((key) => {
+      return splitSenseKey(key).wordId === wordId;
+    }),
     activity: cloneProgress(state.activityLog[currentActivityDate()]),
   };
 }
@@ -1563,6 +1566,7 @@ function ensureTodaySession() {
       advanceShiftCommitted: false,
       reinforcementAdded: false,
       reinforcedKeys: [],
+      reviewPromotedKeys: [],
       activeLearningDay: null,
       baseLearningDay: null,
       historyView: null,
@@ -1580,6 +1584,9 @@ function ensureTodaySession() {
   );
   state.session.reinforcedKeys = Array.isArray(state.session.reinforcedKeys)
     ? state.session.reinforcedKeys.filter(isKnownSenseKey)
+    : [];
+  state.session.reviewPromotedKeys = Array.isArray(state.session.reviewPromotedKeys)
+    ? state.session.reviewPromotedKeys.filter(isKnownSenseKey)
     : [];
   if (typeof state.session.reinforcementAdded !== "boolean") {
     state.session.reinforcementAdded = state.session.queue.some(
@@ -1632,6 +1639,7 @@ function beginLearningDay(mode) {
 
   state.learningDayCounter += 1;
   session.activeLearningDay = state.learningDayCounter;
+  session.reviewPromotedKeys = [];
   if (mode === "planned") {
     session.baseLearningDay = session.activeLearningDay;
   }
@@ -1807,7 +1815,12 @@ function buildReinforcementCards(reinforcementLearningDay = activeLearningDay())
   });
 
   return Array.from(groups.entries()).map(([wordId, keys]) => {
-    return createStudyCard("reinforcement", wordId, keys);
+    const card = createStudyCard("reinforcement", wordId, keys);
+    card.confirmedKeys = session.reviewPromotedKeys.filter((key) => {
+      return splitSenseKey(key).wordId === wordId &&
+        state.progress[key]?.status === SENSE_STATUS.REVIEW;
+    });
+    return card;
   });
 }
 
@@ -3769,6 +3782,9 @@ function markSenseFamiliar(key, options = {}) {
         addDays(date, 1),
         learningDay + 1,
       );
+      session.reviewPromotedKeys = [
+        ...new Set([...(session.reviewPromotedKeys ?? []), key]),
+      ];
     }
   }
 
@@ -4197,6 +4213,12 @@ function resetCurrentMarking() {
     ),
     ...(snapshot.reinforcedKeys ?? []),
   ];
+  session.reviewPromotedKeys = [
+    ...session.reviewPromotedKeys.filter(
+      (key) => splitSenseKey(key).wordId !== card.wordId,
+    ),
+    ...(snapshot.reviewPromotedKeys ?? []),
+  ];
   card.confirmedKeys = [];
   refreshCardDisplayKeys(card);
   session.currentIndex = cardIndex;
@@ -4221,6 +4243,9 @@ function relearnCurrentWord() {
   );
   updatePlanDrift();
   session.reinforcedKeys = session.reinforcedKeys.filter(
+    (key) => splitSenseKey(key).wordId !== card.wordId,
+  );
+  session.reviewPromotedKeys = session.reviewPromotedKeys.filter(
     (key) => splitSenseKey(key).wordId !== card.wordId,
   );
 
@@ -4511,6 +4536,7 @@ function tutorialSessionForWord(wordId, { revealed = false } = {}) {
     advanceShiftCommitted: false,
     reinforcementAdded: false,
     reinforcedKeys: [],
+    reviewPromotedKeys: [],
     activeLearningDay: 1,
     baseLearningDay: 1,
     historyView: null,
