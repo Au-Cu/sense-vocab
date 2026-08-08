@@ -146,7 +146,9 @@ const senseList = document.querySelector("#senseList");
 const nextButton = document.querySelector("#nextButton");
 const studyPrimaryActions = studyPanel.querySelector(".study-primary-actions");
 const studyFeedbackButton = document.querySelector("#studyFeedbackButton");
+const browsePreviousWordButton = document.querySelector("#browsePreviousWordButton");
 const exitStudyButton = document.querySelector("#exitStudyButton");
+const browseNextWordButton = document.querySelector("#browseNextWordButton");
 const resetButton = document.querySelector("#resetButton");
 const reviewCount = document.querySelector("#reviewCount");
 const newCount = document.querySelector("#newCount");
@@ -188,6 +190,7 @@ const returnTitle = document.querySelector("#returnTitle");
 const returnOptions = document.querySelector("#returnOptions");
 const returnCrossDayWarning = document.querySelector("#returnCrossDayWarning");
 const previousWordButton = document.querySelector("#previousWordButton");
+const nextHistoryWordButton = document.querySelector("#nextHistoryWordButton");
 const returnHomeButton = document.querySelector("#returnHomeButton");
 const cancelReturnButton = document.querySelector("#cancelReturnButton");
 
@@ -1392,8 +1395,23 @@ function stateHasLearningData(candidate) {
   );
 }
 
+function stableStateStringify(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStateStringify).join(",")}]`;
+  }
+  return `{${Object.keys(value).sort().map((key) => {
+    return `${JSON.stringify(key)}:${stableStateStringify(value[key])}`;
+  }).join(",")}}`;
+}
+
 function stateSignature(candidate) {
-  const value = JSON.stringify(candidate ?? {});
+  const normalized = normalizeRootState(cloneSerializable(candidate ?? {}));
+  Object.values(normalized.bookStates).forEach((bookState) => {
+    bookState.view = "home";
+    bookState.wordBrowse = null;
+  });
+  const value = stableStateStringify(normalized);
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
@@ -1408,7 +1426,7 @@ function applyStateToStorage(storageKey, nextState = null) {
     tutorialRuntime.realRootState = nextState
       ? normalizeRootState(cloneSerializable(nextState))
       : loadState(storageKey);
-    return;
+    return true;
   }
   activeStorageKey = storageKey;
   rootState = nextState
@@ -1416,11 +1434,12 @@ function applyStateToStorage(storageKey, nextState = null) {
     : loadState(storageKey);
   activateBookScope(rootState.activeBookId);
   applyWordDeepLink();
-  saveState({ notify: false, stampSync: !nextState });
+  const persisted = saveState({ notify: false, stampSync: !nextState });
   render();
   window.dispatchEvent(new CustomEvent("sensevocab:scope-changed", {
     detail: { storageKey: activeStorageKey },
   }));
+  return persisted;
 }
 
 function cloudStateSnapshot() {
@@ -1487,12 +1506,18 @@ window.SenseVocabApp = {
   getCurrentWordContext: () => currentFeedbackContext(),
   activateGuest: () => applyStateToStorage(STORAGE_KEY),
   activateAccount: (userId, nextState = null) => {
-    applyStateToStorage(accountStorageKey(userId), nextState);
+    return applyStateToStorage(accountStorageKey(userId), nextState);
+  },
+  isActiveStatePersisted: () => {
+    const { parsed } = readStoredState(activeStorageKey);
+    if (!parsed) return false;
+    return stableStateStringify(compactLocalState(parsed)) ===
+      stableStateStringify(compactLocalState(rootState));
   },
   replaceActiveState: (nextState, options = {}) => {
     if (tutorialRuntime?.active) {
       tutorialRuntime.realRootState = normalizeRootState(cloneSerializable(nextState));
-      return;
+      return true;
     }
     const navigation = options.preserveNavigation
       ? captureActiveNavigation()
@@ -1504,11 +1529,12 @@ window.SenseVocabApp = {
     activateBookScope(rootState.activeBookId);
     restoreActiveNavigation(navigation);
     applyWordDeepLink();
-    saveState({
+    const persisted = saveState({
       notify: options.notify !== false,
       stampSync: options.stampSync !== false,
     });
     render();
+    return persisted;
   },
   removeAccountCache: (userId) => {
     localStorage.removeItem(accountStorageKey(userId));
@@ -1863,6 +1889,12 @@ function currentFeedbackContext() {
     bookName: bookDisplayName(),
     wordId: word.id,
     wordText: word.word,
+    senses: word.senses.map((sense, index) => ({
+      id: sense.id,
+      index: index + 1,
+      pos: sense.pos,
+      meaning: sense.meaning,
+    })),
     cardType: card.type,
     capturedAt: new Date().toISOString(),
   };
@@ -2434,12 +2466,16 @@ function wordStatusBadges(word) {
   return badges.length > 0 ? badges : [{ label: "待新学", type: "new" }];
 }
 
-function sortedWordsForList() {
-  const query = wordListQuery.trim().toLocaleLowerCase("en");
+function sortedWordsForList(options = {}) {
+  const query = String(options.query ?? wordListQuery)
+    .trim()
+    .toLocaleLowerCase("en");
+  const filter = options.filter ?? wordListFilter;
+  const sort = options.sort ?? state.wordListSort;
   const items = words
     .filter((word) => {
-      return wordListFilter === "all" ||
-        wordStatusBadges(word).some(({ type }) => type === wordListFilter);
+      return filter === "all" ||
+        wordStatusBadges(word).some(({ type }) => type === filter);
     })
     .filter((word) => !query || word.word.toLocaleLowerCase("en").includes(query))
     .map((word) => ({ word, info: wordLearningInfo(word) }));
@@ -2456,7 +2492,7 @@ function sortedWordsForList() {
   };
 
   return items.sort((left, right) => {
-    const mode = state.wordListSort;
+    const mode = sort;
     if (mode === "alpha-asc") return alpha(left, right);
     if (mode === "alpha-desc") return -alpha(left, right);
 
@@ -2521,6 +2557,39 @@ function renderWordList() {
   wordList.append(fragment);
 }
 
+function wordBrowseListItems() {
+  const browse = state.wordBrowse;
+  if (browse?.source !== "word-list") return [];
+  return sortedWordsForList({
+    query: browse.query,
+    filter: browse.filter,
+    sort: browse.sort,
+  });
+}
+
+function wordBrowseNeighbors() {
+  const browse = state.wordBrowse;
+  const items = wordBrowseListItems();
+  const index = items.findIndex(({ word }) => word.id === browse?.wordId);
+  if (index < 0) return { previousWordId: null, nextWordId: null };
+  return {
+    previousWordId: items[index - 1]?.word.id ?? null,
+    nextWordId: items[index + 1]?.word.id ?? null,
+  };
+}
+
+function renderWordBrowseNavigation() {
+  const listBrowsing = state.wordBrowse?.source === "word-list";
+  browsePreviousWordButton.hidden = !listBrowsing;
+  browseNextWordButton.hidden = !listBrowsing;
+  studyPrimaryActions.classList.toggle("has-word-card-navigation", listBrowsing);
+  if (!listBrowsing) return;
+
+  const { previousWordId, nextWordId } = wordBrowseNeighbors();
+  browsePreviousWordButton.disabled = !previousWordId;
+  browseNextWordButton.disabled = !nextWordId;
+}
+
 function renderStudy() {
   const session = ensureTodaySession();
   const browsing = Boolean(state.wordBrowse);
@@ -2532,6 +2601,7 @@ function renderStudy() {
     resetButton.hidden = true;
     nextButton.hidden = browsing;
     studyPrimaryActions.classList.toggle("is-word-browse", browsing);
+    renderWordBrowseNavigation();
     reviewCount.textContent = "0/0";
     newCount.textContent = "0/0";
     learningCount.textContent = "0/0";
@@ -2570,6 +2640,7 @@ function renderStudy() {
   resetButton.hidden = browsing;
   nextButton.hidden = browsing;
   studyPrimaryActions.classList.toggle("is-word-browse", browsing);
+  renderWordBrowseNavigation();
   reviewCount.textContent = `${counts.review.completed}/${counts.review.total}`;
   newCount.textContent = `${counts.new.completed}/${counts.new.total}`;
   learningCount.textContent =
@@ -3476,11 +3547,31 @@ async function closeConfusionGlobe(options = {}) {
   confusionTransitioning = false;
 }
 
-async function openWordCard(wordId) {
+async function openWordCard(wordId, options = {}) {
   if (!wordById.has(wordId)) return;
   if (!await ensureVocabularyDetailsReady("word-card")) return;
-  state.wordBrowse = { wordId };
+  state.wordBrowse = options.source === "word-list"
+    ? {
+      wordId,
+      source: "word-list",
+      query: wordListQuery,
+      filter: wordListFilter,
+      sort: state.wordListSort,
+    }
+    : { wordId };
   state.view = "study";
+  saveState();
+  render();
+}
+
+function navigateWordCard(direction) {
+  if (state.wordBrowse?.source !== "word-list") return;
+  const { previousWordId, nextWordId } = wordBrowseNeighbors();
+  const wordId = direction < 0 ? previousWordId : nextWordId;
+  if (!wordId) return;
+
+  stopWordAudio();
+  state.wordBrowse.wordId = wordId;
   saveState();
   render();
 }
@@ -3518,12 +3609,16 @@ function exitStudy() {
 
 function openReturnDialog() {
   const session = ensureTodaySession();
+  const historyOriginIndex = session.historyView?.originIndex;
   pendingCrossDayReturn = false;
   returnTitle.textContent = "返回";
   returnCrossDayWarning.hidden = true;
   returnOptions.hidden = false;
   previousWordButton.hidden = false;
   previousWordButton.disabled = session.currentIndex <= 0;
+  nextHistoryWordButton.hidden = false;
+  nextHistoryWordButton.disabled = !Number.isInteger(historyOriginIndex) ||
+    session.currentIndex >= historyOriginIndex;
   returnHomeButton.textContent = "返回主页";
   returnHomeButton.className = "secondary-button";
   returnDialog.hidden = false;
@@ -3540,6 +3635,7 @@ function handleReturnHome() {
     returnTitle.textContent = "确认进入下一日学习？";
     returnCrossDayWarning.hidden = false;
     previousWordButton.hidden = true;
+    nextHistoryWordButton.hidden = true;
     returnHomeButton.textContent = "确认返回主页";
     returnHomeButton.className = "danger-button";
     return;
@@ -3563,6 +3659,26 @@ function showPreviousWord() {
   session.currentIndex -= 1;
   session.revealed = true;
   session.cardPhase = "examples";
+  closeReturnDialog();
+  saveState();
+  render();
+}
+
+function showNextHistoryWord() {
+  const session = ensureTodaySession();
+  const history = session.historyView;
+  if (!history || session.currentIndex >= history.originIndex) return;
+
+  session.currentIndex += 1;
+  if (session.currentIndex >= history.originIndex) {
+    session.currentIndex = Math.min(history.originIndex, session.queue.length);
+    session.revealed = Boolean(history.originRevealed);
+    session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
+    session.historyView = null;
+  } else {
+    session.revealed = true;
+    session.cardPhase = "examples";
+  }
   closeReturnDialog();
   saveState();
   render();
@@ -4920,6 +5036,8 @@ planDialog.addEventListener("click", (event) => {
 
 revealButton.addEventListener("click", handleWordSurfaceClick);
 audioButton.addEventListener("click", speakCurrentWord);
+browsePreviousWordButton.addEventListener("click", () => navigateWordCard(-1));
+browseNextWordButton.addEventListener("click", () => navigateWordCard(1));
 studyFeedbackButton.addEventListener("click", () => {
   const context = currentFeedbackContext();
   if (!context) return;
@@ -4977,7 +5095,7 @@ wordList.addEventListener("click", async (event) => {
   if (!item) return;
   item.classList.add("is-loading");
   item.setAttribute("aria-busy", "true");
-  await openWordCard(item.dataset.wordId);
+  await openWordCard(item.dataset.wordId, { source: "word-list" });
   item.classList.remove("is-loading");
   item.removeAttribute("aria-busy");
 });
@@ -5010,6 +5128,7 @@ resetDialog.addEventListener("click", (event) => {
 });
 
 previousWordButton.addEventListener("click", showPreviousWord);
+nextHistoryWordButton.addEventListener("click", showNextHistoryWord);
 returnHomeButton.addEventListener("click", handleReturnHome);
 cancelReturnButton.addEventListener("click", closeReturnDialog);
 returnDialog.addEventListener("click", (event) => {

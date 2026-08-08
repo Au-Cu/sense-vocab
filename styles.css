@@ -374,7 +374,9 @@ button {
 }
 
 .word-list-panel {
-  min-height: min(760px, calc(100vh - 64px));
+  height: min(760px, calc(var(--app-viewport-height, 100vh) - 64px));
+  min-height: min(620px, calc(var(--app-viewport-height, 100vh) - 64px));
+  overflow: hidden;
 }
 
 .word-list-header {
@@ -518,8 +520,8 @@ button {
 }
 
 .word-list {
+  flex: 1 1 auto;
   min-height: 0;
-  max-height: min(560px, calc(100vh - 326px));
   overflow-y: auto;
   border-block: 1px solid var(--line);
 }
@@ -1334,6 +1336,12 @@ button {
   gap: 10px;
 }
 
+.study-primary-actions.has-word-card-navigation {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .primary-button,
 .secondary-button,
 .danger-button,
@@ -1836,6 +1844,16 @@ button {
   color: var(--accent-strong);
 }
 
+.feedback-structured-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.feedback-structured-fields[hidden],
+.feedback-conditional-field[hidden] {
+  display: none;
+}
+
 .feedback-image-button {
   min-height: 38px;
   display: inline-flex;
@@ -2263,6 +2281,11 @@ button {
     padding: 14px;
   }
 
+  .word-list-panel {
+    height: calc(var(--app-viewport-height, 100dvh) - 16px);
+    min-height: 0;
+  }
+
   .word-button {
     min-height: 150px;
     padding-inline: 50px;
@@ -2353,6 +2376,10 @@ button {
 
   .study-primary-actions.is-word-browse {
     grid-template-columns: 1fr;
+  }
+
+  .study-primary-actions.is-word-browse.has-word-card-navigation {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .study-primary-actions button {

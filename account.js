@@ -65,6 +65,14 @@
   const importDataInput = document.querySelector("#importDataInput");
   const feedbackContext = document.querySelector("#feedbackContext");
   const feedbackContextWord = document.querySelector("#feedbackContextWord");
+  const feedbackIntro = document.querySelector("#feedbackIntro");
+  const feedbackStructuredFields = document.querySelector("#feedbackStructuredFields");
+  const feedbackIssueSelect = document.querySelector("#feedbackIssueSelect");
+  const feedbackSenseField = document.querySelector("#feedbackSenseField");
+  const feedbackSenseSelect = document.querySelector("#feedbackSenseSelect");
+  const feedbackMissingSenseField = document.querySelector("#feedbackMissingSenseField");
+  const feedbackMissingSense = document.querySelector("#feedbackMissingSense");
+  const feedbackMessageLabel = document.querySelector("#feedbackMessageLabel");
   const feedbackMessage = document.querySelector("#feedbackMessage");
   const feedbackImageInput = document.querySelector("#feedbackImageInput");
   const feedbackImageCount = document.querySelector("#feedbackImageCount");
@@ -91,6 +99,8 @@
   const SYNC_META_PREFIX = "sense-vocab-cloud-sync-v1:";
   const GUEST_MIGRATION_PREFIX = "sense-vocab-guest-migration-v1:";
   const MAX_SYNC_RETRIES = 5;
+  const MISSING_SENSE_ISSUE = "missing-sense";
+  const OTHER_FEEDBACK_ISSUE = "other";
   const REFRESH_INTERVAL_MS = Number.isFinite(
     window.__SENSE_VOCAB_REFRESH_INTERVAL_MS__,
   )
@@ -733,12 +743,39 @@
     confirmDeleteAccountButton.disabled = true;
   }
 
+  function feedbackFormValidation() {
+    const message = feedbackMessage.value.trim();
+    if (!activeFeedbackContext) {
+      return message.length >= 3
+        ? null
+        : { message: "请至少输入 3 个字符的问题描述。", field: feedbackMessage };
+    }
+
+    const issue = feedbackIssueSelect.value;
+    if (!issue) {
+      return { message: "请选择问题类型。", field: feedbackIssueSelect };
+    }
+    if (issue === MISSING_SENSE_ISSUE && !feedbackMissingSense.value.trim()) {
+      return { message: "请填写缺少的义项。", field: feedbackMissingSense };
+    }
+    if (issue === OTHER_FEEDBACK_ISSUE && message.length < 3) {
+      return { message: "请至少输入 3 个字符的问题描述。", field: feedbackMessage };
+    }
+    if (
+      issue !== MISSING_SENSE_ISSUE &&
+      issue !== OTHER_FEEDBACK_ISSUE &&
+      !feedbackSenseSelect.value
+    ) {
+      return { message: "请选择问题所在的义项。", field: feedbackSenseSelect };
+    }
+    return null;
+  }
+
   function updateFeedbackSubmitState() {
-    const validMessage = feedbackMessage.value.trim().length >= 3;
     submitFeedbackButton.disabled = feedbackBusy ||
       !currentUser ||
       Boolean(pendingConsentSession) ||
-      !validMessage;
+      Boolean(feedbackFormValidation());
     feedbackImageCount.textContent = `${feedbackFiles.length} / 4`;
   }
 
@@ -778,7 +815,11 @@
   }
 
   function resetFeedbackForm() {
+    feedbackIssueSelect.value = "";
+    feedbackSenseSelect.value = "";
+    feedbackMissingSense.value = "";
     feedbackMessage.value = "";
+    renderFeedbackIssueFields();
     clearFeedbackFiles();
   }
 
@@ -787,12 +828,23 @@
     const wordId = String(context.wordId ?? "").trim().slice(0, 160);
     const wordText = String(context.wordText ?? "").trim().slice(0, 160);
     if (context.source !== "study" || !wordId || !wordText) return null;
+    const senses = Array.isArray(context.senses)
+      ? context.senses.slice(0, 80).map((sense, index) => ({
+        id: String(sense?.id ?? "").trim().slice(0, 80),
+        index: Number.isInteger(sense?.index) && sense.index > 0
+          ? sense.index
+          : index + 1,
+        pos: String(sense?.pos ?? "").trim().slice(0, 40),
+        meaning: String(sense?.meaning ?? "").trim().slice(0, 300),
+      })).filter((sense) => sense.id && sense.meaning)
+      : [];
     return {
       source: "study",
       bookId: String(context.bookId ?? "").trim().slice(0, 80),
       bookName: String(context.bookName ?? "").trim().slice(0, 160),
       wordId,
       wordText,
+      senses,
       cardType: String(context.cardType ?? "").trim().slice(0, 40),
       capturedAt: typeof context.capturedAt === "string"
         ? context.capturedAt.slice(0, 40)
@@ -800,9 +852,90 @@
     };
   }
 
+  function feedbackContextForSubmission() {
+    if (!activeFeedbackContext) return null;
+    return {
+      source: activeFeedbackContext.source,
+      bookId: activeFeedbackContext.bookId,
+      bookName: activeFeedbackContext.bookName,
+      wordId: activeFeedbackContext.wordId,
+      wordText: activeFeedbackContext.wordText,
+      cardType: activeFeedbackContext.cardType,
+      capturedAt: activeFeedbackContext.capturedAt,
+    };
+  }
+
+  function renderFeedbackIssueFields() {
+    const issue = feedbackIssueSelect.value;
+    const missingSense = activeFeedbackContext && issue === MISSING_SENSE_ISSUE;
+    const otherIssue = activeFeedbackContext && issue === OTHER_FEEDBACK_ISSUE;
+    const senseSpecific = Boolean(
+      activeFeedbackContext && issue && !missingSense && !otherIssue,
+    );
+    feedbackMissingSenseField.hidden = !missingSense;
+    feedbackSenseField.hidden = !senseSpecific;
+    feedbackMessageLabel.textContent = otherIssue
+      ? "问题描述"
+      : activeFeedbackContext
+        ? "补充说明（可选）"
+        : "问题描述";
+    feedbackMessage.placeholder = otherIssue
+      ? "请描述遇到的其他问题"
+      : activeFeedbackContext
+        ? "如有需要，可补充更具体的情况"
+        : "";
+    feedbackMessage.maxLength = activeFeedbackContext ? 3000 : 4000;
+    updateFeedbackSubmitState();
+  }
+
   function renderFeedbackContext() {
     feedbackContext.hidden = !activeFeedbackContext;
     feedbackContextWord.textContent = activeFeedbackContext?.wordText ?? "";
+    feedbackIntro.textContent = activeFeedbackContext
+      ? "请选择问题类型，并可补充说明或附上最多 4 张截图。"
+      : "请描述遇到的问题，并可附上最多 4 张截图。";
+    feedbackStructuredFields.hidden = !activeFeedbackContext;
+    feedbackSenseSelect.replaceChildren();
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "请选择义项";
+    feedbackSenseSelect.append(placeholder);
+    (activeFeedbackContext?.senses ?? []).forEach((sense) => {
+      const option = document.createElement("option");
+      option.value = sense.id;
+      option.textContent = [`义项 ${sense.index}`, sense.pos, sense.meaning]
+        .filter(Boolean)
+        .join(" · ");
+      feedbackSenseSelect.append(option);
+    });
+    renderFeedbackIssueFields();
+  }
+
+  function buildFeedbackMessage() {
+    const detail = feedbackMessage.value.trim();
+    if (!activeFeedbackContext) return detail;
+
+    const issueOption = feedbackIssueSelect.selectedOptions[0];
+    const lines = [`问题类型：${issueOption?.textContent?.trim() ?? ""}`];
+    if (feedbackIssueSelect.value === MISSING_SENSE_ISSUE) {
+      lines.push(`缺少义项：${feedbackMissingSense.value.trim()}`);
+      if (detail) lines.push(`补充说明：${detail}`);
+      return lines.join("\n");
+    }
+    if (feedbackIssueSelect.value === OTHER_FEEDBACK_ISSUE) {
+      lines.push(`问题描述：${detail}`);
+      return lines.join("\n");
+    }
+
+    const sense = activeFeedbackContext.senses.find((entry) => {
+      return entry.id === feedbackSenseSelect.value;
+    });
+    const senseLabel = sense
+      ? [`义项 ${sense.index}`, sense.pos, sense.meaning].filter(Boolean).join(" · ")
+      : feedbackSenseSelect.selectedOptions[0]?.textContent?.trim() ?? "";
+    lines.push(`相关义项：${senseLabel}`);
+    if (detail) lines.push(`补充说明：${detail}`);
+    return lines.join("\n");
   }
 
   function clearFeedbackRequest() {
@@ -1048,7 +1181,7 @@
         ? numericRevision
         : null;
     pendingConflict = null;
-    app.activateAccount(user.id, nextState);
+    const persisted = app.activateAccount(user.id, nextState);
     saveSyncMeta(user.id, {
       revision: cloudRevision,
       dirty,
@@ -1057,6 +1190,7 @@
     setSyncStatus(dirty ? "本机记录等待上传" : "云端记录已同步", dirty ? "pending" : "");
     showPrimaryAccountView();
     announceAccountScope(user);
+    return persisted;
   }
 
   function normalizedRemote(result) {
@@ -1227,6 +1361,21 @@
     let expectedRevision = cloudRevision;
     const replaceRemote = Boolean(options.replace);
     if (!replaceRemote && !syncMeta.dirty) {
+      if (
+        options.verifyPersistence &&
+        typeof app.isActiveStatePersisted === "function" &&
+        !app.isActiveStatePersisted()
+      ) {
+        const persisted = app.replaceActiveState(app.getState(), {
+          notify: false,
+          stampSync: false,
+          preserveNavigation: true,
+        });
+        if (persisted === false || !app.isActiveStatePersisted()) {
+          setSyncStatus("本机记录写入失败，请保留当前页面并重试。", "error");
+          return { ok: false, localPersistenceFailed: true };
+        }
+      }
       setSyncStatus("云端记录已同步");
       return {
         ok: true,
@@ -1378,6 +1527,36 @@
           }
 
           cloudRevision = Number(result?.revision) || cloudRevision || 1;
+          if (options.verifyPersistence) {
+            const verifiedRemote = normalizedRemote(await cloud.loadState());
+            if (!verifiedRemote.found || verifiedRemote.revision < cloudRevision) {
+              throw new Error("云端回读未确认刚刚保存的学习记录。");
+            }
+            const converged = app.mergeStates(app.getState(), verifiedRemote.state);
+            const needsAnotherUpload = app.stateSignature(converged) !==
+              app.stateSignature(verifiedRemote.state);
+            const persisted = app.replaceActiveState(converged, {
+              notify: false,
+              stampSync: false,
+              preserveNavigation: true,
+            });
+            if (
+              persisted === false ||
+              (typeof app.isActiveStatePersisted === "function" &&
+                !app.isActiveStatePersisted())
+            ) {
+              throw new Error("合并结果未能写入本机存储。");
+            }
+            cloudRevision = verifiedRemote.revision;
+            if (needsAnotherUpload) {
+              expectedRevision = verifiedRemote.revision;
+              saveSyncMeta(syncUserId, {
+                revision: cloudRevision,
+                dirty: true,
+              });
+              continue;
+            }
+          }
           const stillUsingAccount = currentUser?.id === syncUserId &&
             app.getActiveStorageKey() === app.accountStorageKey(syncUserId);
           const changedDuringSync = stillUsingAccount &&
@@ -1441,11 +1620,18 @@
         const merged = app.mergeStates(localState, remote.state);
         const needsUpload = app.stateSignature(merged) !==
           app.stateSignature(remote.state);
-        app.replaceActiveState(merged, {
+        const persisted = app.replaceActiveState(merged, {
           notify: false,
           stampSync: false,
           preserveNavigation: true,
         });
+        if (
+          persisted === false ||
+          (typeof app.isActiveStatePersisted === "function" &&
+            !app.isActiveStatePersisted())
+        ) {
+          throw new Error("合并结果未能写入本机存储。");
+        }
         cloudRevision = remote.revision;
         saveSyncMeta(refreshUserId, {
           revision: remote.revision,
@@ -1729,8 +1915,20 @@
         : localState;
       const merged = app.mergeStates(safeLocalState, remote.state);
       if (localSource === "guest") rememberGuestDecision(currentUser.id);
-      activateAccountState(currentUser, merged, remote.revision, true);
-      await syncNow();
+      const persisted = activateAccountState(
+        currentUser,
+        merged,
+        remote.revision,
+        true,
+      );
+      if (persisted === false) {
+        pendingConflict = { localState, localSource, remote };
+        throw new Error("合并结果未能写入本机存储，云端记录尚未更改。");
+      }
+      const result = await syncNow({ verifyPersistence: true });
+      if (!result?.ok) {
+        throw new Error("合并结果尚未同时写入本机和云端，请重试。");
+      }
       setMessage("两边记录已合并，云端与本机新增进度均已保留。");
       resumePendingFeedback();
     } catch (error) {
@@ -1858,12 +2056,14 @@
 
   async function submitFeedback() {
     if (!cloud || !currentUser || pendingConsentSession || feedbackBusy) return;
-    const message = feedbackMessage.value.trim();
-    if (message.length < 3) {
-      setMessage("请至少输入 3 个字符的问题描述。", "error");
-      feedbackMessage.focus();
+    const validation = feedbackFormValidation();
+    if (validation) {
+      setMessage(validation.message, "error");
+      validation.field.focus();
       return;
     }
+    const message = buildFeedbackMessage();
+    const returnToWordCard = activeFeedbackContext?.source === "study";
 
     feedbackBusy = true;
     updateFeedbackSubmitState();
@@ -1872,11 +2072,12 @@
       await cloud.submitFeedback(
         message,
         feedbackFiles.map((entry) => entry.file),
-        activeFeedbackContext,
+        feedbackContextForSubmission(),
       );
       resetFeedbackForm();
       clearFeedbackRequest();
-      showPrimaryAccountView();
+      if (returnToWordCard) closeAccountDialog();
+      else showPrimaryAccountView();
       setMessage("反馈已提交。");
     } catch (error) {
       setMessage(error?.message ?? "反馈提交失败，请稍后重试。", "error");
@@ -1995,7 +2196,10 @@
   });
   acceptLegalConsentButton.addEventListener("click", acceptLegalConsents);
   declineLegalConsentButton.addEventListener("click", declineLegalConsents);
-  syncNowButton.addEventListener("click", () => syncNow());
+  syncNowButton.addEventListener("click", async () => {
+    await refreshFromCloud();
+    await syncNow({ verifyPersistence: true });
+  });
   logoutButton.addEventListener("click", logout);
   deleteAccountButton.addEventListener("click", () => {
     accountAuthView.hidden = true;
@@ -2034,6 +2238,13 @@
       registrationWelcomeDialog.hidden = true;
     }
   });
+  feedbackIssueSelect.addEventListener("change", () => {
+    feedbackSenseSelect.value = "";
+    feedbackMissingSense.value = "";
+    renderFeedbackIssueFields();
+  });
+  feedbackSenseSelect.addEventListener("change", updateFeedbackSubmitState);
+  feedbackMissingSense.addEventListener("input", updateFeedbackSubmitState);
   feedbackMessage.addEventListener("input", updateFeedbackSubmitState);
   feedbackImageInput.addEventListener("change", async () => {
     await addFeedbackFiles(feedbackImageInput.files);

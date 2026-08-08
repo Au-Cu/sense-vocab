@@ -23,7 +23,7 @@ async function openFreshApp(page) {
   });
 }
 
-test("the shared pool preserves the original Kaoyan book and adds IELTS", async () => {
+test("the shared pool preserves the reviewed Kaoyan book and adds IELTS", async () => {
   const kaoyanPath = path.join(ROOT_DIR, "data", "kaoyan-words.json");
   const bundlePath = path.join(ROOT_DIR, "data", "vocabulary-bundle.json");
   const indexPath = path.join(ROOT_DIR, "data", "vocabulary-index.json");
@@ -34,7 +34,7 @@ test("the shared pool preserves the original Kaoyan book and adds IELTS", async 
   const byId = Object.fromEntries(bundle.books.map((book) => [book.id, book]));
 
   expect(crypto.createHash("sha256").update(kaoyanBytes).digest("hex"))
-    .toBe("44b367726f54f2a9c4da028769f0ea2a651a87fa00fc181457825406f5fe14cc");
+    .toBe("f126e7d3308115be750d942c567f8712efd7af0554debf5037c5f92ba36adacf");
   expect(bundle.words).toHaveLength(6607);
   expect(byId.kaoyan.entries).toHaveLength(5042);
   expect(byId.ielts.entries).toHaveLength(4827);
@@ -47,7 +47,7 @@ test("the shared pool preserves the original Kaoyan book and adds IELTS", async 
   );
   expect(index.words).toHaveLength(bundle.words.length);
   expect(index.words.reduce((total, word) => total + word.senses.length, 0))
-    .toBe(10214);
+    .toBe(10224);
 });
 
 test("the home shell stays usable while detailed vocabulary loads slowly", async ({ page }) => {

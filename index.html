@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260803-5" />
+    <link rel="stylesheet" href="./styles.css?v=20260808-1" />
   </head>
   <body>
     <main class="app-shell">
@@ -190,7 +190,9 @@
 
         <div class="actions study-actions">
           <div class="study-primary-actions">
+            <button class="secondary-button" id="browsePreviousWordButton" type="button" hidden>上一词</button>
             <button class="secondary-button" id="exitStudyButton" type="button">返回</button>
+            <button class="secondary-button" id="browseNextWordButton" type="button" hidden>下一词</button>
             <button class="secondary-button" id="resetButton" type="button">重置</button>
             <button class="primary-button" id="nextButton" type="button">完成</button>
           </div>
@@ -298,6 +300,7 @@
           </p>
           <div class="reset-options" id="returnOptions">
             <button class="secondary-button" id="previousWordButton" type="button">返回上一词</button>
+            <button class="secondary-button" id="nextHistoryWordButton" type="button">返回下一词</button>
             <button class="secondary-button" id="returnHomeButton" type="button">返回主页</button>
           </div>
           <button class="plain-button" id="cancelReturnButton" type="button">取消</button>
@@ -596,7 +599,7 @@
           <div class="account-feedback-view" id="accountFeedbackView" hidden>
             <div>
               <p class="confirm-title">反馈问题</p>
-              <p class="confirm-copy">请描述遇到的问题，并可附上最多 4 张截图。</p>
+              <p class="confirm-copy" id="feedbackIntro">请描述遇到的问题，并可附上最多 4 张截图。</p>
               <p class="feedback-privacy-copy">
                 图片会在浏览器中重新编码以移除 EXIF 等附加信息。请勿上传身份证件、
                 银行卡、地址或其他敏感信息。
@@ -606,8 +609,43 @@
               <span>关联单词</span>
               <strong id="feedbackContextWord"></strong>
             </div>
+            <div class="feedback-structured-fields" id="feedbackStructuredFields" hidden>
+              <label class="plan-field" for="feedbackIssueSelect">
+                <span>问题类型</span>
+                <select class="plan-select" id="feedbackIssueSelect">
+                  <option value="">请选择问题类型</option>
+                  <option value="missing-sense">缺少义项</option>
+                  <option value="redundant-sense">义项冗余</option>
+                  <option value="meaning-definition-mismatch">义项与释义不匹配</option>
+                  <option value="meaning-example-mismatch">义项与例句中的含义不匹配</option>
+                  <option value="meaning-definition-zh-mismatch">义项与释义译文不匹配</option>
+                  <option value="meaning-example-zh-mismatch">义项与例句译文不匹配</option>
+                  <option value="self-referential-definition">释义存在自指</option>
+                  <option value="definition-zh-error">释义译文有误</option>
+                  <option value="example-zh-error">例句译文有误</option>
+                  <option value="garbled-mixed-language">义项乱码或中英文混杂</option>
+                  <option value="other">其他问题</option>
+                </select>
+              </label>
+              <label class="plan-field feedback-conditional-field" id="feedbackSenseField" for="feedbackSenseSelect" hidden>
+                <span>问题所在义项</span>
+                <select class="plan-select" id="feedbackSenseSelect">
+                  <option value="">请选择义项</option>
+                </select>
+              </label>
+              <label class="plan-field feedback-conditional-field" id="feedbackMissingSenseField" for="feedbackMissingSense" hidden>
+                <span>缺少什么义项</span>
+                <textarea
+                  class="account-textarea"
+                  id="feedbackMissingSense"
+                  maxlength="500"
+                  rows="3"
+                  placeholder="请填写缺少的词性和含义"
+                ></textarea>
+              </label>
+            </div>
             <label class="plan-field" for="feedbackMessage">
-              <span>问题描述</span>
+              <span id="feedbackMessageLabel">问题描述</span>
               <textarea
                 class="account-textarea"
                 id="feedbackMessage"
@@ -709,7 +747,7 @@
     <script src="./cloud-config.js?v=20260728-2"></script>
     <script src="./cloud-client.js?v=20260803-5"></script>
     <script src="./sync-state.js?v=20260728-3"></script>
-    <script src="./app.js?v=20260803-4"></script>
-    <script src="./account.js?v=20260803-5"></script>
+    <script src="./app.js?v=20260808-1"></script>
+    <script src="./account.js?v=20260808-1"></script>
   </body>
 </html>

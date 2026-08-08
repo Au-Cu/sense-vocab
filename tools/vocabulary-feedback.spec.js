@@ -66,3 +66,80 @@ test("reported Kaoyan vocabulary senses remain covered", () => {
   expect(bySynset(runtimeParachute, "omw-en-01968275-v").id).toBe("v-1");
   expect(bySynset(runtimeParachute, "omw-en-03888257-n").id).toBe("n-2");
 });
+
+test("new feedback senses preserve every existing runtime identity", () => {
+  const bundle = readJson("data/vocabulary-bundle.json");
+  const expected = {
+    pension: {
+      "omw-en-02262601-v": "v-1",
+      "omw-en-13384164-n": "n-2",
+    },
+    port: {
+      "omw-en-03578656-n": "n-1",
+      "omw-en-03642928-n": "n-2",
+      "omw-en-02090854-v": "v-3",
+      "omw-en-08633957-n": "n-4",
+    },
+    pose: {
+      "omw-en-02722663-v": "v-1",
+      "omw-en-02142775-v": "v-2",
+      "omw-en-02519183-v": "v-3",
+      "omw-en-05081300-n": "n-4",
+    },
+    deposit: {
+      "omw-en-13381145-n": "n-1",
+      "omw-en-09428967-n": "n-2",
+      "omw-en-13349834-n": "n-3",
+      "omw-en-13349662-n": "n-4",
+      "omw-en-13462191-n": "n-5",
+      "omw-en-02310855-v": "v-6",
+      "omw-en-01528069-v": "v-7",
+    },
+    prime: {
+      "omw-en-15295045-n": "n-1",
+      "omw-en-01012990-s": "adj-2",
+    },
+    positive: {
+      "omw-en-00358678-s": "adj-1",
+      "omw-en-01820481-a": "adj-2",
+      "omw-en-01817500-a": "adj-3",
+    },
+    resume: {
+      "omw-en-00350104-v": "v-1",
+      "omw-en-02381951-v": "v-2",
+      "omw-en-06468403-n": "n-3",
+    },
+    soil: {
+      "omw-en-14844693-n": "n-1",
+      "omw-en-14498096-n": "n-2",
+    },
+    prepare: {
+      "omw-en-00406243-v": "v-1",
+      "omw-en-01664172-v": "v-2",
+    },
+  };
+
+  for (const [word, senses] of Object.entries(expected)) {
+    const entry = byWord(bundle.words, word);
+    expect(entry).toBeTruthy();
+    expect(new Set(entry.senses.map((sense) => sense.id)).size)
+      .toBe(entry.senses.length);
+    for (const [synsetId, id] of Object.entries(senses)) {
+      expect(bySynset(entry, synsetId)?.id).toBe(id);
+    }
+  }
+});
+
+test("reported definitions and examples are semantic rather than positional fixes", () => {
+  const source = readJson("data/kaoyan-words.json");
+  expect(bySynset(byWord(source, "appetite"), "omw-en-07485626-n")
+    .definitionSentence).toContain("desire for food");
+  expect(bySynset(byWord(source, "maneuver"), "omw-en-02369390-v")
+    .example).toContain("chairmanship");
+  expect(bySynset(byWord(source, "positive"), "omw-en-01820481-a")
+    .example).toContain("tested positive");
+  expect(bySynset(byWord(source, "propose"), "omw-en-00708980-v")
+    .definitionSentence).toBe("To intend or plan to do something.");
+  expect(bySynset(byWord(source, "impose"), "omw-en-02560424-v")
+    .definitionSentence).not.toMatch(/impose means to impose/i);
+});

@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 ECDICT_PATH = Path(r"D:\Files\ecdict.csv")
-EXPECTED_KAOYAN_SHA256 = "44b367726f54f2a9c4da028769f0ea2a651a87fa00fc181457825406f5fe14cc"
+EXPECTED_KAOYAN_SHA256 = "f126e7d3308115be750d942c567f8712efd7af0554debf5037c5f92ba36adacf"
 
 
 def read_json(path):
@@ -32,9 +32,45 @@ def word_id(word, provided=""):
     return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
 
 
-def normalize_word(entry, book_source):
+def normalized_text(value):
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def sense_match_keys(sense):
+    pos = str(sense.get("pos") or "").lower()
+    synset_id = str(sense.get("synsetId") or "").strip()
+    definition = normalized_text(
+        sense.get("definitionSentence") or sense.get("definition")
+    )
+    meaning = normalized_text(sense.get("meaning"))
+    keys = []
+    if synset_id:
+        keys.append(("synset", synset_id))
+    if pos and definition:
+        keys.append(("definition", pos, definition))
+    if pos and meaning:
+        keys.append(("meaning", pos, meaning))
+    return keys
+
+
+def normalize_word(entry, book_source, existing_word=None):
     normalized_senses = []
     seen = set()
+    existing_by_key = {}
+    existing_senses = (existing_word or {}).get("senses", [])
+    for existing_sense in existing_senses:
+        for key in sense_match_keys(existing_sense):
+            existing_by_key.setdefault(key, []).append(existing_sense)
+    used_ids = set()
+    next_id_number = max(
+        (
+            int(match.group(1))
+            for sense in existing_senses
+            if (match := re.search(r"-(\d+)$", str(sense.get("id") or "")))
+        ),
+        default=0,
+    ) + 1
+
     for sense in entry.get("senses", []):
         if not sense.get("pos") or not sense.get("meaning"):
             continue
@@ -64,9 +100,27 @@ def normalize_word(entry, book_source):
             continue
         seen.add(key)
         normalized = dict(sense)
-        normalized["id"] = (
-            f"{sense['pos'].rstrip('.')}-{len(normalized_senses) + 1}"
-        )
+        matched_id = None
+        for match_key in sense_match_keys(sense):
+            matched = next(
+                (
+                    candidate
+                    for candidate in existing_by_key.get(match_key, [])
+                    if candidate.get("id") not in used_ids
+                ),
+                None,
+            )
+            if matched:
+                matched_id = matched.get("id")
+                break
+        if matched_id:
+            normalized["id"] = matched_id
+        else:
+            while f"{sense['pos'].rstrip('.')}-{next_id_number}" in used_ids:
+                next_id_number += 1
+            normalized["id"] = f"{sense['pos'].rstrip('.')}-{next_id_number}"
+            next_id_number += 1
+        used_ids.add(normalized["id"])
         normalized["importance"] = max(
             1,
             int(sense.get("importance") or (100 - len(normalized_senses) * 3)),
@@ -120,18 +174,33 @@ def main():
     ielts_book_words = read_json(DATA_DIR / "ielts-book-words.json")
     ielts_sources = read_json(DATA_DIR / "ielts-source.json")
     source_manifest = read_json(DATA_DIR / "ielts-source-manifest.json")
+    existing_bundle_path = DATA_DIR / "vocabulary-bundle.json"
+    existing_bundle = read_json(existing_bundle_path) if existing_bundle_path.exists() else {}
+    existing_by_word = {
+        entry.get("id"): entry
+        for entry in existing_bundle.get("words", [])
+        if entry.get("id")
+    }
 
     pool = []
     by_word = {}
     for entry in kaoyan_raw:
-        normalized = normalize_word(entry, "kaoyan-reviewed")
+        normalized = normalize_word(
+            entry,
+            "kaoyan-reviewed",
+            existing_by_word.get(word_id(entry["word"], entry.get("id", ""))),
+        )
         if not normalized["senses"]:
             raise RuntimeError(f"Kaoyan word unexpectedly has no senses: {entry['word']}")
         pool.append(normalized)
         by_word[entry["word"].lower()] = normalized
 
     for entry in ielts_new_raw:
-        normalized = normalize_word(entry, "ielts-open-dictionary-audited")
+        normalized = normalize_word(
+            entry,
+            "ielts-open-dictionary-audited",
+            existing_by_word.get(word_id(entry["word"], entry.get("id", ""))),
+        )
         if not normalized["senses"]:
             raise RuntimeError(f"IELTS word has no senses: {entry['word']}")
         if entry["word"].lower() in by_word:

@@ -763,6 +763,7 @@
       "progress",
       "activityLog",
       "studyWindows",
+      "confusionLinks",
       "learningDayCounter",
       "wordListSort",
       "wordBrowse",

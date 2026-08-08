@@ -584,7 +584,7 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.locator("#planButton").click();
-  await page.locator("#dailyTargetInput").fill("2");
+  await page.locator("#dailyTargetInput").fill("3");
   await page.locator("#savePlanButton").click();
   await page.locator("#startStudyButton").click();
 
@@ -620,17 +620,43 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
 
   const firstWord = await page.locator("#wordText").textContent();
   await completeAndAdvance(page);
+  const secondWord = await page.locator("#wordText").textContent();
+  expect(secondWord).not.toBe(firstWord);
+  await reveal(page);
+  await completeAndAdvance(page);
   const currentWord = await page.locator("#wordText").textContent();
-  expect(currentWord).not.toBe(firstWord);
+  expect(currentWord).not.toBe(secondWord);
 
   await page.locator("#exitStudyButton").click();
   await expect(page.locator("#previousWordButton")).toBeEnabled();
+  await expect(page.locator("#nextHistoryWordButton")).toBeDisabled();
   await page.locator("#previousWordButton").click();
   await expect(page.locator("#cardMode")).toHaveText("回看");
   await expect(page.locator("#senseHint")).toHaveText("上一词义项");
-  await expect(page.locator("#wordText")).toHaveText(firstWord);
+  await expect(page.locator("#wordText")).toHaveText(secondWord);
   await expect(page.locator("#nextButton")).toHaveText("回到当前词");
-  await page.locator("#nextButton").click();
+
+  await page.locator("#exitStudyButton").click();
+  await expect(page.locator("#nextHistoryWordButton")).toBeEnabled();
+  await page.locator("#previousWordButton").click();
+  await expect(page.locator("#wordText")).toHaveText(firstWord);
+
+  await page.locator("#exitStudyButton").click();
+  await expect(page.locator("#previousWordButton")).toBeDisabled();
+  await expect(page.locator("#nextHistoryWordButton")).toBeEnabled();
+  await page.screenshot({ path: "test-results/study-history-return-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => {
+    return document.documentElement.scrollWidth <= document.documentElement.clientWidth;
+  })).toBe(true);
+  await page.screenshot({ path: "test-results/study-history-return-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1100, height: 850 });
+  await page.locator("#nextHistoryWordButton").click();
+  await expect(page.locator("#wordText")).toHaveText(secondWord);
+  await expect(page.locator("#cardMode")).toHaveText("回看");
+
+  await page.locator("#exitStudyButton").click();
+  await page.locator("#nextHistoryWordButton").click();
   await expect(page.locator("#wordText")).toHaveText(currentWord);
 
   await page.locator("#exitStudyButton").click();
@@ -878,6 +904,20 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
     const filters = bar.querySelector(".word-list-filters");
     return Math.abs(bar.getBoundingClientRect().width - filters.getBoundingClientRect().width);
   })).toBeLessThanOrEqual(1);
+  const mobileListLayout = await page.evaluate(() => {
+    const panel = document.querySelector("#wordListPanel").getBoundingClientRect();
+    const back = document.querySelector("#wordListBackButton").getBoundingClientRect();
+    return {
+      documentFits: document.documentElement.scrollHeight <= window.innerHeight + 1,
+      panelFits: panel.top >= 0 && panel.bottom <= window.innerHeight,
+      backVisible: back.top >= panel.top && back.bottom <= panel.bottom,
+    };
+  });
+  expect(mobileListLayout).toEqual({
+    documentFits: true,
+    panelFits: true,
+    backVisible: true,
+  });
   await page.screenshot({ path: "test-results/word-list-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1100, height: 850 });
 
@@ -890,6 +930,40 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   await expect(page.locator("#senseArea")).toBeVisible();
   await expect(page.locator("#nextButton")).toBeHidden();
   await expect(page.locator("#exitStudyButton")).toHaveText("返回");
+  await page.locator("#exitStudyButton").click();
+  await expect(page.locator("#wordListPanel")).toBeVisible();
+
+  await page.locator("#wordSortSelect").selectOption("alpha-asc");
+  await page.locator("#wordSearchInput").fill("acti");
+  expect(await page.locator(".word-list-item").count()).toBeGreaterThan(2);
+  const firstListWord = await page.locator(".word-list-name").nth(0).textContent();
+  const secondListWord = await page.locator(".word-list-name").nth(1).textContent();
+  const thirdListWord = await page.locator(".word-list-name").nth(2).textContent();
+  await page.locator(".word-list-item").nth(1).click();
+  await expect(page.locator("#wordText")).toHaveText(secondListWord);
+  await expect(page.locator("#browsePreviousWordButton")).toBeVisible();
+  await expect(page.locator("#browseNextWordButton")).toBeVisible();
+  await page.locator("#browsePreviousWordButton").click();
+  await expect(page.locator("#wordText")).toHaveText(firstListWord);
+  await expect(page.locator("#browsePreviousWordButton")).toBeDisabled();
+  await page.locator("#browseNextWordButton").click();
+  await expect(page.locator("#wordText")).toHaveText(secondListWord);
+  await page.locator("#browseNextWordButton").click();
+  await expect(page.locator("#wordText")).toHaveText(thirdListWord);
+
+  await page.screenshot({ path: "test-results/word-card-navigation-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const navigationFits = await page.locator(".study-primary-actions").evaluate((actions) => {
+    const actionRect = actions.getBoundingClientRect();
+    return [...actions.querySelectorAll("button:not([hidden])")].every((button) => {
+      const rect = button.getBoundingClientRect();
+      return rect.left >= actionRect.left && rect.right <= actionRect.right;
+    });
+  });
+  expect(navigationFits).toBe(true);
+  await expect(page.locator(".study-primary-actions button:not([hidden])")).toHaveCount(3);
+  await page.screenshot({ path: "test-results/word-card-navigation-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1100, height: 850 });
   await page.locator("#exitStudyButton").click();
   await expect(page.locator("#wordListPanel")).toBeVisible();
 });

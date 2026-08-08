@@ -32,6 +32,7 @@ function makeState(dailyTarget) {
     progress: {},
     activityLog: {},
     studyWindows: [],
+    confusionLinks: {},
     learningDayCounter: 0,
     wordListSort: "mastery",
     wordBrowse: null,
@@ -685,7 +686,7 @@ test("existing cloud history is never overwritten silently by guest history", as
   expect(result.saves).toBe(0);
 });
 
-test("recommended conflict merge preserves unique learning from both records", async ({ page }) => {
+test("recommended conflict merge persists the converged state locally and remotely", async ({ page, browser }) => {
   const remoteState = makeState(40);
   remoteState.introducedWords = ["act"];
   remoteState.progress["act:v-1"] = { status: "mastered" };
@@ -714,16 +715,45 @@ test("recommended conflict merge preserves unique learning from both records", a
     return page.evaluate(() => window.__fakeCloud.remote.revision);
   }).toBe(8);
 
-  const result = await page.evaluate(({ guestKey }) => ({
+  const result = await page.evaluate(({ guestKey, accountKey }) => ({
     activeWords: window.SenseVocabApp.getState().introducedWords,
     remoteWords: window.__fakeCloud.remote.state.introducedWords,
     guestWords: JSON.parse(localStorage.getItem(guestKey)).introducedWords,
+    accountWords: JSON.parse(localStorage.getItem(accountKey)).introducedWords,
     lastSave: window.__fakeCloud.saves.at(-1),
-  }), { guestKey: STORAGE_KEY });
+    remote: JSON.parse(JSON.stringify(window.__fakeCloud.remote)),
+    storage: Object.fromEntries(Object.entries(localStorage)),
+  }), { guestKey: STORAGE_KEY, accountKey: ACCOUNT_KEY });
   expect(result.activeWords.sort()).toEqual(["abandon", "act"]);
   expect(result.remoteWords.sort()).toEqual(["abandon", "act"]);
+  expect(result.accountWords.sort()).toEqual(["abandon", "act"]);
   expect(result.guestWords).toEqual(["abandon"]);
   expect(result.lastSave.force).toBe(false);
+
+  const reloadedContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  try {
+    const reloadedPage = await reloadedContext.newPage();
+    await installFakeCloud(reloadedPage, result.remote);
+    await reloadedPage.addInitScript((storage) => {
+      Object.entries(storage).forEach(([key, value]) => localStorage.setItem(key, value));
+    }, result.storage);
+    await reloadedPage.goto(APP_URL);
+    await waitForAccount(reloadedPage);
+    await login(reloadedPage);
+    await expect(reloadedPage.locator("#accountUserView")).toBeVisible();
+    const restored = await reloadedPage.evaluate(({ accountKey }) => ({
+      activeWords: window.SenseVocabApp.getState().introducedWords,
+      localWords: JSON.parse(localStorage.getItem(accountKey)).introducedWords,
+      remoteWords: window.__fakeCloud.remote.state.introducedWords,
+    }), { accountKey: ACCOUNT_KEY });
+    expect(restored.activeWords.sort()).toEqual(["abandon", "act"]);
+    expect(restored.localWords.sort()).toEqual(["abandon", "act"]);
+    expect(restored.remoteWords.sort()).toEqual(["abandon", "act"]);
+  } finally {
+    await reloadedContext.close();
+  }
 });
 
 test("a CAS conflict automatically merges independent device learning", async ({ page }) => {
@@ -788,6 +818,97 @@ test("a CAS conflict automatically merges independent device learning", async ({
   expect(result.newWords.sort()).toEqual(["abandon", "ability"]);
   expect(result.saves).toEqual([1, 2]);
   expect(result.conflictVisible).toBe(false);
+});
+
+test("confusing-word links follow the account to a fresh mobile device", async ({ page, browser }) => {
+  test.setTimeout(45000);
+  await installFakeCloud(page, {
+    found: true,
+    revision: 1,
+    state: makeState(1),
+    updatedAt: "2026-08-08T00:00:00.000Z",
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await expect(page.locator("#accountUserView")).toBeVisible();
+  await page.locator("#closeAccountButton").click();
+
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("act");
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#senseArea")).toBeVisible();
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#confusionPanel")).toBeVisible();
+  await page.locator("#confusionSearchInput").fill("abandon");
+  await page.locator('.confusion-search-action[data-word-id="abandon"]').click();
+
+  await expect.poll(async () => page.evaluate(() => {
+    const snapshot = window.__fakeCloud.remote?.state;
+    const active = snapshot?.bookStates?.[snapshot.activeBookId] ?? snapshot;
+    return Object.values(active?.confusionLinks ?? {}).some((link) => {
+      return new Set([link.left, link.right]).has("act") &&
+        new Set([link.left, link.right]).has("abandon");
+    });
+  })).toBe(true);
+  await page.screenshot({
+    path: "test-results/confusion-sync-desktop.png",
+    fullPage: true,
+  });
+  const remote = await page.evaluate(() => {
+    return JSON.parse(JSON.stringify(window.__fakeCloud.remote));
+  });
+
+  const mobileContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "no-preference",
+  });
+  try {
+    const mobilePage = await mobileContext.newPage();
+    await installFakeCloud(mobilePage, remote);
+    await mobilePage.goto(APP_URL);
+    await mobilePage.evaluate(() => localStorage.clear());
+    await mobilePage.reload();
+    await waitForAccount(mobilePage);
+    await login(mobilePage);
+    await expect(mobilePage.locator("#accountUserView")).toBeVisible();
+    await mobilePage.locator("#closeAccountButton").click();
+
+    await mobilePage.locator("#wordListButton").click();
+    await mobilePage.locator("#wordSearchInput").fill("act");
+    await mobilePage.locator('.word-list-item[data-word-id="act"]').click();
+    await mobilePage.locator("#revealButton").click();
+    await expect(mobilePage.locator("#confusionPanel")).toBeVisible();
+    await expect(mobilePage.locator("#confusionCount")).toContainText("2");
+    await expect(
+      mobilePage.locator('.confusion-globe-word[data-word-id="abandon"]'),
+    ).toBeVisible();
+    await mobilePage.screenshot({
+      path: "test-results/confusion-sync-mobile.png",
+      fullPage: true,
+    });
+
+    const restored = await mobilePage.evaluate(() => {
+      const snapshot = window.SenseVocabApp.getState();
+      const active = snapshot.bookStates[snapshot.activeBookId];
+      return {
+        activeBookId: snapshot.activeBookId,
+        activeLinks: Object.keys(active.confusionLinks ?? {}),
+        inactiveLinks: Object.keys(
+          snapshot.bookStates.ielts?.confusionLinks ?? {},
+        ),
+        storageKey: window.SenseVocabApp.getActiveStorageKey(),
+      };
+    });
+    expect(restored.activeBookId).toBe("kaoyan");
+    expect(restored.activeLinks).toHaveLength(1);
+    expect(restored.inactiveLinks).toHaveLength(0);
+    expect(restored.storageKey).toBe(ACCOUNT_KEY);
+  } finally {
+    await mobileContext.close();
+  }
 });
 
 test("backup import/export and account deletion preserve the separate guest record", async ({ page }) => {
@@ -909,16 +1030,56 @@ test("study feedback binds the current word and stays a compact secondary action
   await expect(page.locator("#accountFeedbackView")).toBeVisible();
   await expect(page.locator("#feedbackContext")).toBeVisible();
   await expect(page.locator("#feedbackContextWord")).toHaveText(word);
-  await page.locator("#feedbackMessage").fill("这个单词的义项需要核对。");
+  await expect(page.locator("#feedbackStructuredFields")).toBeVisible();
+  await expect(page.locator("#feedbackIssueSelect option")).toHaveCount(12);
+  await expect(page.locator("#submitFeedbackButton")).toBeDisabled();
+
+  await page.locator("#feedbackIssueSelect").selectOption("missing-sense");
+  await expect(page.locator("#feedbackMissingSenseField")).toBeVisible();
+  await expect(page.locator("#feedbackSenseField")).toBeHidden();
+  await page.locator("#feedbackMissingSense").fill("n. 行动的结果");
+  await expect(page.locator("#submitFeedbackButton")).toBeEnabled();
+
+  await page.locator("#feedbackIssueSelect").selectOption("other");
+  await expect(page.locator("#feedbackMissingSenseField")).toBeHidden();
+  await expect(page.locator("#feedbackSenseField")).toBeHidden();
+  await expect(page.locator("#feedbackMessageLabel")).toHaveText("问题描述");
+  await expect(page.locator("#submitFeedbackButton")).toBeDisabled();
+  await page.locator("#feedbackMessage").fill("这个单词还有其他问题。");
+  await expect(page.locator("#submitFeedbackButton")).toBeEnabled();
+
+  await page.locator("#feedbackIssueSelect").selectOption("redundant-sense");
+  await expect(page.locator("#feedbackSenseField")).toBeVisible();
+  await expect(page.locator("#feedbackMessageLabel")).toHaveText("补充说明（可选）");
+  await expect(page.locator("#submitFeedbackButton")).toBeDisabled();
+  await page.locator("#feedbackSenseSelect").selectOption({ index: 1 });
+  await page.locator("#feedbackMessage").fill("这个义项与同词另一义项重复。");
+  await expect(page.locator("#submitFeedbackButton")).toBeEnabled();
+  await page.screenshot({ path: "test-results/study-feedback-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => {
+    return document.documentElement.scrollWidth <= document.documentElement.clientWidth;
+  })).toBe(true);
+  await expect(page.locator("#feedbackIssueSelect")).toBeVisible();
+  await expect(page.locator("#feedbackSenseSelect")).toBeVisible();
+  await page.screenshot({ path: "test-results/study-feedback-mobile.png", fullPage: true });
+  await page.setViewportSize({ width: 1100, height: 850 });
   await page.locator("#submitFeedbackButton").click();
 
+  await expect(page.locator("#accountDialog")).toBeHidden();
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  await expect(page.locator("#wordText")).toHaveText(word);
+
   const feedback = await page.evaluate(() => window.__fakeCloud.feedbacks.at(-1));
-  expect(feedback.message).toBe("这个单词的义项需要核对。");
+  expect(feedback.message).toContain("问题类型：义项冗余");
+  expect(feedback.message).toContain("相关义项：义项 1");
+  expect(feedback.message).toContain("补充说明：这个义项与同词另一义项重复。");
   expect(feedback.context).toMatchObject({
     source: "study",
     wordText: word,
   });
   expect(feedback.context.wordId).toBeTruthy();
+  expect(feedback.context.senses).toBeUndefined();
 });
 
 test("blank guest mode cannot overwrite a non-empty account after logout and login", async ({ page }) => {

@@ -1,5 +1,7 @@
 # Changelog
 
+> 本文件保留 `v1.3.1` 及以前的历史版本记录。后续正式版本的新功能、问题修复、内容调整、兼容性说明和验证结果以 [GitHub Releases](https://github.com/Au-Cu/sense-vocab/releases) 为准，不再在此逐版追加。
+
 ## 1.3.1 - 2026-08-05
 
 - 修复学习记录增长后同步时报 `The quota has been exceeded` 的问题：本机只保存当前词书的一份权威数据，不再同时在顶层和 `bookStates` 中重复物化。

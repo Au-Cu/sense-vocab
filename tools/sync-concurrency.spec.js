@@ -247,6 +247,65 @@ test("confusing-word links merge per pair without creating transitive relations"
   expect(result.keys).not.toContain("abandon|ability");
 });
 
+test("compact active-book mirrors carry confusing-word links into sync metadata", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((scope) => {
+    const sync = window.SenseVocabSync;
+    const previous = {
+      schemaVersion: 2,
+      activeBookId: "kaoyan",
+      bookStates: { ielts: structuredClone(scope) },
+      ...structuredClone(scope),
+    };
+    const next = structuredClone(previous);
+    next.confusionLinks["abandon|act"] = {
+      left: "abandon",
+      right: "act",
+      createdAt: "2026-08-08T12:00:00.000Z",
+    };
+    sync.stampChanges(next, previous, "device-a");
+    return {
+      links: Object.keys(next.bookStates.kaoyan.confusionLinks ?? {}),
+      metadata: next.bookStates.kaoyan._sync.records.confusionLinks["abandon|act"],
+    };
+  }, baseState());
+
+  expect(result.links).toEqual(["abandon|act"]);
+  expect(result.metadata.deleted).toBe(false);
+  expect(result.metadata.vector["device-a"]).toBeGreaterThan(0);
+});
+
+test("a synced confusing-word deletion is not revived by a stale device", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((empty) => {
+    const sync = window.SenseVocabSync;
+    const base = structuredClone(empty);
+    base.confusionLinks["abandon|act"] = {
+      left: "act",
+      right: "abandon",
+      createdAt: "2026-08-08T10:00:00.000Z",
+    };
+    sync.stampChanges(base, empty, "device-a");
+
+    const deletingDevice = structuredClone(base);
+    const staleDevice = structuredClone(base);
+    delete deletingDevice.confusionLinks["abandon|act"];
+    sync.stampChanges(deletingDevice, base, "device-b");
+
+    const merged = sync.mergeStates(deletingDevice, staleDevice);
+    const reverse = sync.mergeStates(staleDevice, deletingDevice);
+    return {
+      keys: Object.keys(merged.confusionLinks),
+      reverseKeys: Object.keys(reverse.confusionLinks),
+      tombstone: merged._sync.records.confusionLinks["abandon|act"],
+    };
+  }, baseState());
+
+  expect(result.keys).toEqual([]);
+  expect(result.reverseKeys).toEqual([]);
+  expect(result.tombstone.deleted).toBe(true);
+});
+
 test("legacy per-tab vector clocks collapse into stable device clocks", async ({ page }) => {
   await loadSyncEngine(page);
   const result = await page.evaluate((base) => {

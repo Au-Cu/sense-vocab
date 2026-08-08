@@ -67,6 +67,24 @@ test("account snapshots block undeclared record loss and keep recovery copies pr
   expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
 });
 
+test("confusing-word account snapshots validate and guard every book", async () => {
+  const migration = await read(
+    "supabase/migrations/20260808150845_confusion_links_account_sync_guard.sql",
+  );
+  expect(migration).toContain("public.state_confusion_links_are_valid");
+  expect(migration).toContain("user_state_meta_confusion_links_guard");
+  expect(migration).toContain(
+    "array['progress', 'activityLog', 'confusionLinks']",
+  );
+  expect(migration).toContain("v_existing_books = '{}'::jsonb");
+  expect(migration).toContain("p_incoming -> 'confusionLinks'");
+  expect(migration).toContain(
+    "revoke all on function public.enforce_state_confusion_links()",
+  );
+  expect(migration).not.toContain("delete from public.user_state_snapshots");
+  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+});
+
 test("admin analytics aggregate book states without rewriting learning data", async () => {
   const migration = await read(
     "supabase/migrations/20260731015734_book_aware_admin_analytics.sql",
