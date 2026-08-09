@@ -56,6 +56,18 @@ const SENSE_STATUS = Object.freeze({
   REVIEW: "review",
   MASTERED: "mastered",
 });
+const V1_4_ADDED_SENSE_KEYS = new Set([
+  "prepare:v-2",
+  "pension:n-2",
+  "port:n-4",
+  "pose:n-4",
+  "deposit:v-6",
+  "deposit:v-7",
+  "positive:adj-3",
+  "prime:adj-2",
+  "resume:n-3",
+  "soil:n-2",
+]);
 
 function updateAppViewportHeight() {
   const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
@@ -692,7 +704,10 @@ function createEncounterSnapshot(wordId) {
 
 function ensureEncounterSnapshot(card) {
   if (!card || card.encounterSnapshot) return;
-  card.encounterSnapshot = createEncounterSnapshot(card.wordId);
+  card.encounterSnapshot = {
+    ...createEncounterSnapshot(card.wordId),
+    confirmedKeys: [...new Set((card.confirmedKeys ?? []).filter(isKnownSenseKey))],
+  };
 }
 
 function createStudyCard(type, wordId, activeKeys) {
@@ -1222,6 +1237,14 @@ function sanitizeState() {
 
   state.introducedWords = state.introducedWords.filter((wordId, index, list) => {
     return wordById.has(wordId) && list.indexOf(wordId) === index;
+  });
+
+  const introduced = new Set(state.introducedWords);
+  V1_4_ADDED_SENSE_KEYS.forEach((key) => {
+    const { wordId } = splitSenseKey(key);
+    if (introduced.has(wordId) && isKnownSenseKey(key) && !state.progress[key]) {
+      progressFor(key);
+    }
   });
 
   const inferredLearningDays = state.plan?.dailyTarget
@@ -1994,6 +2017,7 @@ function progressFor(key) {
       masteredOnActual: null,
       lastLearningDay: null,
       dueLearningDay: null,
+      updatedAt: null,
     };
   }
 
@@ -3841,6 +3865,7 @@ function setProgressMastered(progress, date, learningDay = activeLearningDay()) 
   progress.dueDate = null;
   progress.lastLearningDay = learningDay;
   progress.dueLearningDay = null;
+  progress.updatedAt = new Date().toISOString();
 }
 
 function setProgressPending(
@@ -3861,6 +3886,7 @@ function setProgressPending(
   progress.dueDate = dueDate;
   progress.lastLearningDay = activeLearningDay();
   progress.dueLearningDay = dueLearningDay;
+  progress.updatedAt = new Date().toISOString();
 }
 
 function markSenseFamiliar(key, options = {}) {
@@ -4301,9 +4327,14 @@ function resetCurrentMarking() {
 
   ensureEncounterSnapshot(card);
   const snapshot = card.encounterSnapshot;
+  const resetUpdatedAt = new Date().toISOString();
   Object.entries(snapshot.progress ?? {}).forEach(([key, progress]) => {
     if (progress) {
-      state.progress[key] = cloneProgress(progress);
+      const restored = cloneProgress(progress);
+      if (stableStateStringify(state.progress[key]) !== stableStateStringify(restored)) {
+        restored.updatedAt = resetUpdatedAt;
+      }
+      state.progress[key] = restored;
     } else {
       delete state.progress[key];
     }
@@ -4335,7 +4366,16 @@ function resetCurrentMarking() {
     ),
     ...(snapshot.reviewPromotedKeys ?? []),
   ];
-  card.confirmedKeys = [];
+  const snapshotConfirmedKeys = Array.isArray(snapshot.confirmedKeys)
+    ? snapshot.confirmedKeys
+    : card.type === "reinforcement"
+      ? snapshot.reviewPromotedKeys ?? []
+      : [];
+  card.confirmedKeys = [...new Set(snapshotConfirmedKeys)].filter((key) => {
+    return isKnownSenseKey(key) &&
+      splitSenseKey(key).wordId === card.wordId &&
+      state.progress[key]?.status === SENSE_STATUS.REVIEW;
+  });
   refreshCardDisplayKeys(card);
   session.currentIndex = cardIndex;
   session.revealed = true;

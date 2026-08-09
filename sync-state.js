@@ -412,11 +412,38 @@
     return numbers.length ? Math.max(...numbers) : null;
   }
 
+  function compareProgressRecency(left, right) {
+    const leftUpdatedAt = String(left?.updatedAt ?? "");
+    const rightUpdatedAt = String(right?.updatedAt ?? "");
+    if (leftUpdatedAt !== rightUpdatedAt && (leftUpdatedAt || rightUpdatedAt)) {
+      return leftUpdatedAt > rightUpdatedAt ? 1 : -1;
+    }
+
+    const leftLearningDay = Number.isFinite(left?.lastLearningDay)
+      ? left.lastLearningDay
+      : -1;
+    const rightLearningDay = Number.isFinite(right?.lastLearningDay)
+      ? right.lastLearningDay
+      : -1;
+    if (leftLearningDay !== rightLearningDay) {
+      return leftLearningDay > rightLearningDay ? 1 : -1;
+    }
+
+    const leftSeen = String(left?.lastSeenActual ?? left?.lastSeen ?? "");
+    const rightSeen = String(right?.lastSeenActual ?? right?.lastSeen ?? "");
+    if (leftSeen !== rightSeen) return leftSeen > rightSeen ? 1 : -1;
+    return 0;
+  }
+
   function mergeProgress(left, right) {
-    const base = clone(pickDeterministic(left, right));
+    const recency = compareProgressRecency(left, right);
+    const preferred = recency > 0 ? left : recency < 0 ? right : null;
+    const base = clone(preferred ?? pickDeterministic(left, right));
     const leftRank = STATUS_RANK.get(left?.status) ?? 0;
     const rightRank = STATUS_RANK.get(right?.status) ?? 0;
-    const status = leftRank <= rightRank ? left?.status : right?.status;
+    const status = preferred?.status ?? (
+      leftRank <= rightRank ? left?.status : right?.status
+    );
     base.status = STATUS_RANK.has(status) ? status : "new";
     base.misses = Math.max(Number(left?.misses) || 0, Number(right?.misses) || 0);
     base.firstSeen = minimumDate(left?.firstSeen, right?.firstSeen);
@@ -444,11 +471,12 @@
     } else {
       base.masteredOn = null;
       base.masteredOnActual = null;
-      base.dueDate = minimumDate(left?.dueDate, right?.dueDate);
-      base.dueLearningDay = minimumNumber(
-        left?.dueLearningDay,
-        right?.dueLearningDay,
-      );
+      base.dueDate = preferred
+        ? preferred.dueDate ?? null
+        : minimumDate(left?.dueDate, right?.dueDate);
+      base.dueLearningDay = preferred
+        ? preferred.dueLearningDay ?? null
+        : minimumNumber(left?.dueLearningDay, right?.dueLearningDay);
     }
     return base;
   }

@@ -688,11 +688,25 @@ test("existing cloud history is never overwritten silently by guest history", as
 
 test("recommended conflict merge persists the converged state locally and remotely", async ({ page, browser }) => {
   const remoteState = makeState(40);
-  remoteState.introducedWords = ["act"];
+  remoteState.introducedWords = ["act", "ability"];
   remoteState.progress["act:v-1"] = { status: "mastered" };
+  remoteState.progress["ability:n-1"] = {
+    status: "reinforce",
+    lastLearningDay: 3,
+    lastSeenActual: "2026-07-28",
+    updatedAt: "2026-07-28T09:00:00.000Z",
+    dueLearningDay: 3,
+  };
   const localState = makeState(30);
-  localState.introducedWords = ["abandon"];
+  localState.introducedWords = ["abandon", "ability"];
   localState.progress["abandon:v-1"] = { status: "reinforce" };
+  localState.progress["ability:n-1"] = {
+    status: "mastered",
+    lastLearningDay: 3,
+    lastSeenActual: "2026-07-28",
+    masteredOnActual: "2026-07-28",
+    updatedAt: "2026-07-28T10:00:00.000Z",
+  };
   await installFakeCloud(page, {
     found: true,
     revision: 7,
@@ -720,14 +734,21 @@ test("recommended conflict merge persists the converged state locally and remote
     remoteWords: window.__fakeCloud.remote.state.introducedWords,
     guestWords: JSON.parse(localStorage.getItem(guestKey)).introducedWords,
     accountWords: JSON.parse(localStorage.getItem(accountKey)).introducedWords,
+    activeStatus: window.SenseVocabApp.getState().progress["ability:n-1"].status,
+    remoteStatus: window.__fakeCloud.remote.state.progress["ability:n-1"].status,
+    accountStatus: JSON.parse(localStorage.getItem(accountKey))
+      .progress["ability:n-1"].status,
     lastSave: window.__fakeCloud.saves.at(-1),
     remote: JSON.parse(JSON.stringify(window.__fakeCloud.remote)),
     storage: Object.fromEntries(Object.entries(localStorage)),
   }), { guestKey: STORAGE_KEY, accountKey: ACCOUNT_KEY });
-  expect(result.activeWords.sort()).toEqual(["abandon", "act"]);
-  expect(result.remoteWords.sort()).toEqual(["abandon", "act"]);
-  expect(result.accountWords.sort()).toEqual(["abandon", "act"]);
-  expect(result.guestWords).toEqual(["abandon"]);
+  expect(result.activeWords.sort()).toEqual(["abandon", "ability", "act"]);
+  expect(result.remoteWords.sort()).toEqual(["abandon", "ability", "act"]);
+  expect(result.accountWords.sort()).toEqual(["abandon", "ability", "act"]);
+  expect(result.guestWords).toEqual(["abandon", "ability"]);
+  expect(result.activeStatus).toBe("mastered");
+  expect(result.remoteStatus).toBe("mastered");
+  expect(result.accountStatus).toBe("mastered");
   expect(result.lastSave.force).toBe(false);
 
   const reloadedContext = await browser.newContext({
@@ -747,10 +768,17 @@ test("recommended conflict merge persists the converged state locally and remote
       activeWords: window.SenseVocabApp.getState().introducedWords,
       localWords: JSON.parse(localStorage.getItem(accountKey)).introducedWords,
       remoteWords: window.__fakeCloud.remote.state.introducedWords,
+      activeStatus: window.SenseVocabApp.getState().progress["ability:n-1"].status,
+      localStatus: JSON.parse(localStorage.getItem(accountKey))
+        .progress["ability:n-1"].status,
+      remoteStatus: window.__fakeCloud.remote.state.progress["ability:n-1"].status,
     }), { accountKey: ACCOUNT_KEY });
-    expect(restored.activeWords.sort()).toEqual(["abandon", "act"]);
-    expect(restored.localWords.sort()).toEqual(["abandon", "act"]);
-    expect(restored.remoteWords.sort()).toEqual(["abandon", "act"]);
+    expect(restored.activeWords.sort()).toEqual(["abandon", "ability", "act"]);
+    expect(restored.localWords.sort()).toEqual(["abandon", "ability", "act"]);
+    expect(restored.remoteWords.sort()).toEqual(["abandon", "ability", "act"]);
+    expect(restored.activeStatus).toBe("mastered");
+    expect(restored.localStatus).toBe("mastered");
+    expect(restored.remoteStatus).toBe("mastered");
   } finally {
     await reloadedContext.close();
   }
@@ -988,6 +1016,7 @@ test("signed-in users can submit text and up to four private feedback images", a
   await expect(page.locator("#feedbackImagePreview img")).toHaveCount(2);
   await page.locator("#submitFeedbackButton").click();
   await expect(page.locator("#accountMessage")).toHaveText("反馈已提交。");
+  await expect(page.locator("#accountDialog")).toBeHidden();
 
   const feedbacks = await page.evaluate(() => window.__fakeCloud.feedbacks);
   expect(feedbacks).toHaveLength(1);

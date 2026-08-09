@@ -3,6 +3,18 @@ const wordData = require("../data/kaoyan-words.json");
 
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
+const V1_4_ADDED_SENSE_KEYS = [
+  "prepare:v-2",
+  "pension:n-2",
+  "port:n-4",
+  "pose:n-4",
+  "deposit:v-6",
+  "deposit:v-7",
+  "positive:adj-3",
+  "prime:adj-2",
+  "resume:n-3",
+  "soil:n-2",
+];
 
 test.use({
   launchOptions: {
@@ -97,12 +109,15 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   expect(state.progress["act:n-4"].status).toBe("reinforce");
 
   // Keep the next days focused on review by marking the full word list as introduced.
-  await page.evaluate(async (key) => {
+  await page.evaluate(async ({ key, addedSenseKeys }) => {
     const entries = await fetch("./data/kaoyan-words.json", { cache: "no-store" }).then((response) => response.json());
     const saved = JSON.parse(localStorage.getItem(key));
     saved.introducedWords = entries.map((entry) => entry.id);
+    addedSenseKeys.forEach((senseKey) => {
+      saved.progress[senseKey] ??= { status: "mastered" };
+    });
     localStorage.setItem(key, JSON.stringify(saved));
-  }, STORAGE_KEY);
+  }, { key: STORAGE_KEY, addedSenseKeys: V1_4_ADDED_SENSE_KEYS });
 
   // Day 2 morning: review + familiar => mastered; reinforce + familiar => review;
   // an unconfirmed sense remains reinforce and must appear again at the end of the day.
@@ -496,15 +511,116 @@ test("familiar senses move to the bottom and word-level resets restore the right
   expect(Object.keys(saved.progress).filter((key) => key.startsWith("act:"))).toEqual([]);
 });
 
+test("reinforcement reset preserves senses promoted during the morning review", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    const NativeDate = Date;
+    class TestDate extends NativeDate {
+      constructor(...args) {
+        if (args.length) {
+          super(...args);
+          return;
+        }
+        super("2026-08-03T12:00:00+08:00");
+      }
+
+      static now() {
+        return new TestDate().getTime();
+      }
+    }
+    window.Date = TestDate;
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 10,
+      view: "study",
+      plan: {
+        dailyTarget: 1,
+        startedOn: "2026-08-01",
+        createdOn: "2026-08-01",
+        updatedOn: "2026-08-01",
+      },
+      introducedWords: ["act"],
+      progress: {
+        "act:v-1": { status: "review", dueDate: "2026-08-04", dueLearningDay: 3 },
+        "act:v-2": { status: "reinforce", dueDate: "2026-08-03", dueLearningDay: 2 },
+        "act:n-3": { status: "mastered", masteredOn: "2026-08-02" },
+        "act:n-4": { status: "mastered", masteredOn: "2026-08-02" },
+      },
+      activityLog: {},
+      studyWindows: [],
+      learningDayCounter: 2,
+      wordListSort: "mastery",
+      session: {
+        date: "2026-08-03",
+        queue: [{
+          type: "reinforcement",
+          wordId: "act",
+          activeSenseKeys: ["act:v-2"],
+          senseKeys: ["act:v-1", "act:v-2", "act:n-3", "act:n-4"],
+          confirmedKeys: ["act:v-1"],
+          expandedMasteredKeys: [],
+        }],
+        currentIndex: 0,
+        revealed: true,
+        cardPhase: "select",
+        baseNewAdded: true,
+        baseCompleted: false,
+        activeBatchType: "planned",
+        activePlanDate: "2026-08-03",
+        reinforcementAdded: true,
+        reinforcedKeys: [],
+        reviewPromotedKeys: ["act:v-1"],
+        activeLearningDay: 2,
+        baseLearningDay: 2,
+        snapshotTimingVersion: 2,
+      },
+    }));
+  }, STORAGE_KEY);
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#cardMode")).toHaveText("强化");
+  await expect(page.locator('[data-key="act:v-1"]')).toHaveClass(/is-confirmed/);
+  await expect(page.locator('[data-key="act:v-2"]')).toBeEnabled();
+
+  await page.locator('[data-key="act:v-2"]').click();
+  let saved = await readState(page);
+  expect(saved.session.queue[0].encounterSnapshot.confirmedKeys).toEqual(["act:v-1"]);
+
+  // Simulate a card snapshot persisted by the previous release.
+  await page.evaluate((storageKey) => {
+    const savedState = JSON.parse(localStorage.getItem(storageKey));
+    delete savedState.session.queue[0].encounterSnapshot.confirmedKeys;
+    localStorage.setItem(storageKey, JSON.stringify(savedState));
+  }, STORAGE_KEY);
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#cardMode")).toHaveText("强化");
+  await page.locator("#resetButton").click();
+  await page.locator("#resetMarkingButton").click();
+
+  await expect(page.locator('[data-key="act:v-1"]')).toHaveClass(/is-confirmed/);
+  await expect(page.locator('[data-key="act:v-1"]')).toBeDisabled();
+  await expect(page.locator('[data-key="act:v-2"]')).toBeEnabled();
+  saved = await readState(page);
+  expect(saved.progress["act:v-1"].status).toBe("review");
+  expect(saved.progress["act:v-2"].status).toBe("reinforce");
+});
+
 test("long words stay inside the word card on desktop and mobile", async ({ page }) => {
   await page.goto(APP_URL);
-  await page.evaluate(async (key) => {
+  await page.evaluate(async ({ key, addedSenseKeys }) => {
     const now = new Date();
     const date = [
       now.getFullYear(),
       String(now.getMonth() + 1).padStart(2, "0"),
       String(now.getDate()).padStart(2, "0"),
     ].join("-");
+    const progress = Object.fromEntries(
+      addedSenseKeys.map((senseKey) => [senseKey, { status: "mastered" }]),
+    );
     localStorage.setItem(key, JSON.stringify({
       view: "home",
       plan: {
@@ -518,9 +634,9 @@ test("long words stay inside the word card on desktop and mobile", async ({ page
       introducedWords: (await fetch("./data/kaoyan-words.json").then((response) => response.json()))
         .filter((entry) => entry.id !== "semiconductor")
         .map((entry) => entry.id),
-      progress: {},
+      progress,
     }));
-  }, STORAGE_KEY);
+  }, { key: STORAGE_KEY, addedSenseKeys: V1_4_ADDED_SENSE_KEYS });
   await page.reload();
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#wordText")).toHaveText("semiconductor");
@@ -911,13 +1027,13 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
       documentFits: document.documentElement.scrollHeight <= window.innerHeight + 1,
       panelFits: panel.top >= 0 && panel.bottom <= window.innerHeight,
       backVisible: back.top >= panel.top && back.bottom <= panel.bottom,
+      bottomClearance: Math.round(window.innerHeight - panel.bottom),
     };
   });
-  expect(mobileListLayout).toEqual({
-    documentFits: true,
-    panelFits: true,
-    backVisible: true,
-  });
+  expect(mobileListLayout.documentFits).toBe(true);
+  expect(mobileListLayout.panelFits).toBe(true);
+  expect(mobileListLayout.backVisible).toBe(true);
+  expect(mobileListLayout.bottomClearance).toBeGreaterThanOrEqual(48);
   await page.screenshot({ path: "test-results/word-list-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1100, height: 850 });
 
@@ -1126,7 +1242,7 @@ test("pending-new words use their recorded encounter span even after relearning"
   expect(saved.progress["act:v-1"].firstSeenActual).toBe("2026-07-24");
 });
 
-test("introduced words with explicit pending-new senses rejoin tomorrow's new queue", async ({ page }) => {
+test("newly added senses without progress rejoin tomorrow's new queue", async ({ page }) => {
   await page.addInitScript((storageKey) => {
     localStorage.clear();
     localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
@@ -1139,12 +1255,9 @@ test("introduced words with explicit pending-new senses rejoin tomorrow's new qu
         createdOn: "2026-08-01",
         updatedOn: "2026-08-01",
       },
-      introducedWords: ["act"],
+      introducedWords: ["prepare"],
       progress: {
-        "act:v-1": { status: "new", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18" },
-        "act:v-2": { status: "mastered", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18", masteredOnActual: "2026-07-18", masteredOn: "2026-07-18" },
-        "act:n-3": { status: "mastered", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18", masteredOnActual: "2026-07-18", masteredOn: "2026-07-18" },
-        "act:n-4": { status: "mastered", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18", masteredOnActual: "2026-07-18", masteredOn: "2026-07-18" },
+        "prepare:v-1": { status: "mastered", firstSeenActual: "2026-07-17", lastSeenActual: "2026-07-18", masteredOnActual: "2026-07-18", masteredOn: "2026-07-18" },
       },
       activityLog: {},
       studyWindows: [],
@@ -1157,18 +1270,18 @@ test("introduced words with explicit pending-new senses rejoin tomorrow's new qu
   await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
   await expect(page.locator("#todayNewCount")).toHaveText("1");
   await page.locator("#startStudyButton").click();
-  await expect(page.locator("#wordText")).toHaveText("act");
+  await expect(page.locator("#wordText")).toHaveText("prepare");
   await page.locator("#revealButton").click();
-  await expect(page.locator(".sense-item")).toHaveCount(4);
-  await expect(page.locator('.sense-item[data-key="act:v-1"]')).toBeEnabled();
-  await expect(page.locator(".sense-item.is-mastered")).toHaveCount(3);
-  await page.locator('.sense-item[data-key="act:v-1"]').click();
+  await expect(page.locator(".sense-item")).toHaveCount(2);
+  await expect(page.locator('.sense-item[data-key="prepare:v-2"]')).toBeEnabled();
+  await expect(page.locator(".sense-item.is-mastered")).toHaveCount(1);
+  await page.locator('.sense-item[data-key="prepare:v-2"]').click();
   await expect(page.locator("#nextButton")).toHaveText("下一词");
   await page.locator("#nextButton").click();
 
   const saved = await readState(page);
-  expect(saved.introducedWords.filter((wordId) => wordId === "act")).toHaveLength(1);
-  expect(saved.activityLog["2026-08-03"]?.newWords ?? []).not.toContain("act");
+  expect(saved.introducedWords.filter((wordId) => wordId === "prepare")).toHaveLength(1);
+  expect(saved.activityLog["2026-08-03"]?.newWords ?? []).not.toContain("prepare");
 });
 
 test("reinforcement cards keep inactive mastered senses visible before and after marking", async ({ page }) => {

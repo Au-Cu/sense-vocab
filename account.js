@@ -2063,7 +2063,6 @@
       return;
     }
     const message = buildFeedbackMessage();
-    const returnToWordCard = activeFeedbackContext?.source === "study";
 
     feedbackBusy = true;
     updateFeedbackSubmitState();
@@ -2076,8 +2075,7 @@
       );
       resetFeedbackForm();
       clearFeedbackRequest();
-      if (returnToWordCard) closeAccountDialog();
-      else showPrimaryAccountView();
+      closeAccountDialog();
       setMessage("反馈已提交。");
     } catch (error) {
       setMessage(error?.message ?? "反馈提交失败，请稍后重试。", "error");

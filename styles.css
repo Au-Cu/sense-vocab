@@ -2282,7 +2282,10 @@ button {
   }
 
   .word-list-panel {
-    height: calc(var(--app-viewport-height, 100dvh) - 16px);
+    height: min(
+      calc(var(--app-viewport-height, 100dvh) - 64px),
+      calc(100svh - 16px)
+    );
     min-height: 0;
   }
 

@@ -94,6 +94,55 @@ test("concurrent disagreement on one sense keeps the safer learning state", asyn
   expect(result.misses).toBe(1);
 });
 
+test("concurrent progress keeps the state with the latest learning evidence", async ({ page }) => {
+  await page.goto(APP_URL);
+  const merged = await page.evaluate(() => {
+    const local = {
+      progress: {
+        "act:v-1": {
+          status: "mastered",
+          lastLearningDay: 3,
+          lastSeenActual: "2026-08-09",
+          masteredOnActual: "2026-08-09",
+          updatedAt: "2026-08-09T10:00:00.000Z",
+        },
+      },
+      _sync: {
+        version: 1,
+        records: {
+          progress: {
+            "act:v-1": { vector: { local: 1 }, deleted: false },
+          },
+        },
+      },
+    };
+    const remote = {
+      progress: {
+        "act:v-1": {
+          status: "reinforce",
+          lastLearningDay: 3,
+          lastSeenActual: "2026-08-09",
+          updatedAt: "2026-08-09T09:00:00.000Z",
+          dueLearningDay: 3,
+        },
+      },
+      _sync: {
+        version: 1,
+        records: {
+          progress: {
+            "act:v-1": { vector: { remote: 1 }, deleted: false },
+          },
+        },
+      },
+    };
+    return window.SenseVocabSync.mergeStates(local, remote);
+  });
+
+  expect(merged.progress["act:v-1"].status).toBe("mastered");
+  expect(merged.progress["act:v-1"].lastLearningDay).toBe(3);
+  expect(merged.progress["act:v-1"].dueLearningDay).toBeNull();
+});
+
 test("a concurrent explicit reset is not revived by stale progress", async ({ page }) => {
   await loadSyncEngine(page);
   const result = await page.evaluate((empty) => {
