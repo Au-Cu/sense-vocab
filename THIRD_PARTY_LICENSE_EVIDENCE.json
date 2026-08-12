@@ -1,0 +1,68 @@
+{
+  "formatVersion": 1,
+  "accessDate": "2026-08-09",
+  "entries": {
+    "supabase@2.110.0": {
+      "declaredLicense": "MIT",
+      "upstreamRepository": "https://github.com/supabase/cli",
+      "upstreamRef": "v2.110.0",
+      "upstreamCommit": "71ecf66abdd4d3860d45adda7757e6bb79bb8a0c",
+      "npmTarball": "https://registry.npmjs.org/supabase/-/supabase-2.110.0.tgz",
+      "separateLicenseFilePresent": false,
+      "localArtifacts": [
+        {
+          "path": "node_modules/supabase/package.json",
+          "sha256": "44acf7d092429e775b636707e065e6b61c4aba74edbefd6e83a46edc4c7e98ee",
+          "assertion": "license field is MIT"
+        },
+        {
+          "path": "node_modules/supabase/README.md",
+          "sha256": "d868fa2ab37ffd1d136a70f709200421feac1ea0b20fad5baddfdc2f9b452621",
+          "assertion": "License section states that Supabase CLI packages are released under MIT"
+        }
+      ],
+      "officialArtifacts": [
+        {
+          "url": "https://raw.githubusercontent.com/supabase/cli/v2.110.0/apps/cli/package.json",
+          "sha256": "da5f6b51d0777e2b69a01f5eec5637e26407ad8b81bbf43b74fab90f3763aa27"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/supabase/cli/v2.110.0/README.md",
+          "sha256": "d868fa2ab37ffd1d136a70f709200421feac1ea0b20fad5baddfdc2f9b452621"
+        }
+      ],
+      "absenceEvidence": "The installed npm artifact and the official v2.110.0 repository tree contain no separately named license file."
+    },
+    "wordnet@2.0.0": {
+      "declaredLicense": "MIT",
+      "upstreamRepository": "https://github.com/words/wordnet",
+      "upstreamRef": "e3204844cce55f07fe552f0dad08bc2798799992",
+      "upstreamCommit": "e3204844cce55f07fe552f0dad08bc2798799992",
+      "npmTarball": "https://registry.npmjs.org/wordnet/-/wordnet-2.0.0.tgz",
+      "separateLicenseFilePresent": false,
+      "localArtifacts": [
+        {
+          "path": "node_modules/wordnet/package.json",
+          "sha256": "c294109a17307947ccb8ab30c5ef549ecb44e57b11840b4e7cc632c6e7c996b9",
+          "assertion": "license field is MIT"
+        },
+        {
+          "path": "node_modules/wordnet/README.md",
+          "sha256": "2414328db9a592bd12f4c5162ec57698de1fd1f6210ad30c4622fa09ecffd0a8",
+          "assertion": "License section states MIT License and separately links the Princeton WordNet license"
+        }
+      ],
+      "officialArtifacts": [
+        {
+          "url": "https://raw.githubusercontent.com/words/wordnet/e3204844cce55f07fe552f0dad08bc2798799992/package.json",
+          "sha256": "c294109a17307947ccb8ab30c5ef549ecb44e57b11840b4e7cc632c6e7c996b9"
+        },
+        {
+          "url": "https://raw.githubusercontent.com/words/wordnet/e3204844cce55f07fe552f0dad08bc2798799992/README.md",
+          "sha256": "2414328db9a592bd12f4c5162ec57698de1fd1f6210ad30c4622fa09ecffd0a8"
+        }
+      ],
+      "absenceEvidence": "The installed npm artifact and the exact npm gitHead repository tree contain no separately named license file."
+    }
+  }
+}

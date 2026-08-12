@@ -151,6 +151,7 @@ const confusionSearchResults = document.querySelector("#confusionSearchResults")
 const wordText = document.querySelector("#wordText");
 const revealButton = document.querySelector("#revealButton");
 const audioButton = document.querySelector("#audioButton");
+const audioAttribution = document.querySelector("#audioAttribution");
 const senseArea = document.querySelector("#senseArea");
 const morphologyPanel = document.querySelector("#morphologyPanel");
 const senseHint = document.querySelector("#senseHint");
@@ -415,11 +416,16 @@ function normalizeWordList(data) {
         audio: sense.audio,
         audioAuthor: sense.audioAuthor,
         audioLicense: sense.audioLicense,
+        audioLicenseUrl: sense.audioLicenseUrl,
         audioSourcePage: sense.audioSourcePage,
+        audioAttribution: sense.audioAttribution,
         exampleSource: sense.exampleSource,
         exampleSourceId: sense.exampleSourceId,
         exampleOwner: sense.exampleOwner,
         exampleLicense: sense.exampleLicense,
+        exampleLicenseUrl: sense.exampleLicenseUrl,
+        exampleSourcePage: sense.exampleSourcePage,
+        exampleHistoryPage: sense.exampleHistoryPage,
         importance: Math.max(1, 100 - target.senses.length * 3),
       });
     });
@@ -1997,10 +2003,40 @@ function exampleAttribution(sense) {
     const label = source.includes("quotation") ? "Wiktionary/Kaikki 引文" : "Wiktionary/Kaikki";
     return `来源：${label}${sense.exampleLicense ? ` · ${sense.exampleLicense}` : ""}`;
   }
-  if (source.includes("wordnet") || source.includes("semcor")) {
+  if (source.includes("semcor")) {
+    return "来源：SemCor 3.0（Brown Corpus 衍生；商业权利尚未确认）";
+  }
+  if (source.includes("wordnet")) {
     return `来源：Princeton WordNet${sense.exampleLicense ? ` · ${sense.exampleLicense}` : ""}`;
   }
   return "";
+}
+
+function renderAudioAttribution(word) {
+  audioAttribution.replaceChildren();
+  audioAttribution.hidden = true;
+  const sense = word?.senses?.find((entry) => entry.audio);
+  if (!sense?.audioAuthor || !sense.audioLicense || !sense.audioSourcePage) return;
+
+  audioAttribution.append(document.createTextNode(`录音：${sense.audioAuthor} · `));
+  if (sense.audioLicenseUrl) {
+    const licenseLink = document.createElement("a");
+    licenseLink.href = sense.audioLicenseUrl;
+    licenseLink.target = "_blank";
+    licenseLink.rel = "noopener noreferrer";
+    licenseLink.textContent = sense.audioLicense;
+    audioAttribution.append(licenseLink);
+  } else {
+    audioAttribution.append(document.createTextNode(sense.audioLicense));
+  }
+  audioAttribution.append(document.createTextNode(" · "));
+  const sourceLink = document.createElement("a");
+  sourceLink.href = sense.audioSourcePage;
+  sourceLink.target = "_blank";
+  sourceLink.rel = "noopener noreferrer";
+  sourceLink.textContent = "来源页";
+  audioAttribution.append(sourceLink);
+  audioAttribution.hidden = false;
 }
 
 function progressFor(key) {
@@ -2227,7 +2263,11 @@ function fitWordText() {
   const horizontalPadding =
     Number.parseFloat(buttonStyle.paddingLeft) +
     Number.parseFloat(buttonStyle.paddingRight);
-  const available = Math.max(96, revealButton.clientWidth - horizontalPadding);
+  const cardWidth = revealButton.parentElement?.clientWidth ?? revealButton.clientWidth;
+  const available = Math.max(
+    96,
+    Math.min(revealButton.clientWidth, cardWidth) - horizontalPadding,
+  );
   const measured = wordText.getBoundingClientRect().width;
   if (measured > available) {
     const fitted = Math.max(18, Math.floor(maximum * available / measured));
@@ -2635,6 +2675,7 @@ function renderStudy() {
     senseArea.hidden = true;
     nextButton.disabled = true;
     audioButton.hidden = true;
+    renderAudioAttribution(null);
     revealButton.disabled = true;
     revealButton.classList.remove("is-finished", "is-mastered");
     wordText.textContent = "正在加载学习内容";
@@ -2681,6 +2722,7 @@ function renderStudy() {
     ? "回到当前词"
     : phase === "examples" ? "下一词" : "完成";
   audioButton.hidden = finished;
+  renderAudioAttribution(finished ? null : word);
   revealButton.disabled = finished;
   revealButton.classList.toggle("is-finished", finished);
   revealButton.classList.toggle("is-mastered", fullyMastered);
@@ -5194,6 +5236,7 @@ window.addEventListener("resize", () => {
 });
 window.visualViewport?.addEventListener("resize", () => {
   updateAppViewportHeight();
+  scheduleWordFit();
   positionTutorialOverlay({ force: true });
 });
 window.visualViewport?.addEventListener("scroll", () => {

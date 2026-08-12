@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "batchId": "OP-FB-2026-08-12-A",
+  "purpose": "Resolve the 2026-08-12 anonymized vocabulary feedback batch with stable content identities.",
+  "review": {
+    "status": "approved",
+    "reviewedAt": "2026-08-12",
+    "reviewerRole": "Sense Vocab product owner",
+    "scope": "all candidate fields in this batch"
+  },
+  "generation": {
+    "provider": "OpenAI",
+    "product": "Codex Desktop",
+    "modelFamily": "GPT-5",
+    "exactModelSnapshot": "not disclosed by the service",
+    "cliVersion": "0.147.0-alpha.6.5",
+    "sessionId": "019fe1b5-23d3-7ff1-ae9a-ff57ac55f4cd",
+    "prompt": "批次 OP-FB-2026-08-12-A：仅依据当前运行时稳定内容 ID、同词全部义项、已记录的 WordNet 3.0 语义定位证据和匿名化问题方向，为指定目标义项独立原创必要字段。每个字段必须与目标词性和目标义项严格绑定，并与相邻义项排他；禁止复制反馈、未授权语料或现有高风险中文文本；不得包含无关性内容或中国政治与意识形态内容；输出自然、简洁、适合考研或雅思学习，并保留现有 ID，新增义项不预分配 ID。",
+    "promptSha256Utf8": "a22d6f2ddefd2a37e36372556234c34535e19fad685ec26c0021f38b75c54bbd"
+  },
+  "rights": {
+    "outputAuthor": "Sense Vocab product owner as output rightsholder; draft generated with OpenAI Codex and human-reviewed",
+    "outputRightsBasis": "OpenAI Terms of Use, Content section, or OpenAI Services Agreement sections 4.1-4.4, as applicable",
+    "outputRightsUrl": "https://openai.com/policies/row-terms-of-use/",
+    "alternativeBusinessTermsUrl": "https://openai.com/policies/services-agreement/",
+    "alternativeBusinessTermsEffectiveAt": "2026-01-01",
+    "outputRightsEffectiveAt": "2026-01-01",
+    "outputRightsAccessedAt": "2026-08-12",
+    "outputRightsEvidenceSummary": "OpenAI Terms of Use (accessed 2026-08-12), Content: the user retains rights in Input; as between the user and OpenAI, the user owns Output and OpenAI assigns its rights in Output; Output may not be unique and must be evaluated for accuracy and appropriateness before use or sharing.",
+    "outputRightsEvidenceSha256Utf8": "e49e27f7882fa78bc4aa3b1b389c9eb1b07f836a3a9bdbd7d6491b2a9c6ee84a",
+    "permittedUses": [
+      "commercial use",
+      "modification",
+      "local caching",
+      "public display",
+      "redistribution as part of Sense Vocab"
+    ],
+    "obligations": [
+      "retain this generation and review record",
+      "do not represent AI output as exclusively human-generated",
+      "evaluate accuracy and appropriateness before publication"
+    ],
+    "wordnet": {
+      "author": "Princeton University",
+      "license": "WordNet 3.0 License",
+      "sourceUrl": "https://wordnet.princeton.edu/license-and-commercial-use",
+      "localEvidence": "docs/licenses/wordnet-3.0-LICENSE.txt",
+      "localEvidenceSha256": "ff9698aef1589e32099a19a7bcaeb2f6284020ed13d9a3e47584258737d0bd46"
+    },
+    "cmudict": {
+      "author": "Carnegie Mellon University",
+      "license": "CMUdict BSD-style License",
+      "sourceUrl": "https://github.com/cmusphinx/cmudict",
+      "localEvidence": "docs/licenses/cmudict-LICENSE.txt",
+      "localEvidenceSha256": "f44d2ded77781dc1e5529fd2a3d62d9767eff9ca0c50ea913634526a646163c8"
+    },
+    "inputMaterials": [
+      "project-owned stable wordId and senseId values",
+      "anonymized issue categories used only as problem signals, without copying feedback text",
+      "WordNet 3.0 semantic identity evidence under the recorded license"
+    ],
+    "residualRisk": "The service does not disclose the exact model snapshot and AI output may not be unique. Human review and field-level hashes mitigate reproducibility and similarity risk; this is not global commercial clearance for historical content."
+  },
+  "items": [
+    {"itemId":"B01","wordId":"name","senseId":"v-4","action":"update","fields":{"meaning":"任命，指定（担任职务）","definition":"appoint someone to a particular position or role","definitionSentence":"To name someone means to appoint that person to a particular position or role.","definitionZh":"任命某人担任特定职务或角色。"}},
+    {"itemId":"B02","wordId":"waterproof","senseId":"n-2","action":"update","fields":{"meaning":"防水外套，雨衣"}},
+    {"itemId":"B03","wordId":"sympathetic","senseId":"adj-3","action":"update","fields":{"meaning":"性情相投的，趣味相投的","definitionZh":"性情和品味相似、彼此合得来的。","exampleZh":"两人有许多相同的爱好，因此他觉得她是个十分投契的伙伴。"}},
+    {"itemId":"B04A","wordId":"sanction","senseId":"v-1","action":"update","previousExampleSource":"semcor","fields":{"meaning":"批准，准许","definition":"give official approval or permission for something","definitionSentence":"To sanction something means to give it official approval or permission.","definitionZh":"正式批准或准许某事。","example":"The ethics committee sanctioned the revised study after reviewing its safety measures.","exampleZh":"伦理委员会审查安全措施后，批准了修订后的研究。"}},
+    {"itemId":"B04B","wordId":"sanction","senseId":"n-2","action":"add","bookIds":["kaoyan"],"importance":97,"fields":{"pos":"n.","synsetId":"omw-en-06687358-n","meaning":"正式批准，许可","definition":"formal approval or permission for an action","definitionSentence":"Sanction is formal approval or permission for an action.","definitionZh":"对某项行动的正式批准或许可。","example":"The renovation cannot begin without the building owner's sanction.","exampleZh":"没有业主的正式许可，翻修工程不能开始。"}},
+    {"itemId":"B04C","wordId":"sanction","senseId":"n-3","action":"add","bookIds":["kaoyan"],"importance":94,"fields":{"pos":"n.","synsetId":"omw-en-01124246-n","meaning":"制裁，处罚措施","definition":"a penalty imposed to enforce a rule or respond to wrongdoing","definitionSentence":"A sanction is a penalty imposed to enforce a rule or respond to wrongdoing.","definitionZh":"为执行规则或回应违规行为而施加的处罚措施。","example":"The league imposed a financial sanction on the club for breaking the registration rules.","exampleZh":"该俱乐部违反注册规则后，联赛对其处以经济处罚。"}},
+    {"itemId":"B05","wordId":"subscribe","senseId":"v-5","action":"update","fields":{"meaning":"签名，签署","definitionZh":"签名；在文件上写下自己的姓名。"}},
+    {"itemId":"B06","wordId":"consent","senseId":"n-2","action":"add","bookIds":["kaoyan"],"importance":97,"fields":{"pos":"n.","synsetId":"omw-en-06689667-n","meaning":"同意，许可","definition":"permission or agreement given for something to happen","definitionSentence":"Consent is permission or agreement given for something to happen.","definitionZh":"允许某事发生或同意做某事。","example":"The clinic obtained the patient's written consent before beginning the treatment.","exampleZh":"诊所开始治疗前取得了患者的书面同意。"}},
+    {"itemId":"B08","wordId":"prescribe","senseId":"v-2","action":"add","bookIds":["kaoyan"],"importance":97,"fields":{"pos":"v.","synsetId":"omw-en-01074284-v","meaning":"开处方，开药","definition":"formally order a medicine or treatment for a patient","definitionSentence":"To prescribe means to formally order a medicine or treatment for a patient.","definitionZh":"为患者开具药物或治疗方案。","example":"After reviewing the test results, the doctor prescribed an antibiotic to treat the infection.","exampleZh":"查看检查结果后，医生开了一种抗生素来治疗感染。"}},
+    {"itemId":"B09","wordId":"aside","senseId":"adv-2","action":"add","bookIds":["kaoyan"],"importance":97,"fields":{"pos":"adv.","synsetId":"omw-en-00233892-r","meaning":"在旁边；到一旁","definition":"to or on one side, away from the main position","definitionSentence":"Aside means to or on one side, away from the main position.","definitionZh":"移到或位于一旁，离开主要位置。","example":"She stepped aside to let the paramedics carry the stretcher through.","exampleZh":"她走到一旁，让急救人员抬着担架通过。"}},
+    {"itemId":"B10","wordId":"consider","senseId":"v-2","action":"update","fields":{"definitionZh":"判断或认为；把……看作。"}},
+    {"itemId":"B11","wordId":"inside","senseId":"prep-3","action":"update","fields":{"definition":"within the boundaries or interior of a place or object","definitionSentence":"Inside means within the boundaries or interior of a place or object.","definitionZh":"在某个地方或物体的边界以内。"}},
+    {"itemId":"B12","wordId":"design","senseId":"n-3","action":"update","fields":{"exampleZh":"这辆客车的车门上有一个装饰图案。"}},
+    {"itemId":"B13","wordId":"consist","senseId":"v-1","action":"update","fields":{"definition":"have a particular quality or idea as the essential feature","definitionSentence":"To consist in something means to have it as the essential feature.","definitionZh":"以某种性质或观念为本质特征；在于。","example":"The value of the method consists in its simplicity and reliability.","exampleZh":"这种方法的价值在于它简单而可靠。"}},
+    {"itemId":"B14","wordId":"resist","senseId":"v-1","action":"update","previousExampleSource":"semcor","fields":{"meaning":"抵抗，抵挡","definition":"oppose or withstand the force or effect of someone or something","definitionSentence":"To resist means to oppose or withstand the force or effect of someone or something.","definitionZh":"抵抗或顶住某人、某物的力量或作用。","example":"The reinforced door resisted the force of the flood and remained shut.","exampleZh":"加固后的门顶住了洪水的冲击，仍然紧闭。"}},
+    {"itemId":"B15","wordId":"sister","senseId":"n-1","action":"update","fields":{"meaning":"姐妹；姐姐，妹妹"}},
+    {"itemId":"B16","wordId":"solid","senseId":"adj-5","action":"add","bookIds":["kaoyan"],"importance":88,"fields":{"pos":"adj.","synsetId":"omw-en-02275412-s","meaning":"坚实的，牢固的","definition":"strong, firm, and unlikely to break or give way","definitionSentence":"Something described as solid is strong, firm, and unlikely to break or give way.","definitionZh":"结实牢固，不容易破裂或倒塌。","example":"The carpenter checked that the repaired staircase was solid before allowing anyone to use it.","exampleZh":"木匠确认修好的楼梯牢固后，才允许人们使用。"}},
+    {"itemId":"B17A","wordId":"solo","senseId":"n-1","action":"update","previousExampleSource":"semcor","fields":{"meaning":"单独行动；独奏，独唱","example":"Her first solo came after months of supervised flight training.","exampleZh":"经过数月的带飞训练，她完成了第一次单独飞行。"}},
+    {"itemId":"B17B","wordId":"solo","senseId":"adv-3","action":"add","bookIds":["kaoyan"],"importance":94,"fields":{"pos":"adv.","synsetId":"omw-en-00157967-r","meaning":"单独地，独自地","definition":"without companions or assistance","definitionSentence":"Solo means without companions or assistance.","definitionZh":"没有同伴或协助，独自进行。","example":"He completed the final stage solo after his teammate withdrew with an injury.","exampleZh":"队友因伤退出后，他独自完成了最后一个赛段。"}},
+    {"itemId":"B18A","wordId":"solution","senseId":"n-1","action":"update","fields":{"meaning":"解决，解决过程","definitionZh":"成功解决问题的过程或行动。","exampleZh":"解决这个问题花了三个小时。"}},
+    {"itemId":"B18B","wordId":"solution","senseId":"n-3","action":"add","bookIds":["kaoyan"],"importance":94,"fields":{"pos":"n.","synsetId":"omw-en-05661668-n","meaning":"解决办法，解决方案","definition":"a method or plan for solving a problem","definitionSentence":"A solution is a method or plan for solving a problem.","definitionZh":"解决某个问题的方法或方案。","example":"The engineers proposed a low-cost solution to the drainage problem.","exampleZh":"工程师们针对排水问题提出了一个低成本解决方案。"}},
+    {"itemId":"B19","wordId":"prepare","senseId":"v-2","action":"update","fields":{"example":"The cook prepared the vegetables by roasting them with herbs until they were tender.","exampleZh":"厨师把蔬菜加香草烤至软熟。"}},
+    {"itemId":"B20","wordId":"represent","senseId":"v-2","action":"update","previousExampleSource":"semcor","fields":{"meaning":"体现；是……的典型表现","definition":"be a characteristic example or expression of something","definitionSentence":"To represent something means to be a characteristic example or expression of it.","definitionZh":"成为某事物的典型例子或表现。","example":"Frequent fog and mild winters represent the region's coastal climate.","exampleZh":"多雾和冬季温和是该地区沿海气候的典型特征。"}},
+    {"itemId":"B21","wordId":"insult","senseId":"v-2","action":"add","bookIds":["kaoyan"],"importance":97,"ipaSource":"cmudict","fields":{"pos":"v.","synsetId":"omw-en-00848420-v","meaning":"侮辱，冒犯","definition":"speak or behave toward someone in a rude and offensive way","definitionSentence":"To insult someone means to speak or behave toward that person in a rude and offensive way.","definitionZh":"以粗鲁、冒犯的言行对待某人。","example":"The angry guest insulted the waiter with a personal remark, and the manager asked him to leave.","exampleZh":"愤怒的客人用针对个人的言语侮辱服务员，经理随后请他离开。","ipa":"ɪnˈsʌlt"}},
+    {"itemId":"B23A","wordId":"specify","senseId":"v-1","action":"update","fields":{"meaning":"指定，选定"}},
+    {"itemId":"B23B","wordId":"specify","senseId":"v-2","action":"add","bookIds":["kaoyan"],"importance":97,"fields":{"pos":"v.","synsetId":"omw-en-01021973-v","meaning":"明确说明，具体指出","definition":"state something clearly and in detail","definitionSentence":"To specify means to state something clearly and in detail.","definitionZh":"清楚而具体地说明某事。","example":"The application form asks candidates to specify the dates when they are available.","exampleZh":"申请表要求申请人明确填写自己有空的日期。"}},
+    {"itemId":"B24","wordId":"sympathize","senseId":"v-1","action":"update","fields":{"meaning":"同情；体谅，理解","definitionZh":"同情或体谅某人的处境。"}},
+    {"itemId":"B25","wordId":"intact","senseId":"adj-1","action":"update","fields":{"meaning":"完整无损的","synsetId":"omw-en-00515870-s","definition":"remaining whole and undamaged, with no essential part missing","definitionSentence":"Something described as intact remains whole and undamaged, with no essential part missing.","definitionZh":"完整无损，没有缺少任何重要部分。"}},
+    {"itemId":"B26","wordId":"attempt","senseId":"n-3","action":"update","fields":{"meaning":"袭击企图；谋害企图","definition":"an effort to attack or kill someone","definitionSentence":"An attempt is an effort to attack or kill someone.","definitionZh":"袭击或谋害某人的企图。"}},
+    {"itemId":"B27","wordId":"terminal","senseId":"n-3","action":"add","bookIds":["kaoyan"],"importance":94,"fields":{"pos":"n.","synsetId":"omw-en-04412901-n","meaning":"航站楼；客运站，终点站","definition":"a station or building where transport vehicles load or unload passengers or goods","definitionSentence":"A terminal is a station or building where transport vehicles load or unload passengers or goods.","definitionZh":"供运输工具装卸乘客或货物的车站或建筑。","example":"Passengers for the early flight gathered in the terminal before the check-in counters opened.","exampleZh":"乘坐早班航班的旅客在值机柜台开放前聚集在航站楼内。"}},
+    {"itemId":"B28","wordId":"container","senseId":"n-1","action":"update","fields":{"meaning":"容器；集装箱"}},
+    {"itemId":"B29","wordId":"entertain","senseId":"v-1","action":"update","previousExampleSource":"semcor","fields":{"meaning":"使娱乐，使开心；招待","definitionZh":"通过活动或表演使某人感到愉快。","example":"The host entertained the guests with music and games after dinner.","exampleZh":"晚饭后，主人用音乐和游戏招待宾客。"}},
+    {"itemId":"B30","wordId":"adventure","senseId":"v-2","action":"update","fields":{"meaning":"使冒险；拿……冒险","definitionZh":"使某人或某物面临损失或伤害的风险。"}}
+  ],
+  "noChangeItems": [
+    {"itemId":"B07","wordId":"essential","senseId":"n-2","conclusion":"Current meaning, definition, and example are semantically aligned."},
+    {"itemId":"B22","wordId":"prospect","senseId":"n-3","conclusion":"Current meaning, definition, and example all express future success potential."}
+  ]
+}

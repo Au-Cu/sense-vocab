@@ -162,6 +162,87 @@ def ecdict_frequency(source_rows):
     return rank
 
 
+def reviewed_metadata(manifest, item):
+    source = f"openai-codex-reviewed:{manifest['batchId']}"
+    fields = item.get("fields", {})
+    metadata = {
+        "auditStatus": "human-reviewed",
+        "generationBatchId": manifest["batchId"],
+        "humanReviewStatus": manifest["review"]["status"],
+        "humanReviewedAt": manifest["review"]["reviewedAt"],
+    }
+    if "meaning" in fields:
+        metadata["meaningSource"] = source
+    if "definition" in fields or "definitionSentence" in fields:
+        metadata["definitionSource"] = source
+    if "definitionZh" in fields:
+        metadata["definitionZhSource"] = source
+    if "example" in fields:
+        metadata["exampleSource"] = source
+    if "exampleZh" in fields:
+        metadata["exampleZhSource"] = source
+    return metadata
+
+
+def apply_reviewed_content_change_sets(bundle):
+    words = {word["id"]: word for word in bundle["words"]}
+    books = {book["id"]: book for book in bundle["books"]}
+    for manifest_path in sorted((DATA_DIR / "content-change-sets").glob("*.json")):
+        if manifest_path.name.endswith("-rights-ledger.json"):
+            continue
+        manifest = read_json(manifest_path)
+        if manifest.get("review", {}).get("status") != "approved":
+            continue
+        for item in manifest.get("items", []):
+            word = words.get(item["wordId"])
+            if not word:
+                raise RuntimeError(f"Reviewed change set references unknown word: {item['wordId']}")
+            sense = next(
+                (candidate for candidate in word["senses"] if candidate["id"] == item["senseId"]),
+                None,
+            )
+            if item["action"] == "add":
+                if sense:
+                    raise RuntimeError(
+                        f"Reviewed change set duplicates sense: {item['wordId']}:{item['senseId']}",
+                    )
+                fields = dict(item["fields"])
+                sense = {
+                    "id": item["senseId"],
+                    "importance": item["importance"],
+                    **fields,
+                    **reviewed_metadata(manifest, item),
+                    "ipa": fields.get("ipa") or word["senses"][0].get("ipa"),
+                    "ipaSource": item.get("ipaSource") or word["senses"][0].get("ipaSource"),
+                    "bookSource": "kaoyan-reviewed-feedback",
+                }
+                word["senses"].append(sense)
+                for book_id in item.get("bookIds", []):
+                    entry = next(
+                        (
+                            candidate
+                            for candidate in books[book_id]["entries"]
+                            if candidate["wordId"] == item["wordId"]
+                        ),
+                        None,
+                    )
+                    if not entry:
+                        raise RuntimeError(
+                            f"Reviewed change set has no {book_id} entry for {item['wordId']}",
+                        )
+                    if item["senseId"] not in entry["senseIds"]:
+                        entry["senseIds"].append(item["senseId"])
+            elif item["action"] == "update":
+                if not sense:
+                    raise RuntimeError(
+                        f"Reviewed change set references unknown sense: {item['wordId']}:{item['senseId']}",
+                    )
+                sense.update(item["fields"])
+                sense.update(reviewed_metadata(manifest, item))
+            else:
+                raise RuntimeError(f"Unsupported reviewed action: {item['action']}")
+
+
 def main():
     kaoyan_path = DATA_DIR / "kaoyan-words.json"
     if file_sha256(kaoyan_path) != EXPECTED_KAOYAN_SHA256:
@@ -274,6 +355,7 @@ def main():
             },
         },
     }
+    apply_reviewed_content_change_sets(bundle)
     output_path = DATA_DIR / "vocabulary-bundle.json"
     write_json(output_path, bundle)
 

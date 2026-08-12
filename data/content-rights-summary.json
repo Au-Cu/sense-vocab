@@ -1,12 +1,13 @@
 {
-  "generatedAt": "2026-08-08T16:49:49.682Z",
+  "generatedAt": "2026-08-12T03:32:01.661Z",
   "bundleSchemaVersion": 1,
   "counts": {
-    "remoteAudioWithoutCompleteAttribution": 1617,
+    "remoteAudioWithoutCompleteAttribution": 0,
     "quotationExamplesRequiringReview": 314,
-    "tatoebaExamplesWithoutCompleteAttribution": 46,
-    "semanticExamplesWithoutTraceableAttribution": 148,
-    "translationSourcesRequiringCommercialReview": 8929,
+    "tatoebaExamplesWithoutCompleteAttribution": 0,
+    "tatoebaExamplesWithMetadataMismatch": 0,
+    "semanticExamplesWithoutTraceableAttribution": 85,
+    "translationSourcesRequiringCommercialReview": 8917,
     "legacyExternalServicesRequiringReplacement": 2
   },
   "releasePolicy": {

@@ -1,0 +1,3253 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:ac72fa7b-f5df-571d-a1ca-da8869cb1652",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-08-09T00:00:00+08:00",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "Sense Vocab compliance generator",
+          "version": "1"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "sense-vocab-mvp",
+      "version": "1.5.0",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "44a52c1acd37e1249b2db1bb7255b546496f69a2bce1ce7ab0254ab9ff5e2c20"
+        }
+      ]
+    },
+    "properties": [
+      {
+        "name": "sense-vocab:source",
+        "value": "package-lock.json + installed package manifests"
+      },
+      {
+        "name": "sense-vocab:access-date",
+        "value": "2026-08-09"
+      },
+      {
+        "name": "sense-vocab:missing-license-file-count",
+        "value": "4"
+      },
+      {
+        "name": "sense-vocab:direct-missing-license-file-count",
+        "value": "2"
+      },
+      {
+        "name": "sense-vocab:direct-unverified-license-evidence-count",
+        "value": "0"
+      },
+      {
+        "name": "sense-vocab:unavailable-artifact-count",
+        "value": "33"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@ecies%2Fciphers@0.2.6?path=node_modules%2F%40ecies%2Fciphers",
+      "group": "ecies",
+      "name": "@ecies/ciphers",
+      "version": "0.2.6",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "a5ab60b113ca1a4861a018c44d5e17c43d049f8ba2e5f6d7d21cdacaa23733cb6f34c194a14be6c980085b097105cd4a5f972dbab7ea07261d8f96d8191a4df6"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@ecies%2Fciphers@0.2.6",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@ecies/ciphers/-/ciphers-0.2.6.tgz"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/ecies/js-ciphers.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@ecies/ciphers"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "34f85f5d41bc28cd790bf7d11be0f3478980cb5f75b49fda3c33667429d0e7f4"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Faix-ppc64@0.25.12?path=node_modules%2F%40esbuild%2Faix-ppc64",
+      "group": "esbuild",
+      "name": "@esbuild/aix-ppc64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "1e19b077a0889d9dddc29b864c5f1f246eb2a169ac4e813ebd8803e27cad655c5cbb5ba51e9510440075509f3e375026dcccf8fb1381ca84284997f80fe0a990"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Faix-ppc64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/aix-ppc64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fandroid-arm@0.25.12?path=node_modules%2F%40esbuild%2Fandroid-arm",
+      "group": "esbuild",
+      "name": "@esbuild/android-arm",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "549fac2af340fc613b09c69c73d0a16bb6e94bc9f2cd5bf48dd560c0d0da478803302ff64d345cdf7229f2aacd61472990e1d44f9399d1b51c34d55943d44b96"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fandroid-arm@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/android-arm"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fandroid-arm64@0.25.12?path=node_modules%2F%40esbuild%2Fandroid-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/android-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "e800262c6ef3c03d59d79f6308a3ef03165de32fd54ced15929ad8cbedcdd85b49f3e0505855d4f8ec40448c00e3a739b5d0fd4ac28667fd6872a052fe000a1e"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fandroid-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/android-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fandroid-x64@0.25.12?path=node_modules%2F%40esbuild%2Fandroid-x64",
+      "group": "esbuild",
+      "name": "@esbuild/android-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "e636dbfb68610c7c79a61611d81cbc193584ce7e88f54a91d752b07f6da229b36962bb26441d7c697ffd8af73971a6dc522013ff033e60867a486f503ba6bc92"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fandroid-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/android-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fdarwin-arm64@0.25.12?path=node_modules%2F%40esbuild%2Fdarwin-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/darwin-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "377ce5fa5c470a27e022570c50fe74d7a11291e4232e3ffde7d471c4d608b61220f82407227ba316e5de59b58c8274e8e1ca795d51ea14f9a9caef49eb90b562"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fdarwin-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/darwin-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fdarwin-x64@0.25.12?path=node_modules%2F%40esbuild%2Fdarwin-x64",
+      "group": "esbuild",
+      "name": "@esbuild/darwin-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "1d0f646b82b1db5a875f0b654d455b2893809e61b58a95e17564e635788fccf7d62a95ea01255c59d9dfd9b9cbef7c208cdac55c06b7c98bc149df69cdf108a4"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fdarwin-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/darwin-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Ffreebsd-arm64@0.25.12?path=node_modules%2F%40esbuild%2Ffreebsd-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/freebsd-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "800d01c7be7dfbb26f7b4dcad52d2f90ebb92e0ffce5da2edc4b1e38651eb3c7e554e1b16e10c387f8996a87a4d7563c9adc8a3c6177bcff178679031009b37a"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Ffreebsd-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/freebsd-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Ffreebsd-x64@0.25.12?path=node_modules%2F%40esbuild%2Ffreebsd-x64",
+      "group": "esbuild",
+      "name": "@esbuild/freebsd-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "4c66cedba630db1b07cf1b5b5451845c1147d054403fb82d70f13b3f9c8fef01b2edc5cada83bb4723a12f934b8aa4e5061e3b5e1988517b867225c4a9815f05"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Ffreebsd-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/freebsd-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-arm@0.25.12?path=node_modules%2F%40esbuild%2Flinux-arm",
+      "group": "esbuild",
+      "name": "@esbuild/linux-arm",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "94f0c6c82d493c3a2ef2419ccb06346082f35a58619d18dda1fdd495ca2a6264bd125f35f0b2df2497373d75e0647ac70802acfd9d92799b4326be4cae4c6d3b"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-arm@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-arm"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-arm64@0.25.12?path=node_modules%2F%40esbuild%2Flinux-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/linux-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "f1bc17edaf05821220aeea5cc5be1a5266032e9f295f4eab1a1e47a834fb6c1fbc45d7a596cea61efac51c75b624038f6546e78d4a4a4cb83a102cb3bdab3601"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-ia32@0.25.12?path=node_modules%2F%40esbuild%2Flinux-ia32",
+      "group": "esbuild",
+      "name": "@esbuild/linux-ia32",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "d32f4aadd5676cc336fef1bc29f5346f285437e1050a7cbdfbc836d36818a924953289dbb027cb8d43beac2722ee933458112dcfea0afcf2301e4cf193285aac"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-ia32@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-ia32"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-loong64@0.25.12?path=node_modules%2F%40esbuild%2Flinux-loong64",
+      "group": "esbuild",
+      "name": "@esbuild/linux-loong64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "87ffff2ebe5af6b89bfefd461aa5d51b38cbe1332f553bfeb350cfa3141dcfb97f018bfa2c34b1748c33c64acf5b8dfca145e20edc0cd74a3d3e6c12ffa67436"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-loong64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-loong64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-mips64el@0.25.12?path=node_modules%2F%40esbuild%2Flinux-mips64el",
+      "group": "esbuild",
+      "name": "@esbuild/linux-mips64el",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "8b246b3353f3cbd1853032ec5e7d621d49b5f2784a9cd316b1c8e6a78fa1a5a7dc663aebd966d3fff776d316869635c30581ea45c97c1e7c5b5fab9a03f78657"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-mips64el@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-mips64el"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-ppc64@0.25.12?path=node_modules%2F%40esbuild%2Flinux-ppc64",
+      "group": "esbuild",
+      "name": "@esbuild/linux-ppc64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "f6678cfe5457c4c8b93d252a117442b558c46411b007b3ff0f8c93f141bf9b021dcded9a578568e94e600f7f91b281d72a41c27d2c592b3983b2c565463d5040"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-ppc64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-ppc64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-riscv64@0.25.12?path=node_modules%2F%40esbuild%2Flinux-riscv64",
+      "group": "esbuild",
+      "name": "@esbuild/linux-riscv64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "66beca478860294a560306f57f7a39ca04f4e0ccea56b18419718b9e3d796100c912b62efc11a0fb09859480ce749a743e607494bbf1148397660151add8d1d3"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-riscv64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-riscv64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-s390x@0.25.12?path=node_modules%2F%40esbuild%2Flinux-s390x",
+      "group": "esbuild",
+      "name": "@esbuild/linux-s390x",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "32c2a770e7204cdbddb6221273f8d9b3f65ff1dd1c97fb77818597f09f6e6c19d53b0964eb9508104be004e4538a58e5a085a70732ece2a8733e425c8ad23322"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-s390x@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-s390x"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Flinux-x64@0.25.12?path=node_modules%2F%40esbuild%2Flinux-x64",
+      "group": "esbuild",
+      "name": "@esbuild/linux-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "baa64c4cbaffcd1fde7788c81a7c122e468798f8ce8c9be79ba4d5562b406b4f122d2f59d1533cc08471ee059b241e7f279e18b883089c3aae5b262f40b66483"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Flinux-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/linux-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fnetbsd-arm64@0.25.12?path=node_modules%2F%40esbuild%2Fnetbsd-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/netbsd-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "c57c1c4eae0685133b27d03c1afe5ba1a9c78516bf43d28b5667325c709368ce3029f2295a475788ca20fcab27c73274035fa70fece879cbb3a8f9824720468e"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fnetbsd-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/netbsd-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fnetbsd-x64@0.25.12?path=node_modules%2F%40esbuild%2Fnetbsd-x64",
+      "group": "esbuild",
+      "name": "@esbuild/netbsd-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "2dde694e5ccfcb763019e7383ae1e1d5a095091bce5dd1fc0e04637c3cbfa2e995a2f9ae4b359f9d2260f95b5a901f429b483134ef41cd6923ea6b4ed4531791"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fnetbsd-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/netbsd-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fopenbsd-arm64@0.25.12?path=node_modules%2F%40esbuild%2Fopenbsd-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/openbsd-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "7c5f7a4fa2ac068fe991023de74140454f5aa463534a5646b2fd6364102570b2f530b8cb34858f0648f93654b3f1a03360a83e78daa49eb509db8401c9b791e4"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fopenbsd-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/openbsd-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fopenbsd-x64@0.25.12?path=node_modules%2F%40esbuild%2Fopenbsd-x64",
+      "group": "esbuild",
+      "name": "@esbuild/openbsd-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "319c975246478d0c54bf32bbacdf032774919ab56b91ef19c91bac1e53fe92ec2a4dc7d62f2a8c384dec49c3cfc9e21737f9832487c65ef70ca8281829e92843"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fopenbsd-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/openbsd-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fopenharmony-arm64@0.25.12?path=node_modules%2F%40esbuild%2Fopenharmony-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/openharmony-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "ae6d185aca94491ae39dc497180ed9bfbf0d6e7c385cbebf773af6d1ccab41fed999172ca2fa5c4417610f8dcdba4df2ed72285b63b1315bf0b91be4f577404a"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fopenharmony-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/openharmony-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fsunos-x64@0.25.12?path=node_modules%2F%40esbuild%2Fsunos-x64",
+      "group": "esbuild",
+      "name": "@esbuild/sunos-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "df0192083cae4c7414cedd2757b6e8703cbbdabda5237dd02f78240cd1a4a1ddb612c625d38b0c7f4a8b6fc96e34a4ce9a017f7831033f9045370a01287e38d7"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fsunos-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/sunos-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fwin32-arm64@0.25.12?path=node_modules%2F%40esbuild%2Fwin32-arm64",
+      "group": "esbuild",
+      "name": "@esbuild/win32-arm64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "acc98baeeafae00efe0ca9674aec2a51d44ac9ddd413ba0f2599a7963a84a6d7ac28cf30c7d27c831e6ed3ef4fab47d0416f2fa9e29e6f035775f3b23fef01b2"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fwin32-arm64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.25.12.tgz"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/evanw/esbuild.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/win32-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fwin32-ia32@0.25.12?path=node_modules%2F%40esbuild%2Fwin32-ia32",
+      "group": "esbuild",
+      "name": "@esbuild/win32-ia32",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "1e4aa79a606809b0b0c5428a34f062c62583182a50195b2b41f26854660b3d3e355d617c947b84e4de9685589ada7e28e502b9338b58af6d7cdbb7cd862e1bc9"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fwin32-ia32@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/win32-ia32"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@esbuild%2Fwin32-x64@0.25.12?path=node_modules%2F%40esbuild%2Fwin32-x64",
+      "group": "esbuild",
+      "name": "@esbuild/win32-x64",
+      "version": "0.25.12",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "6a5242d2e099a5316b48bd020838dc8257815cf9c2ac40214c120ba5e029eccfce160a2ab407ad7c1cd7d31334d0c52c5553e956394fb8c6d112a9d90976939c"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@esbuild%2Fwin32-x64@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.25.12.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@esbuild/win32-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@noble%2Fciphers@1.3.0?path=node_modules%2F%40noble%2Fciphers",
+      "group": "noble",
+      "name": "@noble/ciphers",
+      "version": "1.3.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "d88d209c854fb5f9ccc3d79ef61d5d246eeda7cd7ef0e6f73896f732fdfbaf1e4be34fdbd22edd8e3095bc6395a9cf40108432bf2bb58baca929d170f11f2043"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@noble%2Fciphers@1.3.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@noble/ciphers/-/ciphers-1.3.0.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://paulmillr.com/noble/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/paulmillr/noble-ciphers.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@noble/ciphers"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "f36671a5487c9c5050efacb58011c37c24c55a889803cb036cf9d9a6347c1e2d"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@noble%2Fcurves@1.9.7?path=node_modules%2F%40noble%2Fcurves",
+      "group": "noble",
+      "name": "@noble/curves",
+      "version": "1.9.7",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "81b286711518223037ff308235a5837224cc148d1d0a4be8bb74cbf199b2e4d73bb09e3b6b48ed39e6684da33192ea91a3d71186339d6495de831604e4537fc7"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@noble%2Fcurves@1.9.7",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@noble/curves/-/curves-1.9.7.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://paulmillr.com/noble/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/paulmillr/noble-curves.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@noble/curves"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@noble%2Fhashes@1.8.0?path=node_modules%2F%40noble%2Fhashes",
+      "group": "noble",
+      "name": "@noble/hashes",
+      "version": "1.8.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "8c2b3d95d77b370ce98170c87fa3f7f8dac787dfec0fa0907711f28d023e87feab0cda3cf32a41c71cf8e540ee647cfdaf7b4dcfb37f5489d256855db57108e0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@noble%2Fhashes@1.8.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@noble/hashes/-/hashes-1.8.0.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://paulmillr.com/noble/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/paulmillr/noble-hashes.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@noble/hashes"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "4f221aee6e072336700c408c68ab3b96a3fc09f6aebe6f48f1bd99e5ef13faec"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@playwright%2Ftest@1.61.1?path=node_modules%2F%40playwright%2Ftest",
+      "group": "playwright",
+      "name": "@playwright/test",
+      "version": "1.61.1",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "f272afebed112522fd144e2360e1065e73de33f1e0d76a99a66ab3663461dea33463b737cf59ab3937c52e276cef6443418561f56a4b11f47959da4d5f87e48a"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "purl": "pkg:npm/@playwright%2Ftest@1.61.1",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@playwright/test/-/test-1.61.1.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://playwright.dev"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/playwright.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@playwright/test"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "45873d00a0dd243596deb4aa23b2493b3d1f0671921bf2538ea431d7380220eb,6d602191187b35b9b01d2cffa01c8469c2c8d9de8a96f1bf868e0f264f51c81d"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fauth-js@2.110.9?path=node_modules%2F%40supabase%2Fauth-js",
+      "group": "supabase",
+      "name": "@supabase/auth-js",
+      "version": "2.110.9",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "5d0216c897f011476dce29ee2d458f35225b24a59d0903ea0bb743638e65035aa15ff3b3bc63c4fb83b23cf6553955958780e53ef939453d972fa484018d0ca0"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fauth-js@2.110.9",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/auth-js/-/auth-js-2.110.9.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/supabase-js/tree/master/packages/core/auth-js"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/supabase-js.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/auth-js"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-darwin-arm64@2.110.0?path=node_modules%2F%40supabase%2Fcli-darwin-arm64",
+      "group": "supabase",
+      "name": "@supabase/cli-darwin-arm64",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "542fb7be2a5152d2eb64a558bb17d1b4fd6050fc146bea1949e3894d13d28cb60dd459675c815c543a7f5dedb5b592d86d5641c77cc99b2e74386daf4de34bdd"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-darwin-arm64@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-darwin-arm64/-/cli-darwin-arm64-2.110.0.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-darwin-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-darwin-x64@2.110.0?path=node_modules%2F%40supabase%2Fcli-darwin-x64",
+      "group": "supabase",
+      "name": "@supabase/cli-darwin-x64",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "3ed0e6a25c845ea9ba869b0d393041d79c5669d85b14e7a568a6b10537e59354c124ed47ba0af3c38c68a616e2f21838bc6f475e1e0635ced3636e0103ddf3a8"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-darwin-x64@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-darwin-x64/-/cli-darwin-x64-2.110.0.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-darwin-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-linux-arm64-musl@2.110.0?path=node_modules%2F%40supabase%2Fcli-linux-arm64-musl",
+      "group": "supabase",
+      "name": "@supabase/cli-linux-arm64-musl",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "4723e026bee101dca1971c14477ebeb3a3faac436ea5f37e99e37edfe73ff57613e5c4701ae6894673389ec87db357ecdf796eeefdb6a32d8dec81d97e0ba37b"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-linux-arm64-musl@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-linux-arm64-musl/-/cli-linux-arm64-musl-2.110.0.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-linux-arm64-musl"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-linux-arm64@2.110.0?path=node_modules%2F%40supabase%2Fcli-linux-arm64",
+      "group": "supabase",
+      "name": "@supabase/cli-linux-arm64",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "1474952bbb11e6abaf01f0eac2803ce74722dc43f486eead8cbd4c0cc5a89244b0bc82da1d8a76016aba8f36706bbf1d93efd219e54f97c6a77647f2bc7daa7a"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-linux-arm64@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-linux-arm64/-/cli-linux-arm64-2.110.0.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-linux-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-linux-x64-musl@2.110.0?path=node_modules%2F%40supabase%2Fcli-linux-x64-musl",
+      "group": "supabase",
+      "name": "@supabase/cli-linux-x64-musl",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "18b6212613a14269241f7832819cbcc7454b9a71ae2e4d20892180735f45b40d76a9f5dd56c55e4e265607320416fac9e272bc356a9fd0ae0721ed82e2c045aa"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-linux-x64-musl@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-linux-x64-musl/-/cli-linux-x64-musl-2.110.0.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-linux-x64-musl"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-linux-x64@2.110.0?path=node_modules%2F%40supabase%2Fcli-linux-x64",
+      "group": "supabase",
+      "name": "@supabase/cli-linux-x64",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "992857c75fbcc907e9c44cd5c81c47f2995bac7a1713fea3ffc8c8cd05e6cee3856d5c9a273254dc7326b8452ca6d720c23fc5a56a04d47ac8efb4e6cd6ac9ff"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-linux-x64@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-linux-x64/-/cli-linux-x64-2.110.0.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-linux-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-windows-arm64@2.110.0?path=node_modules%2F%40supabase%2Fcli-windows-arm64",
+      "group": "supabase",
+      "name": "@supabase/cli-windows-arm64",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "80b8902eff607a1dd3577b7fb807761a135f2cc256fe5f23c81725736b0f8a58cce70a2c20ab319bc51ff5ef7b9a05551e018bad14758a05edaeed5853e9fc01"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-windows-arm64@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-windows-arm64/-/cli-windows-arm64-2.110.0.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/cli#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/cli.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-windows-arm64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fcli-windows-x64@2.110.0?path=node_modules%2F%40supabase%2Fcli-windows-x64",
+      "group": "supabase",
+      "name": "@supabase/cli-windows-x64",
+      "version": "2.110.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "27875745a863004432df0d1c4ed26cbf00aea0c63b3870183da47cd46c5a734df5e47bd27fef027f6704a7002450aa40854a42134a5ad4697706b98ab5deea6b"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fcli-windows-x64@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/cli-windows-x64/-/cli-windows-x64-2.110.0.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/cli-windows-x64"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Ffunctions-js@2.110.9?path=node_modules%2F%40supabase%2Ffunctions-js",
+      "group": "supabase",
+      "name": "@supabase/functions-js",
+      "version": "2.110.9",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "8922fa8a1e2f58ae4cc9cd650ae0e80297de0773afddc648131be50ae404653cf2cce286e122f154a3eb0591bf433c008e9ed3132d0b09dd33650b44e5401a0d"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Ffunctions-js@2.110.9",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/functions-js/-/functions-js-2.110.9.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/supabase-js/tree/master/packages/core/functions-js"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/supabase-js.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/functions-js"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fphoenix@0.4.5?path=node_modules%2F%40supabase%2Fphoenix",
+      "group": "supabase",
+      "name": "@supabase/phoenix",
+      "version": "0.4.5",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "6809fd1fda2f572780a4acb5d4e58eaeb386abc0d5ebcc96787e2e77694df5fce7e1a3bc65be462cbf66d69520f672ea21c4fe6437c072c65ed04fe7a9dbf697"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fphoenix@0.4.5",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/phoenix/-/phoenix-0.4.5.tgz"
+        },
+        {
+          "type": "vcs",
+          "url": "git://github.com/supabase/phoenix.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/phoenix"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "41a686069f0199ff369d7e5277d5267385cc54d9199f1efc960bacbe2e799255"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fpostgrest-js@2.110.9?path=node_modules%2F%40supabase%2Fpostgrest-js",
+      "group": "supabase",
+      "name": "@supabase/postgrest-js",
+      "version": "2.110.9",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "6047d4cc130d90313d38c7e3cd99d58091fd87bcbec31c57af2ae0624fedddba15b633cf95fc13756471f1892286e21b978cf1cdd1b8234ca24b89dde0b9a3f1"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fpostgrest-js@2.110.9",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/postgrest-js/-/postgrest-js-2.110.9.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/supabase-js/tree/master/packages/core/postgrest-js"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/supabase-js.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/postgrest-js"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Frealtime-js@2.110.9?path=node_modules%2F%40supabase%2Frealtime-js",
+      "group": "supabase",
+      "name": "@supabase/realtime-js",
+      "version": "2.110.9",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "5c76aefb98c838402d4bd84d892acbe3fd925d2b74100a4286c8fe7f65492f698bf9e89ca5460b900341bbee5ac052c88d718e932b3e0a5610ec383fdd44c770"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Frealtime-js@2.110.9",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/realtime-js/-/realtime-js-2.110.9.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/supabase-js/tree/master/packages/core/realtime-js"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/supabase-js.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/realtime-js"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fstorage-js@2.110.9?path=node_modules%2F%40supabase%2Fstorage-js",
+      "group": "supabase",
+      "name": "@supabase/storage-js",
+      "version": "2.110.9",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "526c8bf9207870e06c7a301a27c2e72c89b7d79f39b2126d9d37b30822cc1f2a3601aba81f5dec289a8f9657fff0731c198a9dd1ae241eb039b769f3f8c48044"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fstorage-js@2.110.9",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/storage-js/-/storage-js-2.110.9.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/supabase-js/tree/master/packages/core/storage-js"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/supabase-js.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/storage-js"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/@supabase%2Fsupabase-js@2.110.9?path=node_modules%2F%40supabase%2Fsupabase-js",
+      "group": "supabase",
+      "name": "@supabase/supabase-js",
+      "version": "2.110.9",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "0bc5157bec7a8729b088b7499ed4029bdccc0f9fb8d2d585ea3fb5ed9ea0f0d2670405848ae33dc17600aa00f3180405ea8aab90775d9a767059966d129d3378"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/@supabase%2Fsupabase-js@2.110.9",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/@supabase/supabase-js/-/supabase-js-2.110.9.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/supabase-js/tree/master/packages/core/supabase-js"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/supabase-js.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/@supabase/supabase-js"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "334dd6820e2eaeab2064e7c59001b810566728a28a41a7c1dbf69bbee17d0936"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/eciesjs@0.5.0?path=node_modules%2Feciesjs",
+      "name": "eciesjs",
+      "version": "0.5.0",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "b3427d4845580043e0ec9eb7185300a4b6333c7f55348408c82eacd792699ea55cd13a9c29675b805967030784051c8c9a4a3675cb36b1f0bcdc78f8278dedb8"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/eciesjs@0.5.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/eciesjs/-/eciesjs-0.5.0.tgz"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/ecies/js.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/eciesjs"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "34f85f5d41bc28cd790bf7d11be0f3478980cb5f75b49fda3c33667429d0e7f4"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/esbuild@0.25.12?path=node_modules%2Fesbuild",
+      "name": "esbuild",
+      "version": "0.25.12",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "6db3c1618aed65b92de8eb3a1624cb093171beae2db7724a6a5975bd1c2c840ddf755cedb0b01ab45699a1b864042f3f06b3deb686b4a24b18a0a5e81b8af226"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/esbuild@0.25.12",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/esbuild/-/esbuild-0.25.12.tgz"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/evanw/esbuild.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/esbuild"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/fsevents@2.3.2?path=node_modules%2Ffsevents",
+      "name": "fsevents",
+      "version": "2.3.2",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "c62a8c411e3101e1d3b81f6e5a6f9f1517083a02813223813fe7978b24fb8ec8150aad5b915ca0b74d28012a3007b11db6938769a3e02adf35d8ff5a6fe0c328"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/fsevents@2.3.2",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.2.tgz"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/fsevents"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/iceberg-js@0.8.1?path=node_modules%2Ficeberg-js",
+      "name": "iceberg-js",
+      "version": "0.8.1",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "d5d8554195e17078deefbf7c21533ec68a3fd597557f338c21cf3fae05528a344adfc103a8e2681ae95af4dffc648e510fc413c4d42d2bf1a8ce9afea94a9144"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/iceberg-js@0.8.1",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/iceberg-js/-/iceberg-js-0.8.1.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/iceberg-js#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/iceberg-js"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/iceberg-js"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "e6e972dba808fb9d80863fe90ca222a47710cb850f6e6e2af95cdc0d022f79bd"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/jose@6.2.4?path=node_modules%2Fjose",
+      "name": "jose",
+      "version": "6.2.4",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "37c69c1b356c432e8cfdf8c5731b72b0d738437efd4dc33974cfea2a436db071638bcf3200d9d74ebec12de3fbe623e717005f43333f8e0d8167df8766b1c264"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/jose@6.2.4",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/jose/-/jose-6.2.4.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/panva/jose"
+        },
+        {
+          "type": "vcs",
+          "url": "panva/jose"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/jose"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "8078b0829d6c3e9ecde2f003e1966e4cad3efc6e7a640efbab0313cc166b1af1"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/playwright-core@1.61.1?path=node_modules%2Fplaywright-core",
+      "name": "playwright-core",
+      "version": "1.61.1",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "87b425b7a9b8444a76e6abc876f6c3b55983e0ba955dfa51c61391bfd2f48f3113334e69e1fb8f27774acae4974310d26d79e64bbf470208bde7cf65192a4b92"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "purl": "pkg:npm/playwright-core@1.61.1",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.61.1.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://playwright.dev"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/playwright.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/playwright-core"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "45873d00a0dd243596deb4aa23b2493b3d1f0671921bf2538ea431d7380220eb,6d602191187b35b9b01d2cffa01c8469c2c8d9de8a96f1bf868e0f264f51c81d"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/playwright@1.61.1?path=node_modules%2Fplaywright",
+      "name": "playwright",
+      "version": "1.61.1",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "0d69d8e68dd86cb58ae06a2fb80570a6a2fed55c0635d506ad1afefbc8fc3ed410cef01565420c8ca43dd1f63af3db042592416d9570d6b5da38a4938ad9333d"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "Apache-2.0"
+        }
+      ],
+      "purl": "pkg:npm/playwright@1.61.1",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/playwright/-/playwright-1.61.1.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://playwright.dev"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/microsoft/playwright.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/playwright"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "45873d00a0dd243596deb4aa23b2493b3d1f0671921bf2538ea431d7380220eb,6d602191187b35b9b01d2cffa01c8469c2c8d9de8a96f1bf868e0f264f51c81d"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/supabase@2.110.0?path=node_modules%2Fsupabase",
+      "name": "supabase",
+      "version": "2.110.0",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "eb740ab1d2d254e14a4ea00120078ea60d7675a0596fd598a9cd4d78c3629833fe805198f18b0887b54e25ac1410d5e1216591956369ac708e99a7c27372c3ed"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/supabase@2.110.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/supabase/-/supabase-2.110.0.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://github.com/supabase/cli#readme"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/supabase/cli.git"
+        },
+        {
+          "type": "documentation",
+          "url": "https://raw.githubusercontent.com/supabase/cli/v2.110.0/apps/cli/package.json"
+        },
+        {
+          "type": "documentation",
+          "url": "https://raw.githubusercontent.com/supabase/cli/v2.110.0/README.md"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/supabase"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "verified-version-specific-declaration"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "44acf7d092429e775b636707e065e6b61c4aba74edbefd6e83a46edc4c7e98ee,d868fa2ab37ffd1d136a70f709200421feac1ea0b20fad5baddfdc2f9b452621"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/three@0.185.1?path=node_modules%2Fthree",
+      "name": "three",
+      "version": "0.185.1",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "e5aa231425cac278c1459bd49eddd615f11cbd426090de4b9628d114df7984ccbc595906e08d1035c244f8eb96bee2746ce752b6b6df5e7d2991debf43288096"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/three@0.185.1",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/three/-/three-0.185.1.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://threejs.org/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/mrdoob/three.js"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/three"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "8b378ebe60e2fe500158cb0ac71cb5e8b7d92953c2abcc63a0eb90499653b5bc"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/tslib@2.8.1?path=node_modules%2Ftslib",
+      "name": "tslib",
+      "version": "2.8.1",
+      "scope": "optional",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "a0916ef781d06fe29576e49440bef09e99aa9df98bb0e03f9c087a6fa107d30084a0ad3f98f79753a737c0a0d5f373243ae1cf447b525ca294f7d2016b34bfdb"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "0BSD"
+        }
+      ],
+      "purl": "pkg:npm/tslib@2.8.1",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz"
+        },
+        {
+          "type": "website",
+          "url": "https://www.typescriptlang.org/"
+        },
+        {
+          "type": "vcs",
+          "url": "https://github.com/Microsoft/tslib.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/tslib"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "false"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "210b19e543130388c68654b7497e967119ce17145f66ab7d85688fbd70f08751"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/wordnet-db@3.1.14?path=node_modules%2Fwordnet-db",
+      "name": "wordnet-db",
+      "version": "3.1.14",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "cd5c85b2f13e9aaf4c0a6c175161c87297dbac71c29595998953b3292c4d26bb887059f645b639e7392188030cc4cf330954a6b4d8958aaf05b006521693186a"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/wordnet-db@3.1.14",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/wordnet-db/-/wordnet-db-3.1.14.tgz"
+        },
+        {
+          "type": "website",
+          "url": "http://wordnet.princeton.edu/"
+        },
+        {
+          "type": "vcs",
+          "url": "git://github.com/moos/wordnet-db.git"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/wordnet-db"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "c4163fc9f8aea62a084f355753bf6d0c54d2582384eae13574e8847aa6bc227e"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "bundled-license-file"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "missing"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/wordnet@2.0.0?path=node_modules%2Fwordnet",
+      "name": "wordnet",
+      "version": "2.0.0",
+      "scope": "required",
+      "hashes": [
+        {
+          "alg": "SHA-512",
+          "content": "5503845011d4e9daf05c6431dfb6d5691aa2d38d8867c3702624fda8bb4cdb1d50cea808248468c996befab5ab52f2022beb58cfdb6d7d8164d5cf0888de8355"
+        }
+      ],
+      "licenses": [
+        {
+          "expression": "MIT"
+        }
+      ],
+      "purl": "pkg:npm/wordnet@2.0.0",
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://registry.npmjs.org/wordnet/-/wordnet-2.0.0.tgz"
+        },
+        {
+          "type": "vcs",
+          "url": "git://github.com/words/wordnet"
+        },
+        {
+          "type": "documentation",
+          "url": "https://raw.githubusercontent.com/words/wordnet/e3204844cce55f07fe552f0dad08bc2798799992/package.json"
+        },
+        {
+          "type": "documentation",
+          "url": "https://raw.githubusercontent.com/words/wordnet/e3204844cce55f07fe552f0dad08bc2798799992/README.md"
+        }
+      ],
+      "properties": [
+        {
+          "name": "sense-vocab:npm-path",
+          "value": "node_modules/wordnet"
+        },
+        {
+          "name": "sense-vocab:direct",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:installed-artifact",
+          "value": "true"
+        },
+        {
+          "name": "sense-vocab:license-text-sha256",
+          "value": "missing"
+        },
+        {
+          "name": "sense-vocab:license-evidence-status",
+          "value": "verified-version-specific-declaration"
+        },
+        {
+          "name": "sense-vocab:license-declaration-evidence-sha256",
+          "value": "c294109a17307947ccb8ab30c5ef549ecb44e57b11840b4e7cc632c6e7c996b9,2414328db9a592bd12f4c5162ec57698de1fd1f6210ad30c4622fa09ecffd0a8"
+        }
+      ]
+    }
+  ]
+}

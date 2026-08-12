@@ -1,0 +1,15 @@
+{
+  "recordType": "header",
+  "schemaVersion": 1,
+  "auditDate": "2026-08-09",
+  "bundlePath": "data/vocabulary-bundle.json",
+  "bundleSha256": "f52aa4ef650751602adf9a396fe84a3076d02125d096521ed4141113040d6774",
+  "senseCount": 10235,
+  "counts": {
+    "senses": 10235,
+    "CLEARED": 17,
+    "REVIEW": 0,
+    "HIGH": 0,
+    "BLOCKER": 10218
+  }
+}

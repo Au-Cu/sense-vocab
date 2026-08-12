@@ -180,6 +180,7 @@
               </svg>
             </button>
           </div>
+          <p class="audio-attribution" id="audioAttribution" hidden></p>
         </div>
 
         <div class="sense-area" id="senseArea" hidden>
@@ -668,6 +669,21 @@
               />
             </div>
             <div class="feedback-image-preview" id="feedbackImagePreview"></div>
+            <div class="feedback-attachment-compliance" id="feedbackAttachmentCompliance" hidden>
+              <label class="consent-check" for="feedbackAttachmentRightsConsent">
+                <input id="feedbackAttachmentRightsConsent" type="checkbox" />
+                <span>我确认有权提交这些图片，并授权本服务仅为处理反馈、安全审查和争议处理而保存、查看及删除附件。</span>
+              </label>
+              <label class="plan-field" for="feedbackAttachmentAiDisclosure">
+                <span>图片是否含 AI 生成或合成内容</span>
+                <select class="plan-select" id="feedbackAttachmentAiDisclosure">
+                  <option value="">请选择</option>
+                  <option value="not_ai">不含</option>
+                  <option value="contains_ai">含有</option>
+                  <option value="unknown">不确定</option>
+                </select>
+              </label>
+            </div>
             <div class="confirm-actions">
               <button class="primary-button" id="submitFeedbackButton" type="button" disabled>
                 提交反馈
@@ -745,7 +761,8 @@
     </main>
 
     <script src="./cloud-config.js?v=20260728-2"></script>
-    <script src="./cloud-client.js?v=20260803-5"></script>
+    <script src="./legal-config.js?v=20260809-1"></script>
+    <script src="./cloud-client.js?v=20260809-1"></script>
     <script src="./sync-state.js?v=20260728-3"></script>
     <script src="./app.js?v=20260808-1"></script>
     <script src="./account.js?v=20260808-1"></script>

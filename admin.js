@@ -24,9 +24,11 @@
   const usersTab = document.querySelector("#usersTab");
   const feedbackTab = document.querySelector("#feedbackTab");
   const announcementsTab = document.querySelector("#announcementsTab");
+  const complianceTab = document.querySelector("#complianceTab");
   const usersSection = document.querySelector("#usersSection");
   const feedbackSection = document.querySelector("#feedbackSection");
   const announcementsSection = document.querySelector("#announcementsSection");
+  const complianceSection = document.querySelector("#complianceSection");
   const userSearchForm = document.querySelector("#userSearchForm");
   const userSearchInput = document.querySelector("#userSearchInput");
   const usersTotal = document.querySelector("#usersTotal");
@@ -49,6 +51,23 @@
   const announcementImagePreview = document.querySelector(
     "#announcementImagePreview",
   );
+  const announcementRightsBasis = document.querySelector("#announcementRightsBasis");
+  const announcementRightsAuthor = document.querySelector("#announcementRightsAuthor");
+  const announcementRightsSourceUrl = document.querySelector("#announcementRightsSourceUrl");
+  const announcementRightsLicense = document.querySelector("#announcementRightsLicense");
+  const announcementAuthorizationReference = document.querySelector(
+    "#announcementAuthorizationReference",
+  );
+  const announcementPersonConsentBasis = document.querySelector(
+    "#announcementPersonConsentBasis",
+  );
+  const announcementTextOrigin = document.querySelector("#announcementTextOrigin");
+  const announcementAiProvider = document.querySelector("#announcementAiProvider");
+  const announcementAiModel = document.querySelector("#announcementAiModel");
+  const announcementPromptHash = document.querySelector("#announcementPromptHash");
+  const announcementContainsPeople = document.querySelector("#announcementContainsPeople");
+  const announcementDisclosureLabel = document.querySelector("#announcementDisclosureLabel");
+  const announcementHumanReviewed = document.querySelector("#announcementHumanReviewed");
   const publishAnnouncementButton = document.querySelector(
     "#publishAnnouncementButton",
   );
@@ -60,6 +79,158 @@
   const membershipDaysInput = document.querySelector("#membershipDaysInput");
   const setMembershipButton = document.querySelector("#setMembershipButton");
   const closeUserDetailButton = document.querySelector("#closeUserDetailButton");
+  const newComplianceIssueButton = document.querySelector("#newComplianceIssueButton");
+  const complianceReleaseCard = document.querySelector("#complianceReleaseCard");
+  const complianceReleaseConclusion = document.querySelector(
+    "#complianceReleaseConclusion",
+  );
+  const complianceReleaseRevision = document.querySelector("#complianceReleaseRevision");
+  const complianceReleaseMeta = document.querySelector("#complianceReleaseMeta");
+  const complianceReleaseBasis = document.querySelector("#complianceReleaseBasis");
+  const complianceReleaseHistoryCount = document.querySelector(
+    "#complianceReleaseHistoryCount",
+  );
+  const complianceReleaseHistory = document.querySelector("#complianceReleaseHistory");
+  const editComplianceReleaseButton = document.querySelector(
+    "#editComplianceReleaseButton",
+  );
+  const complianceCounts = document.querySelector("#complianceCounts");
+  const complianceFilters = document.querySelector("#complianceFilters");
+  const complianceMatrixFilter = document.querySelector("#complianceMatrixFilter");
+  const complianceSeverityFilter = document.querySelector("#complianceSeverityFilter");
+  const complianceCategoryFilter = document.querySelector("#complianceCategoryFilter");
+  const complianceStatusFilter = document.querySelector("#complianceStatusFilter");
+  const complianceOwnerFilter = document.querySelector("#complianceOwnerFilter");
+  const complianceExternalFilter = document.querySelector("#complianceExternalFilter");
+  const complianceDueFilter = document.querySelector("#complianceDueFilter");
+  const complianceSearchInput = document.querySelector("#complianceSearchInput");
+  const complianceResultSummary = document.querySelector("#complianceResultSummary");
+  const complianceCardRail = document.querySelector("#complianceCardRail");
+  const complianceEmpty = document.querySelector("#complianceEmpty");
+  const complianceIssueDialog = document.querySelector("#complianceIssueDialog");
+  const complianceIssueEyebrow = document.querySelector("#complianceIssueEyebrow");
+  const complianceIssueDialogTitle = document.querySelector(
+    "#complianceIssueDialogTitle",
+  );
+  const closeComplianceIssueButton = document.querySelector(
+    "#closeComplianceIssueButton",
+  );
+  const complianceIssueReadView = document.querySelector("#complianceIssueReadView");
+  const complianceDetailCurrent = document.querySelector("#complianceDetailCurrent");
+  const editComplianceIssueButton = document.querySelector("#editComplianceIssueButton");
+  const complianceHistoryCount = document.querySelector("#complianceHistoryCount");
+  const complianceHistory = document.querySelector("#complianceHistory");
+  const complianceIssueForm = document.querySelector("#complianceIssueForm");
+  const complianceIssueMatrixType = document.querySelector("#complianceIssueMatrixType");
+  const complianceIssueCategory = document.querySelector("#complianceIssueCategory");
+  const complianceIssueTitle = document.querySelector("#complianceIssueTitle");
+  const complianceIssueSeverity = document.querySelector("#complianceIssueSeverity");
+  const complianceIssueStatus = document.querySelector("#complianceIssueStatus");
+  const complianceIssueDescription = document.querySelector(
+    "#complianceIssueDescription",
+  );
+  const complianceIssueNextStep = document.querySelector("#complianceIssueNextStep");
+  const complianceIssueChangeSummary = document.querySelector(
+    "#complianceIssueChangeSummary",
+  );
+  const complianceIssueOwner = document.querySelector("#complianceIssueOwner");
+  const complianceIssueReviewer = document.querySelector("#complianceIssueReviewer");
+  const complianceIssueReviewDue = document.querySelector("#complianceIssueReviewDue");
+  const complianceIssueExternalRequired = document.querySelector(
+    "#complianceIssueExternalRequired",
+  );
+  const complianceIssueVerifiedFacts = document.querySelector(
+    "#complianceIssueVerifiedFacts",
+  );
+  const complianceIssueEvidenceBasis = document.querySelector(
+    "#complianceIssueEvidenceBasis",
+  );
+  const complianceIssueAnalysis = document.querySelector("#complianceIssueAnalysis");
+  const complianceIssueReleaseImpact = document.querySelector(
+    "#complianceIssueReleaseImpact",
+  );
+  const complianceIssueRemediationPlan = document.querySelector(
+    "#complianceIssueRemediationPlan",
+  );
+  const complianceIssueAcceptanceEvidence = document.querySelector(
+    "#complianceIssueAcceptanceEvidence",
+  );
+  const complianceIssueUnresolved = document.querySelector("#complianceIssueUnresolved");
+  const complianceIssueExternalConfirmation = document.querySelector(
+    "#complianceIssueExternalConfirmation",
+  );
+  const complianceIssueAssets = document.querySelector("#complianceIssueAssets");
+  const complianceIssueEvidenceRefs = document.querySelector(
+    "#complianceIssueEvidenceRefs",
+  );
+  const complianceIssueScopeVersion = document.querySelector(
+    "#complianceIssueScopeVersion",
+  );
+  const complianceIssueScopeCommit = document.querySelector("#complianceIssueScopeCommit");
+  const complianceIssueScopeChannels = document.querySelector(
+    "#complianceIssueScopeChannels",
+  );
+  const complianceIssueScopeJurisdictions = document.querySelector(
+    "#complianceIssueScopeJurisdictions",
+  );
+  const complianceIssueScopeBusiness = document.querySelector(
+    "#complianceIssueScopeBusiness",
+  );
+  const complianceIssueHashBefore = document.querySelector("#complianceIssueHashBefore");
+  const complianceIssueHashAfter = document.querySelector("#complianceIssueHashAfter");
+  const complianceRightsFields = document.querySelector("#complianceRightsFields");
+  const complianceRightsAuthor = document.querySelector("#complianceRightsAuthor");
+  const complianceRightsLicense = document.querySelector("#complianceRightsLicense");
+  const complianceRightsSourceUrl = document.querySelector("#complianceRightsSourceUrl");
+  const complianceRightsVersion = document.querySelector("#complianceRightsVersion");
+  const complianceRightsCommercialScope = document.querySelector(
+    "#complianceRightsCommercialScope",
+  );
+  const complianceRightsSha256 = document.querySelector("#complianceRightsSha256");
+  const saveComplianceIssueButton = document.querySelector("#saveComplianceIssueButton");
+  const cancelComplianceIssueEditButton = document.querySelector(
+    "#cancelComplianceIssueEditButton",
+  );
+  const complianceReleaseDialog = document.querySelector("#complianceReleaseDialog");
+  const closeComplianceReleaseButton = document.querySelector(
+    "#closeComplianceReleaseButton",
+  );
+  const complianceReleaseForm = document.querySelector("#complianceReleaseForm");
+  const complianceReleaseFormConclusion = document.querySelector(
+    "#complianceReleaseFormConclusion",
+  );
+  const complianceReleaseVersion = document.querySelector("#complianceReleaseVersion");
+  const complianceReleaseCommit = document.querySelector("#complianceReleaseCommit");
+  const complianceReleaseChannels = document.querySelector("#complianceReleaseChannels");
+  const complianceReleaseJurisdictions = document.querySelector(
+    "#complianceReleaseJurisdictions",
+  );
+  const complianceReleaseBusiness = document.querySelector("#complianceReleaseBusiness");
+  const complianceReleaseReviewDate = document.querySelector(
+    "#complianceReleaseReviewDate",
+  );
+  const complianceReleaseEvidenceAt = document.querySelector(
+    "#complianceReleaseEvidenceAt",
+  );
+  const complianceReleaseScopeNotes = document.querySelector(
+    "#complianceReleaseScopeNotes",
+  );
+  const complianceReleaseFormBasis = document.querySelector(
+    "#complianceReleaseFormBasis",
+  );
+  const complianceReleaseEvidenceRefs = document.querySelector(
+    "#complianceReleaseEvidenceRefs",
+  );
+  const complianceReleaseReviewer = document.querySelector("#complianceReleaseReviewer");
+  const complianceReleaseChangeSummary = document.querySelector(
+    "#complianceReleaseChangeSummary",
+  );
+  const saveComplianceReleaseButton = document.querySelector(
+    "#saveComplianceReleaseButton",
+  );
+  const cancelComplianceReleaseButton = document.querySelector(
+    "#cancelComplianceReleaseButton",
+  );
 
   const USER_PAGE_SIZE = 100;
   const metricDefinitions = [
@@ -83,6 +254,35 @@
   let selectedUserDetail = null;
   let announcementBusy = false;
   let announcementFiles = [];
+  let complianceData = { release: null, counts: {}, issues: [] };
+  let selectedComplianceIssue = null;
+  let complianceCreateMode = false;
+  let complianceBusy = false;
+
+  const complianceSeverityLabels = {
+    BLOCKER: "BLOCKER",
+    HIGH: "HIGH",
+    MEDIUM: "MEDIUM",
+    LOW: "LOW",
+    CLEARED: "已完全解决",
+  };
+  const complianceStatusLabels = {
+    open: "待处理",
+    remediation_in_progress: "整改中",
+    evidence_pending: "待补证据",
+    external_confirmation_pending: "待外部确认",
+    ready_for_review: "待复核",
+    closed: "已关闭",
+  };
+  const complianceMatrixLabels = {
+    legal_risk: "法律/合规风险",
+    rights_chain: "第三方权利链",
+  };
+  const complianceConclusionLabels = {
+    releasable: "可发行",
+    conditionally_releasable: "附条件可发行",
+    not_releasable: "不可发行",
+  };
 
   const bookNames = {
     kaoyan: "考研词汇",
@@ -169,6 +369,7 @@
       users: [usersSection, usersTab],
       feedback: [feedbackSection, feedbackTab],
       announcements: [announcementsSection, announcementsTab],
+      compliance: [complianceSection, complianceTab],
     };
     Object.entries(sections).forEach(([key, [panel, tab]]) => {
       const active = key === section;
@@ -478,7 +679,7 @@
     publishAnnouncementButton.disabled = announcementBusy;
     announcementList
       .querySelectorAll(
-        ".announcement-pin-button, .announcement-delete-button",
+        ".announcement-pin-button, .announcement-takedown-button, .announcement-delete-button",
       )
       .forEach((button) => {
         button.disabled = announcementBusy;
@@ -671,6 +872,13 @@
       title.textContent = announcement.title;
       const time = document.createElement("span");
       time.textContent = formatDate(announcement.publishedAt, true);
+      const rightsStatus = document.createElement("span");
+      rightsStatus.className = `announcement-rights-status is-${announcement.rightsStatus ?? "verified"}`;
+      rightsStatus.textContent = {
+        verified: "权利已核验",
+        takedown_pending: "下架处理中",
+        withdrawn: "已下架",
+      }[announcement.rightsStatus] ?? "权利状态未知";
       const actions = document.createElement("div");
       actions.className = "announcement-item-actions";
       const pinButton = document.createElement("button");
@@ -690,11 +898,22 @@
       deleteButton.dataset.announcementId = announcement.id;
       deleteButton.dataset.announcementTitle = announcement.title;
       deleteButton.setAttribute("aria-label", `删除公告：${announcement.title}`);
-      actions.append(time, pinButton, deleteButton);
+      const takedownButton = document.createElement("button");
+      takedownButton.className = "announcement-takedown-button";
+      takedownButton.type = "button";
+      takedownButton.textContent = "权利下架";
+      takedownButton.dataset.announcementId = announcement.id;
+      takedownButton.dataset.announcementTitle = announcement.title;
+      takedownButton.hidden = announcement.rightsStatus !== "verified";
+      actions.append(time, rightsStatus, pinButton, takedownButton, deleteButton);
       heading.append(title, actions);
       const body = document.createElement("p");
       body.textContent = announcement.body;
       item.append(heading, body);
+      const provenance = document.createElement("p");
+      provenance.className = "announcement-provenance-summary";
+      provenance.textContent = `正文：${announcement.contentProvenance?.textOrigin ?? "未记录"}；图片权利记录：${announcement.rightsMetadata?.length ?? 0} 项`;
+      item.append(provenance);
       if (announcement.images?.length) {
         const images = document.createElement("div");
         images.className = "announcement-images";
@@ -715,6 +934,704 @@
       }
       announcementList.append(item);
     });
+  }
+
+  function complianceTone(severity) {
+    if (["BLOCKER", "HIGH", "not_releasable"].includes(severity)) {
+      return "tone-critical";
+    }
+    if (["MEDIUM", "LOW", "conditionally_releasable"].includes(severity)) {
+      return "tone-warning";
+    }
+    if (["CLEARED", "releasable"].includes(severity)) return "tone-cleared";
+    return "tone-unknown";
+  }
+
+  function displayKnown(value) {
+    if (value === null || value === undefined || value === "") return "未知";
+    if (Array.isArray(value)) return value.length ? value.join("、") : "未知";
+    return String(value);
+  }
+
+  function parseCommaList(value) {
+    return String(value ?? "")
+      .split(/[，,]/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  function parseLineList(value) {
+    return String(value ?? "")
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  function evidenceRefText(entry) {
+    if (typeof entry === "string") return entry;
+    if (!entry || typeof entry !== "object") return "";
+    return entry.url ?? entry.repoPath ?? entry.reference ?? entry.label ?? "";
+  }
+
+  function formatEvidenceRefs(entries) {
+    return Array.isArray(entries)
+      ? entries.map(evidenceRefText).filter(Boolean).join("\n")
+      : "";
+  }
+
+  function parseEvidenceRefs(value) {
+    return parseLineList(value).map((reference) => (
+      /^https?:\/\//i.test(reference)
+        ? { url: reference }
+        : { repoPath: reference }
+    ));
+  }
+
+  function formatLocalDateTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function appendComplianceMeta(container, label, value, wide = false) {
+    const item = document.createElement("div");
+    if (wide) item.className = "is-wide";
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const description = document.createElement("dd");
+    if (value instanceof Node) description.append(value);
+    else description.textContent = displayKnown(value);
+    item.append(term, description);
+    container.append(item);
+  }
+
+  function renderComplianceRelease(release) {
+    complianceReleaseCard.classList.remove(
+      "tone-critical",
+      "tone-warning",
+      "tone-cleared",
+      "tone-unknown",
+    );
+    complianceReleaseCard.classList.add(complianceTone(release?.conclusion));
+    complianceReleaseConclusion.textContent = complianceConclusionLabels[release?.conclusion]
+      ?? "未知";
+    complianceReleaseRevision.textContent = release?.revision
+      ? `快照 #${release.revision}`
+      : "无快照";
+    complianceReleaseMeta.replaceChildren();
+    appendComplianceMeta(complianceReleaseMeta, "适用版本", release?.appVersion);
+    appendComplianceMeta(complianceReleaseMeta, "适用 commit", release?.commitSha);
+    appendComplianceMeta(complianceReleaseMeta, "渠道", release?.channels);
+    appendComplianceMeta(complianceReleaseMeta, "商业模式", release?.businessModel);
+    appendComplianceMeta(complianceReleaseMeta, "司法辖区", release?.jurisdictions);
+    appendComplianceMeta(complianceReleaseMeta, "审查日期", release?.reviewDate);
+    appendComplianceMeta(
+      complianceReleaseMeta,
+      "证据生成时间",
+      release?.evidenceGeneratedAt ? formatDate(release.evidenceGeneratedAt, true) : null,
+    );
+    appendComplianceMeta(complianceReleaseMeta, "复核人", release?.reviewer);
+    complianceReleaseBasis.textContent = release?.basis || "尚未保存结论依据。";
+  }
+
+  function renderComplianceReleaseHistory(history = []) {
+    const snapshots = Array.isArray(history) ? history : [];
+    complianceReleaseHistoryCount.textContent = `${snapshots.length} 个快照`;
+    complianceReleaseHistory.replaceChildren();
+    snapshots.forEach((snapshot) => {
+      const item = document.createElement("details");
+      item.className = "compliance-history-item";
+      const summary = document.createElement("summary");
+      const revision = document.createElement("strong");
+      revision.textContent = `#${snapshot.revision}`;
+      const conclusion = document.createElement("span");
+      conclusion.className = "compliance-badge";
+      conclusion.textContent = complianceConclusionLabels[snapshot.conclusion]
+        ?? snapshot.conclusion;
+      const change = document.createElement("span");
+      change.textContent = snapshot.changeSummary || "未填写变化说明";
+      const time = document.createElement("time");
+      time.className = "compliance-history-time";
+      time.textContent = formatDate(snapshot.updatedAt, true);
+      summary.append(revision, conclusion, change, time);
+
+      const body = document.createElement("dl");
+      body.className = "compliance-detail-grid compliance-history-body";
+      appendComplianceMeta(body, "适用版本", snapshot.appVersion);
+      appendComplianceMeta(body, "适用 commit", snapshot.commitSha);
+      appendComplianceMeta(body, "渠道", snapshot.channels);
+      appendComplianceMeta(body, "商业模式", snapshot.businessModel);
+      appendComplianceMeta(body, "司法辖区", snapshot.jurisdictions);
+      appendComplianceMeta(body, "审查日期", snapshot.reviewDate);
+      appendComplianceMeta(body, "复核人", snapshot.reviewer);
+      appendComplianceMeta(body, "操作账号 ID", snapshot.updatedBy);
+      appendComplianceMeta(body, "范围说明", snapshot.scopeNotes, true);
+      appendComplianceMeta(body, "结论依据", snapshot.basis, true);
+      appendComplianceMeta(
+        body,
+        "证据引用",
+        renderReferenceList(snapshot.evidenceRefs),
+        true,
+      );
+      item.append(summary, body);
+      complianceReleaseHistory.append(item);
+    });
+  }
+
+  function updateComplianceSelect(select, values) {
+    const previous = select.value;
+    const first = select.options[0];
+    select.replaceChildren(first);
+    values.forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      select.append(option);
+    });
+    select.value = values.includes(previous) ? previous : "";
+  }
+
+  function renderComplianceCounts(counts = {}) {
+    complianceCounts.replaceChildren();
+    ["BLOCKER", "HIGH", "MEDIUM", "LOW", "CLEARED"].forEach((severity) => {
+      const chip = document.createElement("span");
+      chip.className = "compliance-count-chip";
+      chip.textContent = `${complianceSeverityLabels[severity]} ${Number(counts[severity]) || 0}`;
+      complianceCounts.append(chip);
+    });
+    const due = document.createElement("span");
+    due.className = "compliance-count-chip";
+    due.textContent = `已过期 ${Number(counts.reviewDue) || 0}`;
+    complianceCounts.append(due);
+  }
+
+  function filteredComplianceIssues() {
+    const query = complianceSearchInput.value.trim().toLocaleLowerCase("zh-CN");
+    return (complianceData.issues ?? []).filter((issue) => {
+      if (complianceMatrixFilter.value && issue.matrixType !== complianceMatrixFilter.value) {
+        return false;
+      }
+      if (complianceSeverityFilter.value && issue.severity !== complianceSeverityFilter.value) {
+        return false;
+      }
+      if (complianceCategoryFilter.value && issue.category !== complianceCategoryFilter.value) {
+        return false;
+      }
+      if (complianceStatusFilter.value && issue.status !== complianceStatusFilter.value) {
+        return false;
+      }
+      if (complianceOwnerFilter.value && issue.owner !== complianceOwnerFilter.value) {
+        return false;
+      }
+      if (
+        complianceExternalFilter.value === "required" &&
+        !issue.externalConfirmationRequired
+      ) return false;
+      if (
+        complianceExternalFilter.value === "not_required" &&
+        issue.externalConfirmationRequired
+      ) return false;
+      if (complianceDueFilter.value === "due" && !issue.isReviewDue) return false;
+      if (complianceDueFilter.value === "scheduled" && !issue.reviewDueAt) return false;
+      if (complianceDueFilter.value === "unscheduled" && issue.reviewDueAt) return false;
+      if (query) {
+        const haystack = [
+          issue.issueKey,
+          issue.title,
+          issue.description,
+          issue.nextStep,
+          issue.category,
+          issue.owner,
+        ].join(" ").toLocaleLowerCase("zh-CN");
+        if (!haystack.includes(query)) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderComplianceCards() {
+    const issues = filteredComplianceIssues();
+    complianceCardRail.replaceChildren();
+    issues.forEach((issue) => {
+      const card = document.createElement("button");
+      card.className = `compliance-card ${complianceTone(issue.severity)}`;
+      card.type = "button";
+      card.dataset.issueId = issue.id;
+      card.setAttribute(
+        "aria-label",
+        `查看 ${issue.issueKey}：${issue.title} 的当前状态和历史快照`,
+      );
+      const heading = document.createElement("div");
+      heading.className = "compliance-card-heading";
+      const issueKey = document.createElement("span");
+      issueKey.className = "compliance-card-id";
+      issueKey.textContent = issue.issueKey;
+      const severity = document.createElement("span");
+      severity.className = `compliance-badge is-${String(issue.severity).toLowerCase()}`;
+      severity.textContent = complianceSeverityLabels[issue.severity] ?? issue.severity;
+      heading.append(issueKey, severity);
+      const title = document.createElement("h3");
+      title.textContent = issue.title;
+      const category = document.createElement("p");
+      category.className = "compliance-card-category";
+      category.textContent = `${complianceMatrixLabels[issue.matrixType] ?? "未知矩阵"} · ${issue.category}`;
+      const description = document.createElement("p");
+      description.className = "compliance-card-description";
+      description.textContent = issue.description;
+      const next = document.createElement("div");
+      next.className = "compliance-card-next";
+      const nextLabel = document.createElement("strong");
+      nextLabel.textContent = "下一步解决方案";
+      const nextText = document.createElement("span");
+      nextText.textContent = issue.nextStep;
+      next.append(nextLabel, nextText);
+      const meta = document.createElement("div");
+      meta.className = "compliance-card-meta";
+      const state = document.createElement("span");
+      state.textContent = complianceStatusLabels[issue.status] ?? issue.status;
+      const history = document.createElement("span");
+      history.textContent = `${Number(issue.historyCount) || 0} 个快照 · ${formatDate(issue.updatedAt, true)}`;
+      meta.append(state, history);
+      card.append(heading, title, category, description, next, meta);
+      complianceCardRail.append(card);
+    });
+    complianceResultSummary.textContent = `显示 ${issues.length} / ${complianceData.issues?.length ?? 0} 个问题`;
+    complianceEmpty.hidden = issues.length > 0;
+    complianceCardRail.hidden = issues.length === 0;
+  }
+
+  function renderCompliance(result = {}) {
+    complianceData = {
+      release: result.release ?? null,
+      releaseHistory: Array.isArray(result.releaseHistory) ? result.releaseHistory : [],
+      counts: result.counts ?? {},
+      issues: Array.isArray(result.issues) ? result.issues : [],
+    };
+    renderComplianceRelease(complianceData.release);
+    renderComplianceReleaseHistory(complianceData.releaseHistory);
+    renderComplianceCounts(complianceData.counts);
+    updateComplianceSelect(
+      complianceCategoryFilter,
+      [...new Set(complianceData.issues.map((issue) => issue.category).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right, "zh-CN")),
+    );
+    updateComplianceSelect(
+      complianceOwnerFilter,
+      [...new Set(complianceData.issues.map((issue) => issue.owner).filter(Boolean))]
+        .sort((left, right) => left.localeCompare(right, "zh-CN")),
+    );
+    renderComplianceCards();
+  }
+
+  function renderReferenceList(entries) {
+    const list = document.createElement("ul");
+    list.className = "compliance-evidence-list";
+    const normalized = Array.isArray(entries) ? entries : [];
+    if (!normalized.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "未知";
+      list.append(empty);
+      return list;
+    }
+    normalized.forEach((entry) => {
+      const item = document.createElement("li");
+      const reference = evidenceRefText(entry);
+      if (/^https?:\/\//i.test(reference)) {
+        const link = document.createElement("a");
+        link.href = reference;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = entry?.label ? `${entry.label}：${reference}` : reference;
+        item.append(link);
+      } else {
+        item.textContent = entry?.label ? `${entry.label}：${reference}` : reference;
+      }
+      list.append(item);
+    });
+    return list;
+  }
+
+  function renderSnapshotContent(container, snapshot) {
+    container.replaceChildren();
+    const lead = document.createElement("div");
+    lead.className = `compliance-detail-lead ${complianceTone(snapshot.severity)}`;
+    const heading = document.createElement("div");
+    heading.className = "compliance-card-heading";
+    const severity = document.createElement("span");
+    severity.className = `compliance-badge is-${String(snapshot.severity).toLowerCase()}`;
+    severity.textContent = complianceSeverityLabels[snapshot.severity] ?? snapshot.severity;
+    const status = document.createElement("span");
+    status.className = "compliance-badge";
+    status.textContent = complianceStatusLabels[snapshot.status] ?? snapshot.status;
+    heading.append(severity, status);
+    const title = document.createElement("h3");
+    title.textContent = snapshot.title;
+    const description = document.createElement("p");
+    description.textContent = snapshot.description;
+    const next = document.createElement("p");
+    const nextLabel = document.createElement("strong");
+    nextLabel.textContent = "下一步：";
+    next.append(nextLabel, document.createTextNode(snapshot.nextStep || "未知"));
+    lead.append(heading, title, description, next);
+
+    const grid = document.createElement("dl");
+    grid.className = "compliance-detail-grid";
+    appendComplianceMeta(grid, "负责人", snapshot.owner);
+    appendComplianceMeta(grid, "复核人", snapshot.reviewer);
+    appendComplianceMeta(grid, "复核日期", snapshot.reviewDueAt);
+    appendComplianceMeta(
+      grid,
+      "外部确认",
+      snapshot.externalConfirmationRequired ? "需要" : "不需要",
+    );
+    appendComplianceMeta(grid, "已验证事实", snapshot.verifiedFacts, true);
+    appendComplianceMeta(grid, "依据与证据", snapshot.evidenceBasis, true);
+    appendComplianceMeta(grid, "LC 分析", snapshot.lcAnalysis, true);
+    appendComplianceMeta(grid, "发行影响", snapshot.releaseImpact, true);
+    appendComplianceMeta(grid, "整改方案", snapshot.remediationPlan, true);
+    appendComplianceMeta(grid, "验收证据", snapshot.acceptanceEvidence, true);
+    appendComplianceMeta(grid, "未解决问题", snapshot.unresolvedQuestions, true);
+    appendComplianceMeta(grid, "外部确认事项", snapshot.externalConfirmation, true);
+    appendComplianceMeta(
+      grid,
+      "受影响资产/路径/内容 ID",
+      renderReferenceList(snapshot.affectedAssets),
+      true,
+    );
+    appendComplianceMeta(grid, "证据引用", renderReferenceList(snapshot.evidenceRefs), true);
+    appendComplianceMeta(
+      grid,
+      "适用范围",
+      snapshot.applicableScope && Object.keys(snapshot.applicableScope).length
+        ? JSON.stringify(snapshot.applicableScope, null, 2)
+        : null,
+      true,
+    );
+    appendComplianceMeta(grid, "变更前 SHA-256", snapshot.contentHashBefore);
+    appendComplianceMeta(grid, "变更后 SHA-256", snapshot.contentHashAfter);
+    appendComplianceMeta(grid, "本次变化", snapshot.changeSummary, true);
+    appendComplianceMeta(grid, "操作账号 ID", snapshot.updatedBy);
+    container.append(lead, grid);
+  }
+
+  function renderComplianceIssue(detail) {
+    selectedComplianceIssue = detail;
+    const snapshots = Array.isArray(detail?.snapshots) ? detail.snapshots : [];
+    const current = snapshots[0];
+    complianceIssueEyebrow.textContent = `${detail.issueKey} · ${complianceMatrixLabels[detail.matrixType] ?? "合规问题"}`;
+    complianceIssueDialogTitle.textContent = current?.title ?? "问题详情";
+    complianceIssueReadView.hidden = false;
+    complianceIssueForm.hidden = true;
+    editComplianceIssueButton.hidden = !current;
+    if (current) renderSnapshotContent(complianceDetailCurrent, current);
+    else complianceDetailCurrent.replaceChildren();
+
+    complianceHistoryCount.textContent = `${snapshots.length} 个快照`;
+    complianceHistory.replaceChildren();
+    snapshots.forEach((snapshot) => {
+      const item = document.createElement("details");
+      item.className = "compliance-history-item";
+      const summary = document.createElement("summary");
+      const revision = document.createElement("strong");
+      revision.textContent = `#${snapshot.revision}`;
+      const badge = document.createElement("span");
+      badge.className = `compliance-badge is-${String(snapshot.severity).toLowerCase()}`;
+      badge.textContent = complianceSeverityLabels[snapshot.severity] ?? snapshot.severity;
+      const change = document.createElement("span");
+      change.textContent = snapshot.changeSummary || "未填写变化说明";
+      const time = document.createElement("time");
+      time.className = "compliance-history-time";
+      time.textContent = formatDate(snapshot.updatedAt, true);
+      summary.append(revision, badge, change, time);
+      const body = document.createElement("div");
+      body.className = "compliance-history-body";
+      renderSnapshotContent(body, snapshot);
+      item.append(summary, body);
+      complianceHistory.append(item);
+    });
+  }
+
+  function setComplianceFormMode(editing) {
+    complianceIssueReadView.hidden = editing;
+    complianceIssueForm.hidden = !editing;
+  }
+
+  function updateComplianceRightsVisibility() {
+    complianceRightsFields.hidden = complianceIssueMatrixType.value !== "rights_chain";
+  }
+
+  function fillComplianceIssueForm(detail = null) {
+    const snapshot = detail?.snapshots?.[0] ?? {};
+    const scope = snapshot.applicableScope ?? {};
+    const rights = snapshot.rightsClearance ?? {};
+    const release = complianceData.release ?? {};
+    complianceIssueForm.reset();
+    complianceIssueMatrixType.value = detail?.matrixType ?? "legal_risk";
+    complianceIssueMatrixType.disabled = Boolean(detail);
+    complianceIssueCategory.value = detail?.category ?? "";
+    complianceIssueCategory.disabled = Boolean(detail);
+    complianceIssueTitle.value = snapshot.title ?? "";
+    complianceIssueSeverity.value = snapshot.severity ?? "BLOCKER";
+    complianceIssueStatus.value = snapshot.status ?? "open";
+    complianceIssueDescription.value = snapshot.description ?? "";
+    complianceIssueNextStep.value = snapshot.nextStep ?? "";
+    complianceIssueChangeSummary.value = detail ? "" : "新增问题并保存初始快照。";
+    complianceIssueOwner.value = snapshot.owner ?? "待指定";
+    complianceIssueReviewer.value = snapshot.reviewer ?? "LC";
+    complianceIssueReviewDue.value = snapshot.reviewDueAt ?? "";
+    complianceIssueExternalRequired.checked = Boolean(
+      snapshot.externalConfirmationRequired,
+    );
+    complianceIssueVerifiedFacts.value = snapshot.verifiedFacts ?? "";
+    complianceIssueEvidenceBasis.value = snapshot.evidenceBasis ?? "";
+    complianceIssueAnalysis.value = snapshot.lcAnalysis ?? "";
+    complianceIssueReleaseImpact.value = snapshot.releaseImpact ?? "";
+    complianceIssueRemediationPlan.value = snapshot.remediationPlan ?? "";
+    complianceIssueAcceptanceEvidence.value = snapshot.acceptanceEvidence ?? "";
+    complianceIssueUnresolved.value = snapshot.unresolvedQuestions ?? "";
+    complianceIssueExternalConfirmation.value = snapshot.externalConfirmation ?? "";
+    complianceIssueAssets.value = Array.isArray(snapshot.affectedAssets)
+      ? snapshot.affectedAssets.map(evidenceRefText).filter(Boolean).join("\n")
+      : "";
+    complianceIssueEvidenceRefs.value = formatEvidenceRefs(snapshot.evidenceRefs);
+    complianceIssueScopeVersion.value = scope.appVersion ?? release.appVersion ?? "";
+    complianceIssueScopeCommit.value = scope.commitSha ?? release.commitSha ?? "";
+    complianceIssueScopeChannels.value = Array.isArray(scope.channels)
+      ? scope.channels.join("，")
+      : Array.isArray(release.channels) ? release.channels.join("，") : "";
+    complianceIssueScopeJurisdictions.value = Array.isArray(scope.jurisdictions)
+      ? scope.jurisdictions.join("，")
+      : Array.isArray(release.jurisdictions) ? release.jurisdictions.join("，") : "";
+    complianceIssueScopeBusiness.value = scope.businessModel ?? release.businessModel ?? "";
+    complianceIssueHashBefore.value = snapshot.contentHashBefore ?? "";
+    complianceIssueHashAfter.value = snapshot.contentHashAfter ?? "";
+    complianceRightsAuthor.value = rights.authorOrRightsholder ?? "";
+    complianceRightsLicense.value = rights.licenseOrPermission ?? "";
+    complianceRightsSourceUrl.value = rights.sourceUrl ?? "";
+    complianceRightsVersion.value = rights.versionOrDate ?? "";
+    complianceRightsCommercialScope.value = rights.commercialScope ?? "";
+    complianceRightsSha256.value = rights.sha256 ?? "";
+    saveComplianceIssueButton.textContent = detail ? "保存新快照" : "创建问题卡片";
+    updateComplianceRightsVisibility();
+  }
+
+  function collectComplianceSnapshot() {
+    const previous = selectedComplianceIssue?.snapshots?.[0] ?? null;
+    const severity = complianceIssueSeverity.value;
+    const status = complianceIssueStatus.value;
+    const evidenceRefs = parseEvidenceRefs(complianceIssueEvidenceRefs.value);
+    const scope = {
+      ...(previous?.applicableScope ?? {}),
+      appVersion: complianceIssueScopeVersion.value.trim() || null,
+      commitSha: complianceIssueScopeCommit.value.trim().toLowerCase() || null,
+      channels: parseCommaList(complianceIssueScopeChannels.value),
+      businessModel: complianceIssueScopeBusiness.value.trim() || null,
+      jurisdictions: parseCommaList(complianceIssueScopeJurisdictions.value),
+      reviewDate: previous?.applicableScope?.reviewDate
+        ?? complianceData.release?.reviewDate
+        ?? null,
+    };
+    const snapshot = {
+      severity,
+      status,
+      title: complianceIssueTitle.value.trim(),
+      description: complianceIssueDescription.value.trim(),
+      nextStep: complianceIssueNextStep.value.trim(),
+      changeSummary: complianceIssueChangeSummary.value.trim(),
+      owner: complianceIssueOwner.value.trim(),
+      reviewer: complianceIssueReviewer.value.trim(),
+      reviewDueAt: complianceIssueReviewDue.value || null,
+      externalConfirmationRequired: complianceIssueExternalRequired.checked,
+      verifiedFacts: complianceIssueVerifiedFacts.value.trim(),
+      evidenceBasis: complianceIssueEvidenceBasis.value.trim(),
+      lcAnalysis: complianceIssueAnalysis.value.trim(),
+      releaseImpact: complianceIssueReleaseImpact.value.trim(),
+      remediationPlan: complianceIssueRemediationPlan.value.trim(),
+      acceptanceEvidence: complianceIssueAcceptanceEvidence.value.trim(),
+      unresolvedQuestions: complianceIssueUnresolved.value.trim(),
+      externalConfirmation: complianceIssueExternalConfirmation.value.trim(),
+      affectedAssets: parseLineList(complianceIssueAssets.value),
+      evidenceRefs,
+      applicableScope: scope,
+      rightsClearance: {
+        authorOrRightsholder: complianceRightsAuthor.value.trim(),
+        licenseOrPermission: complianceRightsLicense.value.trim(),
+        sourceUrl: complianceRightsSourceUrl.value.trim(),
+        versionOrDate: complianceRightsVersion.value.trim(),
+        commercialScope: complianceRightsCommercialScope.value.trim(),
+        sha256: complianceRightsSha256.value.trim().toLowerCase(),
+      },
+      contentHashBefore: complianceIssueHashBefore.value.trim().toLowerCase() || null,
+      contentHashAfter: complianceIssueHashAfter.value.trim().toLowerCase() || null,
+    };
+    const severityChanged = !previous || previous.severity !== severity;
+    if (severity === "CLEARED" && status !== "closed") {
+      throw new Error("标记为已完全解决时，处理进度必须同时设为“已关闭”。");
+    }
+    if (severityChanged && (
+      !snapshot.reviewer || !snapshot.evidenceBasis || !snapshot.evidenceRefs.length
+    )) {
+      throw new Error("新增问题或修改严重度时，必须填写复核人、依据与至少一条证据引用。");
+    }
+    if (severity === "CLEARED" && !snapshot.acceptanceEvidence) {
+      throw new Error("标记为已完全解决前，必须填写验收证据。");
+    }
+    if (
+      severity === "CLEARED" &&
+      complianceIssueMatrixType.value === "rights_chain" &&
+      Object.values(snapshot.rightsClearance).some((value) => !value)
+    ) {
+      throw new Error("第三方权利链清除前，必须补齐作者、许可、来源、版本、商业范围和证据哈希。");
+    }
+    return snapshot;
+  }
+
+  async function openComplianceIssue(issueId) {
+    if (complianceBusy) return;
+    complianceBusy = true;
+    setMessage("正在读取问题历史……");
+    try {
+      const detail = await cloud.loadAdminComplianceIssue(issueId);
+      complianceCreateMode = false;
+      renderComplianceIssue(detail);
+      if (!complianceIssueDialog.open) complianceIssueDialog.showModal();
+      setMessage();
+    } catch (error) {
+      setMessage(error?.message ?? "问题历史读取失败。", "error");
+    } finally {
+      complianceBusy = false;
+    }
+  }
+
+  function openNewComplianceIssue() {
+    selectedComplianceIssue = null;
+    complianceCreateMode = true;
+    complianceIssueEyebrow.textContent = "新增合规问题";
+    complianceIssueDialogTitle.textContent = "创建第一份快照";
+    fillComplianceIssueForm();
+    setComplianceFormMode(true);
+    if (!complianceIssueDialog.open) complianceIssueDialog.showModal();
+    complianceIssueTitle.focus();
+  }
+
+  async function saveComplianceIssue(event) {
+    event.preventDefault();
+    if (complianceBusy) return;
+    let snapshot;
+    try {
+      snapshot = collectComplianceSnapshot();
+    } catch (error) {
+      setMessage(error?.message ?? "请检查合规问题表单。", "error");
+      return;
+    }
+    complianceBusy = true;
+    saveComplianceIssueButton.disabled = true;
+    try {
+      const result = complianceCreateMode
+        ? await cloud.createComplianceIssue(
+          complianceIssueMatrixType.value,
+          complianceIssueCategory.value.trim(),
+          snapshot,
+        )
+        : await cloud.appendComplianceIssueSnapshot(
+          selectedComplianceIssue.id,
+          selectedComplianceIssue.snapshots[0].revision,
+          snapshot,
+        );
+      await loadCompliance();
+      const detail = await cloud.loadAdminComplianceIssue(result.id);
+      complianceCreateMode = false;
+      renderComplianceIssue(detail);
+      setMessage(`已保存 ${result.issueKey ?? detail.issueKey} 的快照 #${result.revision}。`);
+    } catch (error) {
+      const message = error?.code === "40001"
+        ? "该问题已在其他页面更新，请刷新后重新提交。"
+        : error?.message ?? "合规问题保存失败。";
+      setMessage(message, "error");
+    } finally {
+      complianceBusy = false;
+      saveComplianceIssueButton.disabled = false;
+    }
+  }
+
+  function openComplianceReleaseEditor() {
+    const release = complianceData.release ?? {};
+    complianceReleaseForm.reset();
+    complianceReleaseFormConclusion.value = release.conclusion ?? "not_releasable";
+    complianceReleaseVersion.value = release.appVersion ?? "";
+    complianceReleaseCommit.value = release.commitSha ?? "";
+    complianceReleaseChannels.value = Array.isArray(release.channels)
+      ? release.channels.join("，")
+      : "";
+    complianceReleaseJurisdictions.value = Array.isArray(release.jurisdictions)
+      ? release.jurisdictions.join("，")
+      : "";
+    complianceReleaseBusiness.value = release.businessModel ?? "";
+    complianceReleaseReviewDate.value = release.reviewDate ?? "";
+    complianceReleaseEvidenceAt.value = formatLocalDateTime(release.evidenceGeneratedAt);
+    complianceReleaseScopeNotes.value = release.scopeNotes ?? "";
+    complianceReleaseFormBasis.value = release.basis ?? "";
+    complianceReleaseEvidenceRefs.value = formatEvidenceRefs(release.evidenceRefs);
+    complianceReleaseReviewer.value = release.reviewer ?? "LC";
+    complianceReleaseChangeSummary.value = "";
+    if (!complianceReleaseDialog.open) complianceReleaseDialog.showModal();
+  }
+
+  async function saveComplianceRelease(event) {
+    event.preventDefault();
+    if (complianceBusy) return;
+    const channels = parseCommaList(complianceReleaseChannels.value);
+    const jurisdictions = parseCommaList(complianceReleaseJurisdictions.value);
+    const snapshot = {
+      conclusion: complianceReleaseFormConclusion.value,
+      appVersion: complianceReleaseVersion.value.trim() || null,
+      commitSha: complianceReleaseCommit.value.trim().toLowerCase() || null,
+      channels,
+      businessModel: complianceReleaseBusiness.value.trim(),
+      jurisdictions,
+      reviewDate: complianceReleaseReviewDate.value || null,
+      evidenceGeneratedAt: complianceReleaseEvidenceAt.value
+        ? new Date(complianceReleaseEvidenceAt.value).toISOString()
+        : null,
+      scopeNotes: complianceReleaseScopeNotes.value.trim(),
+      basis: complianceReleaseFormBasis.value.trim(),
+      evidenceRefs: parseEvidenceRefs(complianceReleaseEvidenceRefs.value),
+      reviewer: complianceReleaseReviewer.value.trim(),
+      changeSummary: complianceReleaseChangeSummary.value.trim(),
+      applicableScope: {
+        appVersion: complianceReleaseVersion.value.trim() || null,
+        commitSha: complianceReleaseCommit.value.trim().toLowerCase() || null,
+        channels,
+        businessModel: complianceReleaseBusiness.value.trim() || null,
+        jurisdictions,
+        reviewDate: complianceReleaseReviewDate.value || null,
+      },
+    };
+    if (!snapshot.evidenceRefs.length) {
+      setMessage("更新发行结论时必须填写至少一条证据引用。", "error");
+      return;
+    }
+    complianceBusy = true;
+    saveComplianceReleaseButton.disabled = true;
+    try {
+      const result = await cloud.appendComplianceReleaseSnapshot(
+        Number(complianceData.release?.revision) || 0,
+        snapshot,
+      );
+      await loadCompliance();
+      complianceReleaseDialog.close();
+      setMessage(`已保存商业发行结论快照 #${result.revision}。`);
+    } catch (error) {
+      const message = error?.code === "40001"
+        ? "商业发行结论已在其他页面更新，请刷新后重试。"
+        : error?.message ?? "商业发行结论保存失败。";
+      setMessage(message, "error");
+    } finally {
+      complianceBusy = false;
+      saveComplianceReleaseButton.disabled = false;
+    }
   }
 
   async function loadOverview() {
@@ -745,6 +1662,14 @@
     renderAnnouncements(await cloud.loadAdminAnnouncements(100));
   }
 
+  async function loadCompliance() {
+    if (typeof cloud.loadAdminCompliance !== "function") {
+      renderCompliance({ issues: [], counts: {}, release: null });
+      return;
+    }
+    renderCompliance(await cloud.loadAdminCompliance());
+  }
+
   async function refreshAdminData() {
     if (loading) return;
     loading = true;
@@ -756,6 +1681,7 @@
         loadUsers(),
         loadFeedback(),
         loadAnnouncements(),
+        loadCompliance(),
       ]);
       setMessage();
     } catch (error) {
@@ -871,6 +1797,70 @@
       setMessage("请填写公告标题和正文。", "error");
       return;
     }
+    const compliance = {
+      rightsBasis: announcementRightsBasis.value,
+      author: announcementRightsAuthor.value.trim(),
+      sourceUrl: announcementRightsSourceUrl.value.trim(),
+      license: announcementRightsLicense.value.trim(),
+      authorizationReference: announcementAuthorizationReference.value.trim(),
+      containsIdentifiablePeople: announcementContainsPeople.checked,
+      personConsentBasis: announcementPersonConsentBasis.value.trim(),
+      textOrigin: announcementTextOrigin.value,
+      provider: announcementAiProvider.value.trim(),
+      model: announcementAiModel.value.trim(),
+      promptHash: announcementPromptHash.value.trim().toLowerCase(),
+      disclosureLabel: announcementDisclosureLabel.checked,
+      humanReviewed: announcementHumanReviewed.checked,
+    };
+    if (!compliance.humanReviewed) {
+      setMessage("发布前必须完成人工权利复核。", "error");
+      announcementHumanReviewed.focus();
+      return;
+    }
+    if (announcementFiles.length && !compliance.author) {
+      setMessage("每批公告图片必须填写作者或权利人。", "error");
+      announcementRightsAuthor.focus();
+      return;
+    }
+    if (
+      announcementFiles.length &&
+      ["licensed", "open-license"].includes(compliance.rightsBasis) &&
+      (!compliance.license || !compliance.sourceUrl)
+    ) {
+      setMessage("许可图片必须填写直接来源和许可证名称与版本。", "error");
+      announcementRightsSourceUrl.focus();
+      return;
+    }
+    if (
+      announcementFiles.length &&
+      compliance.rightsBasis === "public-domain" &&
+      !compliance.sourceUrl
+    ) {
+      setMessage("公有领域图片必须填写可复核的直接来源。", "error");
+      announcementRightsSourceUrl.focus();
+      return;
+    }
+    if (compliance.containsIdentifiablePeople && !compliance.personConsentBasis) {
+      setMessage("包含可识别人物时必须填写肖像或人物权利依据。", "error");
+      announcementPersonConsentBasis.focus();
+      return;
+    }
+    const usesAi = compliance.textOrigin !== "original" ||
+      (announcementFiles.length && compliance.rightsBasis === "ai-generated");
+    if (
+      usesAi &&
+      (!compliance.provider || !compliance.model ||
+        !/^[0-9a-f]{64}$/.test(compliance.promptHash))
+    ) {
+      setMessage("AI 内容必须记录提供方、模型版本和提示词 SHA-256。", "error");
+      announcementAiProvider.focus();
+      return;
+    }
+    if (usesAi && !compliance.disclosureLabel) {
+      setMessage("AI 生成或辅助内容必须启用用户可见标识。", "error");
+      announcementDisclosureLabel.focus();
+      return;
+    }
 
     announcementBusy = true;
     updateAnnouncementFormState();
@@ -879,6 +1869,7 @@
         title,
         body,
         announcementFiles.map((entry) => entry.file),
+        compliance,
       );
       announcementForm.reset();
       clearAnnouncementFiles();
@@ -886,6 +1877,30 @@
       setMessage("公告已发布，用户可在“消息通知”中查看。");
     } catch (error) {
       setMessage(error?.message ?? "公告发布失败。", "error");
+    } finally {
+      announcementBusy = false;
+      updateAnnouncementFormState();
+    }
+  }
+
+  async function takedownAnnouncement(announcementId, title) {
+    const reason = window.prompt(
+      `请填写“${title}”的权利下架依据或工单编号。公告会先隐藏，再删除公开图片，审计记录会保留。`,
+      "",
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setMessage("权利下架原因至少需要 3 个字符。", "error");
+      return;
+    }
+    announcementBusy = true;
+    updateAnnouncementFormState();
+    try {
+      await cloud.takedownAnnouncement(announcementId, reason.trim());
+      await loadAnnouncements();
+      setMessage("公告已完成权利下架，审计记录已保留。");
+    } catch (error) {
+      setMessage(error?.message ?? "公告权利下架失败，请重试。", "error");
     } finally {
       announcementBusy = false;
       updateAnnouncementFormState();
@@ -960,6 +1975,7 @@
   usersTab.addEventListener("click", () => setActiveSection("users"));
   feedbackTab.addEventListener("click", () => setActiveSection("feedback"));
   announcementsTab.addEventListener("click", () => setActiveSection("announcements"));
+  complianceTab.addEventListener("click", () => setActiveSection("compliance"));
   extendAllMembershipsButton.addEventListener("click", extendAllMemberships);
   announcementForm.addEventListener("submit", publishAnnouncement);
   announcementImageInput.addEventListener("change", async () => {
@@ -972,6 +1988,14 @@
       await setAnnouncementPinned(
         pinButton.dataset.announcementId,
         pinButton.dataset.announcementPinned !== "true",
+      );
+      return;
+    }
+    const takedownButton = event.target.closest(".announcement-takedown-button");
+    if (takedownButton) {
+      await takedownAnnouncement(
+        takedownButton.dataset.announcementId,
+        takedownButton.dataset.announcementTitle,
       );
       return;
     }
@@ -1008,6 +2032,68 @@
     } catch (error) {
       setMessage(error?.message ?? "反馈读取失败。", "error");
     }
+  });
+  complianceFilters.addEventListener("submit", (event) => event.preventDefault());
+  [
+    complianceMatrixFilter,
+    complianceSeverityFilter,
+    complianceCategoryFilter,
+    complianceStatusFilter,
+    complianceOwnerFilter,
+    complianceExternalFilter,
+    complianceDueFilter,
+  ].forEach((filter) => filter.addEventListener("change", renderComplianceCards));
+  complianceSearchInput.addEventListener("input", renderComplianceCards);
+  complianceCardRail.addEventListener("click", async (event) => {
+    const card = event.target.closest(".compliance-card");
+    if (card) await openComplianceIssue(card.dataset.issueId);
+  });
+  newComplianceIssueButton.addEventListener("click", openNewComplianceIssue);
+  editComplianceIssueButton.addEventListener("click", () => {
+    if (!selectedComplianceIssue) return;
+    complianceCreateMode = false;
+    fillComplianceIssueForm(selectedComplianceIssue);
+    setComplianceFormMode(true);
+    complianceIssueChangeSummary.focus();
+  });
+  complianceIssueMatrixType.addEventListener("change", updateComplianceRightsVisibility);
+  complianceIssueSeverity.addEventListener("change", () => {
+    if (complianceIssueSeverity.value === "CLEARED") {
+      complianceIssueStatus.value = "closed";
+    }
+  });
+  complianceIssueForm.addEventListener("submit", saveComplianceIssue);
+  cancelComplianceIssueEditButton.addEventListener("click", () => {
+    if (complianceCreateMode) {
+      complianceIssueDialog.close();
+      selectedComplianceIssue = null;
+      complianceCreateMode = false;
+      return;
+    }
+    setComplianceFormMode(false);
+  });
+  closeComplianceIssueButton.addEventListener("click", () => {
+    complianceIssueDialog.close();
+    selectedComplianceIssue = null;
+    complianceCreateMode = false;
+  });
+  complianceIssueDialog.addEventListener("click", (event) => {
+    if (event.target === complianceIssueDialog) {
+      complianceIssueDialog.close();
+      selectedComplianceIssue = null;
+      complianceCreateMode = false;
+    }
+  });
+  editComplianceReleaseButton.addEventListener("click", openComplianceReleaseEditor);
+  complianceReleaseForm.addEventListener("submit", saveComplianceRelease);
+  closeComplianceReleaseButton.addEventListener("click", () => {
+    complianceReleaseDialog.close();
+  });
+  cancelComplianceReleaseButton.addEventListener("click", () => {
+    complianceReleaseDialog.close();
+  });
+  complianceReleaseDialog.addEventListener("click", (event) => {
+    if (event.target === complianceReleaseDialog) complianceReleaseDialog.close();
   });
   closeUserDetailButton.addEventListener("click", () => {
     userDetailDialog.close();

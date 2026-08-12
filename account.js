@@ -77,6 +77,15 @@
   const feedbackImageInput = document.querySelector("#feedbackImageInput");
   const feedbackImageCount = document.querySelector("#feedbackImageCount");
   const feedbackImagePreview = document.querySelector("#feedbackImagePreview");
+  const feedbackAttachmentCompliance = document.querySelector(
+    "#feedbackAttachmentCompliance",
+  );
+  const feedbackAttachmentRightsConsent = document.querySelector(
+    "#feedbackAttachmentRightsConsent",
+  );
+  const feedbackAttachmentAiDisclosure = document.querySelector(
+    "#feedbackAttachmentAiDisclosure",
+  );
   const submitFeedbackButton = document.querySelector("#submitFeedbackButton");
   const cancelFeedbackButton = document.querySelector("#cancelFeedbackButton");
   const closeAccountButton = document.querySelector("#closeAccountButton");
@@ -540,6 +549,17 @@
       const body = document.createElement("p");
       body.textContent = notification.body || "";
       content.append(body);
+      const aiGenerated = ["ai-assisted", "ai-generated"].includes(
+        notification.contentProvenance?.textOrigin,
+      ) ||
+        notification.rightsMetadata?.some((entry) =>
+          entry?.rightsBasis === "ai-generated");
+      if (aiGenerated) {
+        const aiLabel = document.createElement("p");
+        aiLabel.className = "notification-ai-label";
+        aiLabel.textContent = "此公告包含 AI 生成或合成内容，已由人工复核。";
+        content.append(aiLabel);
+      }
       if (notification.images?.length) {
         const images = document.createElement("div");
         images.className = "notification-images";
@@ -745,6 +765,18 @@
 
   function feedbackFormValidation() {
     const message = feedbackMessage.value.trim();
+    if (feedbackFiles.length && !feedbackAttachmentRightsConsent.checked) {
+      return {
+        message: "请确认你有权提交所选图片。",
+        field: feedbackAttachmentRightsConsent,
+      };
+    }
+    if (feedbackFiles.length && !feedbackAttachmentAiDisclosure.value) {
+      return {
+        message: "请选择图片是否含 AI 生成或合成内容。",
+        field: feedbackAttachmentAiDisclosure,
+      };
+    }
     if (!activeFeedbackContext) {
       return message.length >= 3
         ? null
@@ -804,6 +836,11 @@
       item.append(image, removeButton);
       feedbackImagePreview.append(item);
     });
+    feedbackAttachmentCompliance.hidden = feedbackFiles.length === 0;
+    if (!feedbackFiles.length) {
+      feedbackAttachmentRightsConsent.checked = false;
+      feedbackAttachmentAiDisclosure.value = "";
+    }
     updateFeedbackSubmitState();
   }
 
@@ -2072,6 +2109,13 @@
         message,
         feedbackFiles.map((entry) => entry.file),
         feedbackContextForSubmission(),
+        {
+          rightsConfirmed: feedbackFiles.length === 0 ||
+            feedbackAttachmentRightsConsent.checked,
+          aiDisclosure: feedbackFiles.length
+            ? feedbackAttachmentAiDisclosure.value
+            : "not_applicable",
+        },
       );
       resetFeedbackForm();
       clearFeedbackRequest();
@@ -2244,6 +2288,14 @@
   feedbackSenseSelect.addEventListener("change", updateFeedbackSubmitState);
   feedbackMissingSense.addEventListener("input", updateFeedbackSubmitState);
   feedbackMessage.addEventListener("input", updateFeedbackSubmitState);
+  feedbackAttachmentRightsConsent.addEventListener(
+    "change",
+    updateFeedbackSubmitState,
+  );
+  feedbackAttachmentAiDisclosure.addEventListener(
+    "change",
+    updateFeedbackSubmitState,
+  );
   feedbackImageInput.addEventListener("change", async () => {
     await addFeedbackFiles(feedbackImageInput.files);
   });

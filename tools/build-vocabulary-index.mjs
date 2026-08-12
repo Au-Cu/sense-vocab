@@ -8,6 +8,21 @@ const rootDir = path.resolve(toolsDir, "..");
 const bundlePath = path.join(rootDir, "data", "vocabulary-bundle.json");
 const indexPath = path.join(rootDir, "data", "vocabulary-index.json");
 
+async function writeFileWithRetry(filePath, contents) {
+  let lastError;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await writeFile(filePath, contents, "utf8");
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!["EBUSY", "EPERM", "UNKNOWN"].includes(error?.code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
+    }
+  }
+  throw lastError;
+}
+
 const bundleBytes = await readFile(bundlePath);
 const bundle = JSON.parse(bundleBytes.toString("utf8"));
 
@@ -32,7 +47,7 @@ const index = {
   })),
 };
 
-await writeFile(indexPath, JSON.stringify(index), "utf8");
+await writeFileWithRetry(indexPath, JSON.stringify(index));
 
 console.log(
   `Vocabulary index created with ${index.words.length} words at ${indexPath}`,

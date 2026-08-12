@@ -914,6 +914,8 @@ button {
 
 .word-button {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 180px;
   display: grid;
   place-items: center;
@@ -1317,6 +1319,20 @@ button {
   color: #8a9298;
   font-size: 0.72rem;
   line-height: 1.45;
+}
+
+.audio-attribution {
+  margin: 0.55rem 0 0;
+  color: #8a9298;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.audio-attribution a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.16em;
 }
 
 .actions {
@@ -1778,6 +1794,12 @@ button {
   line-height: 1.45;
 }
 
+.notification-ai-label {
+  color: #7a4a00;
+  font-size: 0.78rem;
+  font-weight: 720;
+}
+
 .account-message:empty {
   display: none;
 }
@@ -1876,6 +1898,19 @@ button {
 }
 
 .feedback-image-preview:empty {
+  display: none;
+}
+
+.feedback-attachment-compliance {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7f9f8;
+}
+
+.feedback-attachment-compliance[hidden] {
   display: none;
 }
 

@@ -220,7 +220,7 @@ async function installFakeCloud(page, remote = null) {
         window.__fakeCloud.deleted = true;
         return { ok: true };
       },
-      async submitFeedback(message, files, context) {
+      async submitFeedback(message, files, context, attachmentCompliance) {
         const feedback = {
           message,
           files: files.map((file) => ({
@@ -230,6 +230,11 @@ async function installFakeCloud(page, remote = null) {
           })),
         };
         if (context) feedback.context = JSON.parse(JSON.stringify(context));
+        if (attachmentCompliance) {
+          feedback.attachmentCompliance = JSON.parse(
+            JSON.stringify(attachmentCompliance),
+          );
+        }
         window.__fakeCloud.feedbacks.push(feedback);
         return { ok: true, id: "feedback-1" };
       },
@@ -1014,6 +1019,10 @@ test("signed-in users can submit text and up to four private feedback images", a
   ]);
   await expect(page.locator("#feedbackImageCount")).toHaveText("2 / 4");
   await expect(page.locator("#feedbackImagePreview img")).toHaveCount(2);
+  await expect(page.locator("#submitFeedbackButton")).toBeDisabled();
+  await page.locator("#feedbackAttachmentRightsConsent").check();
+  await page.locator("#feedbackAttachmentAiDisclosure").selectOption("not_ai");
+  await expect(page.locator("#submitFeedbackButton")).toBeEnabled();
   await page.locator("#submitFeedbackButton").click();
   await expect(page.locator("#accountMessage")).toHaveText("反馈已提交。");
   await expect(page.locator("#accountDialog")).toBeHidden();
@@ -1022,6 +1031,10 @@ test("signed-in users can submit text and up to four private feedback images", a
   expect(feedbacks).toHaveLength(1);
   expect(feedbacks[0].message).toBe("热力图日期显示不正确。");
   expect(feedbacks[0].files).toHaveLength(2);
+  expect(feedbacks[0].attachmentCompliance).toEqual({
+    rightsConfirmed: true,
+    aiDisclosure: "not_ai",
+  });
   feedbacks[0].files.forEach((file, index) => {
     expect(file.name).toMatch(
       new RegExp(`^feedback-\\d+-${index + 1}\\.jpg$`),

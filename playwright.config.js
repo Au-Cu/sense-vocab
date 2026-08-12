@@ -14,7 +14,14 @@ module.exports = defineConfig({
     "security-hardening.spec.js",
     "confusion-globe.spec.js",
     "vocabulary-feedback.spec.js",
+    "compliance-rights.spec.js",
   ],
   fullyParallel: false,
   workers: 1,
+  webServer: {
+    command: "py -3 -m http.server 4173 --bind 127.0.0.1",
+    url: "http://127.0.0.1:4173/",
+    reuseExistingServer: false,
+    timeout: 30_000,
+  },
 });

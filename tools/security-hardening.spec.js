@@ -158,6 +158,9 @@ test("accounts require explicit terms, cross-border, and age consent", async () 
   expect(index).toContain('id="registerCrossBorderConsent"');
   expect(index).toContain('id="registerAgeConsent"');
   expect(index).toContain('id="accountConsentView"');
+  expect(index.indexOf("legal-config.js")).toBeLessThan(
+    index.indexOf("cloud-client.js"),
+  );
   expect(legal).toContain("个人信息跨境处理单独告知");
   expect(legal).toContain("当前项目区域位于新加坡");
   expect(account.indexOf("loadLegalConsents")).toBeLessThan(
@@ -173,6 +176,7 @@ test("accounts require explicit terms, cross-border, and age consent", async () 
   expect(cloudClient.indexOf(".remove(paths.slice")).toBeLessThan(
     cloudClient.indexOf('"admin_delete_expired_feedback"'),
   );
+  expect(cloudClient).toContain("receipt?.ageVersion === expected.ageVersion");
 });
 
 test("membership, invitation, announcements, and replies stay behind RPC boundaries", async () => {
@@ -206,7 +210,7 @@ test("membership, invitation, announcements, and replies stay behind RPC boundar
   expect(authConfig).toContain("enable_confirmations = true");
   expect(authConfig).toContain("[auth.email.template.confirmation]");
   expect(authConfig).toContain("[auth.email.template.recovery]");
-  expect(legal).toContain("所有例句来自第三方或 AI 生成，均不代表运营者立场与观点");
+  expect(legal).toContain("具体来源状态以逐项权利台账为准");
 });
 
 test("announcements remain visible to accounts registered after publication", async () => {
@@ -339,4 +343,112 @@ test("announcement pinning is admin-only, audited, and sorted ahead of newer ite
   expect(adminScript).toContain("announcement-pin-button");
   expect(account).toContain('expandButton.textContent = "展开"');
   expect(account).toContain("content.hidden = isAnnouncement");
+});
+
+test("commercial compliance controls are versioned, least-privilege, and operationally testable", async () => {
+  const [
+    migration,
+    retentionWorker,
+    functionConfig,
+    legalConfig,
+    adminHtml,
+    adminScript,
+    client,
+    account,
+    packageJson,
+  ] = await Promise.all([
+    read("supabase/migrations/20260809060413_compliance_release_controls.sql"),
+    read("supabase/functions/process-feedback-retention/index.ts"),
+    read("supabase/config.toml"),
+    read("legal-config.js"),
+    read("admin.html"),
+    read("admin.js"),
+    read("tools/cloud-client-entry.js"),
+    read("account.js"),
+    read("package.json"),
+  ]);
+
+  expect(legalConfig).toContain('termsVersion: "2026-08-09-v3"');
+  expect(legalConfig).toContain('privacyVersion: "2026-08-09-v3"');
+  expect(legalConfig).toContain('crossBorderVersion: "2026-08-09-v3"');
+  expect(legalConfig).toContain('ageVersion: "2026-08-09-v3"');
+  expect(migration).toContain("2026-08-09-v3");
+  expect(migration).toContain("legal_document_versions");
+  expect(migration).toContain("interval '180 days'");
+  expect(migration).toContain("sense-vocab-feedback-retention-daily");
+  expect(migration).toContain("feedback_retention_jobs");
+  expect(migration).toContain("revoke execute on function %s from public, anon, authenticated");
+  expect(migration).toContain("alter default privileges for role postgres in schema public");
+  expect(migration).toContain("set search_path = ''");
+  expect(migration).toContain("rights_metadata");
+  expect(migration).toContain("content_provenance");
+  expect(migration).toContain("admin_begin_announcement_takedown");
+  expect(retentionWorker).toContain('auth: ["secret"]');
+  expect(retentionWorker.indexOf(".from(FEEDBACK_BUCKET)")).toBeLessThan(
+    retentionWorker.indexOf('rpc("retention_finalize_feedback_batch"'),
+  );
+  expect(functionConfig).toContain("[functions.process-feedback-retention]");
+  expect(functionConfig).toContain("verify_jwt = false");
+  expect(adminHtml).toContain('id="announcementRightsBasis"');
+  expect(adminHtml).toContain('id="announcementHumanReviewed"');
+  expect(adminScript).toContain("announcement-takedown-button");
+  expect(client).toContain('client.rpc("admin_begin_announcement_takedown"');
+  expect(account).toContain('className = "notification-ai-label"');
+  expect(packageJson).toContain('"verify:commercial-release"');
+  expect(packageJson).toContain('"build:third-party-compliance"');
+});
+
+test("compliance cards use append-only admin snapshots with CAS and default-deny clearance", async () => {
+  const [migration, runtimeFix, dashboardFix, client, adminHtml, adminScript] = await Promise.all([
+    read("supabase/migrations/20260809153605_compliance_issue_cards.sql"),
+    read("supabase/migrations/20260809161847_compliance_runtime_fixes.sql"),
+    read("supabase/migrations/20260809162137_compliance_dashboard_ambiguity_fix.sql"),
+    read("tools/cloud-client-entry.js"),
+    read("admin.html"),
+    read("admin.js"),
+  ]);
+
+  for (const table of [
+    "compliance_issues",
+    "compliance_issue_snapshots",
+    "compliance_release_snapshots",
+  ]) {
+    expect(migration).toContain(`alter table public.${table} enable row level security`);
+    expect(migration).toContain(
+      `revoke all on table public.${table} from public, anon, authenticated`,
+    );
+  }
+  expect(migration).toContain("p_expected_revision bigint");
+  expect(migration).toContain("for update");
+  expect(migration).toContain("using errcode = '40001'");
+  expect(migration).toContain("insert into public.admin_audit_log");
+  expect(migration).toContain("'releaseHistory'");
+  expect(runtimeFix).toContain("'updatedBy', snapshot.created_by");
+  expect(runtimeFix).toContain("'updatedBy', release.created_by");
+  expect(runtimeFix).toContain("((image.ord - 1)::integer)");
+  expect(dashboardFix).toContain("issue.id as issue_id");
+  expect(dashboardFix).toContain("latest.created_at as snapshot_created_at");
+  expect(dashboardFix).not.toContain("latest.*");
+  expect(migration).toContain("set search_path = ''");
+  expect(migration).toContain("CLEARED issues must be closed");
+  expect(migration).toContain("authorOrRightsholder");
+  expect(migration).toContain("licenseOrPermission");
+  expect(migration).toContain("commercialScope");
+  expect(migration).toContain("^[0-9a-f]{64}$");
+  expect(migration).not.toMatch(/update\s+public\.compliance_issue_snapshots/i);
+  expect(migration).not.toMatch(/delete\s+from\s+public\.compliance_issue_snapshots/i);
+
+  for (const rpc of [
+    "admin_compliance_dashboard",
+    "admin_compliance_issue_detail",
+    "admin_create_compliance_issue",
+    "admin_append_compliance_issue_snapshot",
+    "admin_append_compliance_release_snapshot",
+  ]) {
+    expect(client).toContain(`"${rpc}"`);
+    expect(migration).toContain(`function public.${rpc}`);
+  }
+  expect(adminHtml).toContain('id="complianceCardRail"');
+  expect(adminHtml).toContain('id="complianceIssueDialog"');
+  expect(adminScript).toContain("appendComplianceIssueSnapshot");
 });

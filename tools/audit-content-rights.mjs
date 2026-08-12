@@ -9,11 +9,27 @@ const reportPath = path.join(rootDir, "data", "content-rights-audit.json");
 const summaryPath = path.join(rootDir, "data", "content-rights-summary.json");
 const strict = process.argv.includes("--strict");
 
+async function writeFileWithRetry(filePath, contents) {
+  let lastError;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    try {
+      await writeFile(filePath, contents, "utf8");
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!["EBUSY", "EPERM", "UNKNOWN"].includes(error?.code)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** attempt));
+    }
+  }
+  throw lastError;
+}
+
 const bundle = JSON.parse(await readFile(bundlePath, "utf8"));
 const findings = {
   remoteAudioWithoutCompleteAttribution: [],
   quotationExamplesRequiringReview: [],
   tatoebaExamplesWithoutCompleteAttribution: [],
+  tatoebaExamplesWithMetadataMismatch: [],
   semanticExamplesWithoutTraceableAttribution: [],
   translationSourcesRequiringCommercialReview: [],
   legacyExternalServicesRequiringReplacement: [
@@ -44,7 +60,13 @@ for (const word of bundle.words) {
   for (const sense of word.senses) {
     if (
       sense.audio &&
-      !(sense.audioAuthor && sense.audioLicense && sense.audioSourcePage)
+      !(
+        sense.audioAuthor &&
+        sense.audioLicense &&
+        sense.audioSourcePage &&
+        sense.audioMetadataRecord &&
+        sense.audioRightsEvidenceSha256
+      )
     ) {
       findings.remoteAudioWithoutCompleteAttribution.push(ref(word, sense));
     }
@@ -55,9 +77,23 @@ for (const word of bundle.words) {
     }
     if (
       exampleSource === "tatoeba" &&
-      !(sense.exampleSourceId && sense.exampleLicense && sense.exampleOwner)
+      !(
+        sense.exampleSourceId &&
+        sense.exampleLicense &&
+        (sense.exampleOwner || sense.exampleOwnerStatus === "unowned") &&
+        sense.exampleSourcePage &&
+        sense.exampleMetadataRecord &&
+        sense.exampleRightsEvidenceSha256 &&
+        sense.exampleMetadataStatus === "verified"
+      )
     ) {
       findings.tatoebaExamplesWithoutCompleteAttribution.push(ref(word, sense));
+    }
+    if (
+      exampleSource === "tatoeba" &&
+      sense.exampleMetadataStatus === "text-mismatch"
+    ) {
+      findings.tatoebaExamplesWithMetadataMismatch.push(ref(word, sense));
     }
     if (
       exampleSource.startsWith("semantic-") &&
@@ -99,8 +135,8 @@ const report = {
   findings,
 };
 
-await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-await writeFile(
+await writeFileWithRetry(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+await writeFileWithRetry(
   summaryPath,
   `${JSON.stringify({
     generatedAt: report.generatedAt,
@@ -108,7 +144,6 @@ await writeFile(
     counts,
     releasePolicy: report.releasePolicy,
   }, null, 2)}\n`,
-  "utf8",
 );
 console.log("Content-rights audit:");
 for (const [key, count] of Object.entries(counts)) {

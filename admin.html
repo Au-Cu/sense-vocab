@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow,noarchive" />
     <title>后台管理</title>
-    <link rel="stylesheet" href="./admin.css?v=20260803-5" />
+    <link rel="stylesheet" href="./admin.css?v=20260809-1" />
   </head>
   <body>
     <main class="admin-shell">
@@ -93,6 +93,14 @@
             aria-selected="false"
           >
             消息通知
+          </button>
+          <button
+            class="admin-tab"
+            id="complianceTab"
+            type="button"
+            aria-selected="false"
+          >
+            合规看板
           </button>
         </nav>
 
@@ -205,11 +213,217 @@
               class="announcement-image-preview"
               id="announcementImagePreview"
             ></div>
+            <fieldset class="announcement-compliance-fields">
+              <legend>来源、授权与 AI 标识（同一批图片须使用相同权利基础）</legend>
+              <div class="announcement-compliance-grid">
+                <label>
+                  <span>图片权利基础</span>
+                  <select id="announcementRightsBasis">
+                    <option value="original">原创</option>
+                    <option value="licensed">书面授权/商业许可</option>
+                    <option value="open-license">开放许可证</option>
+                    <option value="public-domain">公有领域</option>
+                    <option value="ai-generated">AI 生成</option>
+                  </select>
+                </label>
+                <label>
+                  <span>作者或权利人</span>
+                  <input id="announcementRightsAuthor" type="text" maxlength="300" />
+                </label>
+                <label>
+                  <span>直接来源链接</span>
+                  <input id="announcementRightsSourceUrl" type="url" maxlength="1000" />
+                </label>
+                <label>
+                  <span>许可证名称与版本</span>
+                  <input id="announcementRightsLicense" type="text" maxlength="200" />
+                </label>
+                <label>
+                  <span>授权证据编号/位置（不填合同原文）</span>
+                  <input id="announcementAuthorizationReference" type="text" maxlength="300" />
+                </label>
+                <label>
+                  <span>可识别人物授权依据</span>
+                  <input id="announcementPersonConsentBasis" type="text" maxlength="300" />
+                </label>
+                <label>
+                  <span>公告正文来源</span>
+                  <select id="announcementTextOrigin">
+                    <option value="original">人工原创</option>
+                    <option value="ai-assisted">AI 辅助</option>
+                    <option value="ai-generated">AI 生成</option>
+                  </select>
+                </label>
+                <label>
+                  <span>AI 提供方</span>
+                  <input id="announcementAiProvider" type="text" maxlength="200" />
+                </label>
+                <label>
+                  <span>AI 模型及版本</span>
+                  <input id="announcementAiModel" type="text" maxlength="200" />
+                </label>
+                <label>
+                  <span>提示词 SHA-256（不保存提示词原文）</span>
+                  <input id="announcementPromptHash" type="text" maxlength="64" pattern="[0-9a-fA-F]{64}" />
+                </label>
+              </div>
+              <label class="announcement-compliance-check">
+                <input id="announcementContainsPeople" type="checkbox" />
+                <span>图片包含可识别人物</span>
+              </label>
+              <label class="announcement-compliance-check">
+                <input id="announcementDisclosureLabel" type="checkbox" />
+                <span>AI 生成图片会在用户界面明确标识</span>
+              </label>
+              <label class="announcement-compliance-check">
+                <input id="announcementHumanReviewed" type="checkbox" required />
+                <span>我已逐项复核来源、授权、人物权利、AI 元数据和公告正文</span>
+              </label>
+            </fieldset>
             <button class="admin-button primary" id="publishAnnouncementButton" type="submit">
               发布公告
             </button>
           </form>
           <div class="announcement-list" id="announcementList"></div>
+        </section>
+
+        <section
+          class="admin-section compliance-section"
+          id="complianceSection"
+          aria-labelledby="complianceTitle"
+          hidden
+        >
+          <div class="section-heading controls-heading compliance-heading">
+            <div>
+              <h2 id="complianceTitle">法律与权利问题</h2>
+              <span>人工维护的问题卡片与追加式历史快照</span>
+            </div>
+            <button
+              class="admin-button primary"
+              id="newComplianceIssueButton"
+              type="button"
+            >
+              新增问题
+            </button>
+          </div>
+
+          <article class="compliance-release-card" id="complianceReleaseCard">
+            <div class="compliance-release-heading">
+              <div>
+                <p class="compliance-kicker">当前商业发行结论</p>
+                <div class="compliance-release-title-row">
+                  <strong id="complianceReleaseConclusion">未知</strong>
+                  <span class="compliance-badge" id="complianceReleaseRevision">无快照</span>
+                </div>
+              </div>
+              <button
+                class="admin-button secondary"
+                id="editComplianceReleaseButton"
+                type="button"
+              >
+                更新结论
+              </button>
+            </div>
+            <dl class="compliance-release-meta" id="complianceReleaseMeta"></dl>
+            <p class="compliance-release-basis" id="complianceReleaseBasis"></p>
+            <details class="compliance-release-history" id="complianceReleaseHistoryDetails">
+              <summary>
+                结论历史
+                <span class="compliance-badge" id="complianceReleaseHistoryCount">0 个快照</span>
+              </summary>
+              <div class="compliance-history" id="complianceReleaseHistory"></div>
+            </details>
+          </article>
+
+          <div class="compliance-counts" id="complianceCounts" aria-label="风险等级计数"></div>
+
+          <form class="compliance-filters" id="complianceFilters">
+            <label>
+              <span>矩阵</span>
+              <select id="complianceMatrixFilter">
+                <option value="">全部</option>
+                <option value="legal_risk">法律/合规风险</option>
+                <option value="rights_chain">第三方权利链</option>
+              </select>
+            </label>
+            <label>
+              <span>严重度</span>
+              <select id="complianceSeverityFilter">
+                <option value="">全部</option>
+                <option value="BLOCKER">BLOCKER</option>
+                <option value="HIGH">HIGH</option>
+                <option value="MEDIUM">MEDIUM</option>
+                <option value="LOW">LOW</option>
+                <option value="CLEARED">CLEARED</option>
+              </select>
+            </label>
+            <label>
+              <span>类别</span>
+              <select id="complianceCategoryFilter">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <label>
+              <span>进度</span>
+              <select id="complianceStatusFilter">
+                <option value="">全部</option>
+                <option value="open">待处理</option>
+                <option value="remediation_in_progress">整改中</option>
+                <option value="evidence_pending">待补证据</option>
+                <option value="external_confirmation_pending">待外部确认</option>
+                <option value="ready_for_review">待复核</option>
+                <option value="closed">已关闭</option>
+              </select>
+            </label>
+            <label>
+              <span>负责人</span>
+              <select id="complianceOwnerFilter">
+                <option value="">全部</option>
+              </select>
+            </label>
+            <label>
+              <span>外部确认</span>
+              <select id="complianceExternalFilter">
+                <option value="">全部</option>
+                <option value="required">需要</option>
+                <option value="not_required">不需要</option>
+              </select>
+            </label>
+            <label>
+              <span>复核提醒</span>
+              <select id="complianceDueFilter">
+                <option value="">全部</option>
+                <option value="due">已过期</option>
+                <option value="scheduled">已设置</option>
+                <option value="unscheduled">未设置</option>
+              </select>
+            </label>
+            <label class="compliance-search-field">
+              <span>搜索</span>
+              <input
+                id="complianceSearchInput"
+                type="search"
+                autocomplete="off"
+                placeholder="标题、描述、ID 或下一步"
+              />
+            </label>
+          </form>
+
+          <div class="compliance-result-row">
+            <span id="complianceResultSummary">正在读取……</span>
+            <span>默认按 BLOCKER → HIGH → MEDIUM → LOW → CLEARED 排序</span>
+          </div>
+          <div
+            class="compliance-card-rail"
+            id="complianceCardRail"
+            aria-live="polite"
+          ></div>
+          <div class="compliance-empty" id="complianceEmpty" hidden>
+            没有符合当前筛选条件的问题。
+          </div>
+          <p class="compliance-disclaimer">
+            本看板仅用于内部记录、展示和复核，不自动形成法律意见、授权、备案或监管批准。
+          </p>
         </section>
       </div>
     </main>
@@ -257,8 +471,315 @@
       </section>
     </dialog>
 
+    <dialog class="compliance-dialog" id="complianceIssueDialog">
+      <div class="dialog-heading">
+        <div>
+          <p id="complianceIssueEyebrow">合规问题</p>
+          <h2 id="complianceIssueDialogTitle">问题详情</h2>
+        </div>
+        <button
+          class="dialog-close"
+          id="closeComplianceIssueButton"
+          type="button"
+          aria-label="关闭合规问题详情"
+          title="关闭"
+        >
+          ×
+        </button>
+      </div>
+
+      <div id="complianceIssueReadView">
+        <div class="compliance-detail-current" id="complianceDetailCurrent"></div>
+        <div class="compliance-detail-actions">
+          <button
+            class="admin-button primary"
+            id="editComplianceIssueButton"
+            type="button"
+          >
+            更新并保存新快照
+          </button>
+        </div>
+        <section class="compliance-history-section" aria-labelledby="complianceHistoryTitle">
+          <div class="section-heading">
+            <h3 id="complianceHistoryTitle">历史快照</h3>
+            <span id="complianceHistoryCount"></span>
+          </div>
+          <div class="compliance-history" id="complianceHistory"></div>
+        </section>
+      </div>
+
+      <form class="compliance-issue-form" id="complianceIssueForm" hidden>
+        <div class="compliance-form-grid">
+          <label>
+            <span>矩阵</span>
+            <select id="complianceIssueMatrixType" required>
+              <option value="legal_risk">法律/合规风险</option>
+              <option value="rights_chain">第三方权利链</option>
+            </select>
+          </label>
+          <label>
+            <span>类别</span>
+            <input id="complianceIssueCategory" type="text" maxlength="120" required />
+          </label>
+          <label class="compliance-form-wide">
+            <span>标题</span>
+            <input id="complianceIssueTitle" type="text" maxlength="200" required />
+          </label>
+          <label>
+            <span>严重度</span>
+            <select id="complianceIssueSeverity" required>
+              <option value="BLOCKER">BLOCKER</option>
+              <option value="HIGH">HIGH</option>
+              <option value="MEDIUM">MEDIUM</option>
+              <option value="LOW">LOW</option>
+              <option value="CLEARED">CLEARED</option>
+            </select>
+          </label>
+          <label>
+            <span>处理进度</span>
+            <select id="complianceIssueStatus" required>
+              <option value="open">待处理</option>
+              <option value="remediation_in_progress">整改中</option>
+              <option value="evidence_pending">待补证据</option>
+              <option value="external_confirmation_pending">待外部确认</option>
+              <option value="ready_for_review">待复核</option>
+              <option value="closed">已关闭</option>
+            </select>
+          </label>
+          <label class="compliance-form-wide">
+            <span>问题描述</span>
+            <textarea id="complianceIssueDescription" rows="5" maxlength="12000" required></textarea>
+          </label>
+          <label class="compliance-form-wide">
+            <span>下一步解决方案</span>
+            <textarea id="complianceIssueNextStep" rows="4" maxlength="12000" required></textarea>
+          </label>
+          <label class="compliance-form-wide">
+            <span>本次变化说明</span>
+            <textarea id="complianceIssueChangeSummary" rows="3" maxlength="2000" required></textarea>
+          </label>
+          <label>
+            <span>负责人</span>
+            <input id="complianceIssueOwner" type="text" maxlength="200" />
+          </label>
+          <label>
+            <span>复核人</span>
+            <input id="complianceIssueReviewer" type="text" maxlength="200" required />
+          </label>
+          <label>
+            <span>下次复核日期</span>
+            <input id="complianceIssueReviewDue" type="date" />
+          </label>
+          <label class="compliance-check-field">
+            <input id="complianceIssueExternalRequired" type="checkbox" />
+            <span>需要外部确认</span>
+          </label>
+        </div>
+
+        <details class="compliance-advanced-fields">
+          <summary>事实、依据与整改详情</summary>
+          <div class="compliance-form-grid">
+            <label class="compliance-form-wide">
+              <span>已验证事实</span>
+              <textarea id="complianceIssueVerifiedFacts" rows="4" maxlength="16000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>依据与证据</span>
+              <textarea id="complianceIssueEvidenceBasis" rows="4" maxlength="16000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>LC 分析</span>
+              <textarea id="complianceIssueAnalysis" rows="4" maxlength="16000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>发行影响</span>
+              <textarea id="complianceIssueReleaseImpact" rows="3" maxlength="12000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>整改方案</span>
+              <textarea id="complianceIssueRemediationPlan" rows="4" maxlength="16000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>验收证据</span>
+              <textarea id="complianceIssueAcceptanceEvidence" rows="4" maxlength="16000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>未解决问题</span>
+              <textarea id="complianceIssueUnresolved" rows="3" maxlength="12000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>外部确认事项</span>
+              <textarea id="complianceIssueExternalConfirmation" rows="3" maxlength="12000"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>受影响资产/路径/内容 ID（每行一项）</span>
+              <textarea id="complianceIssueAssets" rows="4"></textarea>
+            </label>
+            <label class="compliance-form-wide">
+              <span>证据引用（每行一条 URL 或仓库路径）</span>
+              <textarea id="complianceIssueEvidenceRefs" rows="4"></textarea>
+            </label>
+            <label>
+              <span>适用版本</span>
+              <input id="complianceIssueScopeVersion" type="text" maxlength="120" />
+            </label>
+            <label>
+              <span>适用 commit</span>
+              <input id="complianceIssueScopeCommit" type="text" maxlength="40" pattern="[0-9a-fA-F]{40}" />
+            </label>
+            <label>
+              <span>渠道（逗号分隔）</span>
+              <input id="complianceIssueScopeChannels" type="text" maxlength="500" />
+            </label>
+            <label>
+              <span>司法辖区（逗号分隔）</span>
+              <input id="complianceIssueScopeJurisdictions" type="text" maxlength="500" />
+            </label>
+            <label class="compliance-form-wide">
+              <span>商业模式/适用范围</span>
+              <input id="complianceIssueScopeBusiness" type="text" maxlength="1000" />
+            </label>
+            <label>
+              <span>变更前 SHA-256</span>
+              <input id="complianceIssueHashBefore" type="text" maxlength="64" pattern="[0-9a-fA-F]{64}" />
+            </label>
+            <label>
+              <span>变更后 SHA-256</span>
+              <input id="complianceIssueHashAfter" type="text" maxlength="64" pattern="[0-9a-fA-F]{64}" />
+            </label>
+          </div>
+        </details>
+
+        <details class="compliance-advanced-fields" id="complianceRightsFields">
+          <summary>第三方权利链清除依据</summary>
+          <p>权利链卡片标记为 CLEARED 时，以下六项必须完整。</p>
+          <div class="compliance-form-grid">
+            <label>
+              <span>作者或权利人</span>
+              <input id="complianceRightsAuthor" type="text" maxlength="500" />
+            </label>
+            <label>
+              <span>许可证或授权</span>
+              <input id="complianceRightsLicense" type="text" maxlength="500" />
+            </label>
+            <label class="compliance-form-wide">
+              <span>直接来源 URL</span>
+              <input id="complianceRightsSourceUrl" type="url" maxlength="1000" />
+            </label>
+            <label>
+              <span>版本或访问日期</span>
+              <input id="complianceRightsVersion" type="text" maxlength="300" />
+            </label>
+            <label>
+              <span>适用商业范围</span>
+              <input id="complianceRightsCommercialScope" type="text" maxlength="1000" />
+            </label>
+            <label class="compliance-form-wide">
+              <span>证据 SHA-256</span>
+              <input id="complianceRightsSha256" type="text" maxlength="64" pattern="[0-9a-fA-F]{64}" />
+            </label>
+          </div>
+        </details>
+
+        <div class="compliance-form-actions">
+          <button class="admin-button primary" id="saveComplianceIssueButton" type="submit">
+            保存新快照
+          </button>
+          <button class="admin-button secondary" id="cancelComplianceIssueEditButton" type="button">
+            取消
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="compliance-dialog release-dialog" id="complianceReleaseDialog">
+      <div class="dialog-heading">
+        <div>
+          <p>商业发行结论</p>
+          <h2>保存新的结论快照</h2>
+        </div>
+        <button
+          class="dialog-close"
+          id="closeComplianceReleaseButton"
+          type="button"
+          aria-label="关闭商业发行结论编辑"
+          title="关闭"
+        >
+          ×
+        </button>
+      </div>
+      <form class="compliance-issue-form" id="complianceReleaseForm">
+        <div class="compliance-form-grid">
+          <label>
+            <span>结论</span>
+            <select id="complianceReleaseFormConclusion" required>
+              <option value="not_releasable">不可发行</option>
+              <option value="conditionally_releasable">附条件可发行</option>
+              <option value="releasable">可发行</option>
+            </select>
+          </label>
+          <label>
+            <span>适用版本</span>
+            <input id="complianceReleaseVersion" type="text" maxlength="120" />
+          </label>
+          <label class="compliance-form-wide">
+            <span>适用 commit</span>
+            <input id="complianceReleaseCommit" type="text" maxlength="40" pattern="[0-9a-fA-F]{40}" />
+          </label>
+          <label>
+            <span>渠道（逗号分隔）</span>
+            <input id="complianceReleaseChannels" type="text" maxlength="500" />
+          </label>
+          <label>
+            <span>司法辖区（逗号分隔）</span>
+            <input id="complianceReleaseJurisdictions" type="text" maxlength="500" />
+          </label>
+          <label class="compliance-form-wide">
+            <span>商业模式</span>
+            <input id="complianceReleaseBusiness" type="text" maxlength="1000" />
+          </label>
+          <label>
+            <span>审查日期</span>
+            <input id="complianceReleaseReviewDate" type="date" />
+          </label>
+          <label>
+            <span>证据生成时间</span>
+            <input id="complianceReleaseEvidenceAt" type="datetime-local" />
+          </label>
+          <label class="compliance-form-wide">
+            <span>范围说明</span>
+            <textarea id="complianceReleaseScopeNotes" rows="3" maxlength="8000"></textarea>
+          </label>
+          <label class="compliance-form-wide">
+            <span>结论依据</span>
+            <textarea id="complianceReleaseFormBasis" rows="5" maxlength="16000" required></textarea>
+          </label>
+          <label class="compliance-form-wide">
+            <span>证据引用（每行一条 URL 或仓库路径）</span>
+            <textarea id="complianceReleaseEvidenceRefs" rows="4" required></textarea>
+          </label>
+          <label>
+            <span>复核人</span>
+            <input id="complianceReleaseReviewer" type="text" maxlength="200" required />
+          </label>
+          <label>
+            <span>本次变化说明</span>
+            <input id="complianceReleaseChangeSummary" type="text" maxlength="2000" required />
+          </label>
+        </div>
+        <div class="compliance-form-actions">
+          <button class="admin-button primary" id="saveComplianceReleaseButton" type="submit">
+            保存结论快照
+          </button>
+          <button class="admin-button secondary" id="cancelComplianceReleaseButton" type="button">
+            取消
+          </button>
+        </div>
+      </form>
+    </dialog>
+
     <script src="./cloud-config.js?v=20260729-2"></script>
-    <script src="./cloud-client.js?v=20260803-5"></script>
-    <script src="./admin.js?v=20260803-5"></script>
+    <script src="./cloud-client.js?v=20260809-1"></script>
+    <script src="./admin.js?v=20260809-1"></script>
   </body>
 </html>

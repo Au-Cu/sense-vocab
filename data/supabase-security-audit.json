@@ -1,0 +1,890 @@
+{
+  "auditDate": "2026-08-10",
+  "migration": "20260809060413_compliance_release_controls.sql",
+  "grantMigrations": [
+    "20260809060413_compliance_release_controls.sql",
+    "20260809153605_compliance_issue_cards.sql",
+    "20260809161847_compliance_runtime_fixes.sql",
+    "20260809162137_compliance_dashboard_ambiguity_fix.sql"
+  ],
+  "policy": {
+    "allLegacyFunctionExecutionRevoked": true,
+    "allSecurityDefinersForcedToEmptySearchPath": true,
+    "anonymousFunctionAllowlist": [
+      "public.load_my_notifications(integer)",
+      "public.validate_invitation_code(text)"
+    ],
+    "defaultFunctionExposureRevoked": true
+  },
+  "counts": {
+    "discoveredFunctionSignatures": 64,
+    "securityDefinerSignatures": 55,
+    "explicitFinalGrants": 47,
+    "browserRpcNames": 36
+  },
+  "grants": [
+    {
+      "signature": "public.validate_invitation_code(text)",
+      "roles": [
+        "anon",
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_my_notifications(integer)",
+      "roles": [
+        "anon",
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.is_admin()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_my_legal_consents()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.record_my_legal_consents(boolean, boolean, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.registration_welcome(uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_my_account_profile()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.mark_my_notification_read(text, uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.save_user_state(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_my_feedback_image_paths()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.delete_my_account()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.is_admin()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.can_upload_feedback_image(text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.submit_feedback(uuid, text, jsonb, jsonb, integer, boolean, text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.attach_feedback_images(uuid, jsonb)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.discard_empty_feedback(uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.can_upload_announcement_image(text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_dashboard()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_user_list(text, integer, integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_user_detail(uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_feedback_list(text, integer, integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_update_feedback_status(uuid, text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_reply_feedback(uuid, text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_expired_feedback(integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_delete_expired_feedback(uuid[])",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_record_access(text, text, text, jsonb)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_announcement_list(integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_publish_announcement(text, text, uuid, text[], jsonb, jsonb)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_set_announcement_pinned(uuid, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_delete_announcement(uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_begin_announcement_takedown(uuid, text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_finalize_announcement_takedown(uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_set_membership_days(uuid, integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_extend_all_memberships()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.retention_claim_feedback_batch(uuid, integer)",
+      "roles": [
+        "service_role"
+      ]
+    },
+    {
+      "signature": "public.retention_finalize_feedback_batch(uuid, uuid[])",
+      "roles": [
+        "service_role"
+      ]
+    },
+    {
+      "signature": "public.retention_fail_feedback_batch(uuid, uuid[], text)",
+      "roles": [
+        "service_role"
+      ]
+    },
+    {
+      "signature": "public.admin_compliance_dashboard()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_compliance_issue_detail(uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_create_compliance_issue(text, text, jsonb)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_append_compliance_issue_snapshot(uuid, bigint, jsonb)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_append_compliance_release_snapshot(bigint, jsonb)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_compliance_dashboard()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_compliance_issue_detail(uuid)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_publish_announcement(\n  text, text, uuid, text[], jsonb, jsonb\n)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_compliance_dashboard()",
+      "roles": [
+        "authenticated"
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "key": "private.apply_feedback_retention_deadline()",
+      "schema": "private",
+      "name": "apply_feedback_retention_deadline",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "private.enqueue_expired_feedback_retention()",
+      "schema": "private",
+      "name": "enqueue_expired_feedback_retention",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "private.invoke_feedback_retention_edge()",
+      "schema": "private",
+      "name": "invoke_feedback_retention_edge",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "private.validate_compliance_issue_snapshot(p_matrix_type text, p_snapshot jsonb, p_previous_severity text default null)",
+      "schema": "private",
+      "name": "validate_compliance_issue_snapshot",
+      "latestMigration": "20260809153605_compliance_issue_cards.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.activity_word_count(p_data jsonb)",
+      "schema": "public",
+      "name": "activity_word_count",
+      "latestMigration": "202607280002_admin_feedback.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.admin_announcement_list(p_limit integer default 100)",
+      "schema": "public",
+      "name": "admin_announcement_list",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_append_compliance_issue_snapshot(p_issue_id uuid, p_expected_revision bigint, p_snapshot jsonb)",
+      "schema": "public",
+      "name": "admin_append_compliance_issue_snapshot",
+      "latestMigration": "20260809153605_compliance_issue_cards.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_append_compliance_release_snapshot(p_expected_revision bigint, p_snapshot jsonb)",
+      "schema": "public",
+      "name": "admin_append_compliance_release_snapshot",
+      "latestMigration": "20260809153605_compliance_issue_cards.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_begin_announcement_takedown(p_announcement_id uuid, p_reason text)",
+      "schema": "public",
+      "name": "admin_begin_announcement_takedown",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_compliance_dashboard()",
+      "schema": "public",
+      "name": "admin_compliance_dashboard",
+      "latestMigration": "20260809162137_compliance_dashboard_ambiguity_fix.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_compliance_issue_detail(p_issue_id uuid)",
+      "schema": "public",
+      "name": "admin_compliance_issue_detail",
+      "latestMigration": "20260809161847_compliance_runtime_fixes.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_create_compliance_issue(p_matrix_type text, p_category text, p_snapshot jsonb)",
+      "schema": "public",
+      "name": "admin_create_compliance_issue",
+      "latestMigration": "20260809153605_compliance_issue_cards.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_dashboard()",
+      "schema": "public",
+      "name": "admin_dashboard",
+      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.admin_delete_announcement(p_announcement_id uuid)",
+      "schema": "public",
+      "name": "admin_delete_announcement",
+      "latestMigration": "202607300003_announcement_delete.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_delete_expired_feedback(p_feedback_ids uuid[])",
+      "schema": "public",
+      "name": "admin_delete_expired_feedback",
+      "latestMigration": "202607290003_feedback_retention_cleanup.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_expired_feedback(p_limit integer default 100)",
+      "schema": "public",
+      "name": "admin_expired_feedback",
+      "latestMigration": "202607290003_feedback_retention_cleanup.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_extend_all_memberships()",
+      "schema": "public",
+      "name": "admin_extend_all_memberships",
+      "latestMigration": "202607300002_membership_bulk_update_fix.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_feedback_list(p_status text default null, p_limit integer default 100, p_offset integer default 0)",
+      "schema": "public",
+      "name": "admin_feedback_list",
+      "latestMigration": "202607290004_membership_notifications.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.admin_finalize_announcement_takedown(p_announcement_id uuid)",
+      "schema": "public",
+      "name": "admin_finalize_announcement_takedown",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_publish_announcement(p_title text, p_body text, p_announcement_id uuid default gen_random_uuid(), p_image_paths text[] default '{}'::text[])",
+      "schema": "public",
+      "name": "admin_publish_announcement",
+      "latestMigration": "202607300001_announcement_images.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_publish_announcement(p_title text, p_body text, p_announcement_id uuid, p_image_paths text[], p_rights_metadata jsonb, p_content_provenance jsonb)",
+      "schema": "public",
+      "name": "admin_publish_announcement",
+      "latestMigration": "20260809161847_compliance_runtime_fixes.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_publish_announcement(p_title text, p_body text)",
+      "schema": "public",
+      "name": "admin_publish_announcement",
+      "latestMigration": "202607290004_membership_notifications.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_record_access(p_action text, p_target_type text default null, p_target_id text default null, p_metadata jsonb default '{}'::jsonb)",
+      "schema": "public",
+      "name": "admin_record_access",
+      "latestMigration": "202607290002_legal_consent_retention_audit.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_reply_feedback(p_feedback_id uuid, p_message text)",
+      "schema": "public",
+      "name": "admin_reply_feedback",
+      "latestMigration": "202607290004_membership_notifications.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_retention_rate(p_days integer)",
+      "schema": "public",
+      "name": "admin_retention_rate",
+      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.admin_set_announcement_pinned(p_announcement_id uuid, p_pinned boolean)",
+      "schema": "public",
+      "name": "admin_set_announcement_pinned",
+      "latestMigration": "20260803151307_announcement_pinning.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_set_membership_days(p_user_id uuid, p_days integer)",
+      "schema": "public",
+      "name": "admin_set_membership_days",
+      "latestMigration": "202607290005_email_otp_invite_rotation.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.admin_update_feedback_status(p_feedback_id uuid, p_status text)",
+      "schema": "public",
+      "name": "admin_update_feedback_status",
+      "latestMigration": "202607280002_admin_feedback.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.admin_user_detail(p_user_id uuid)",
+      "schema": "public",
+      "name": "admin_user_detail",
+      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.admin_user_list(p_search text default '', p_limit integer default 100, p_offset integer default 0)",
+      "schema": "public",
+      "name": "admin_user_list",
+      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.attach_feedback_images(p_feedback_id uuid, p_image_paths jsonb)",
+      "schema": "public",
+      "name": "attach_feedback_images",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.can_upload_announcement_image(p_name text)",
+      "schema": "public",
+      "name": "can_upload_announcement_image",
+      "latestMigration": "202607300001_announcement_images.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.can_upload_feedback_image(p_name text)",
+      "schema": "public",
+      "name": "can_upload_feedback_image",
+      "latestMigration": "202607290001_security_hardening.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.confusion_links_are_valid(p_links jsonb)",
+      "schema": "public",
+      "name": "confusion_links_are_valid",
+      "latestMigration": "20260808150845_confusion_links_account_sync_guard.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.delete_my_account()",
+      "schema": "public",
+      "name": "delete_my_account",
+      "latestMigration": "202607280003_safe_account_storage_cleanup.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.discard_empty_feedback(p_feedback_id uuid)",
+      "schema": "public",
+      "name": "discard_empty_feedback",
+      "latestMigration": "202607290001_security_hardening.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.enforce_state_confusion_links()",
+      "schema": "public",
+      "name": "enforce_state_confusion_links",
+      "latestMigration": "20260808150845_confusion_links_account_sync_guard.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.generate_invite_code()",
+      "schema": "public",
+      "name": "generate_invite_code",
+      "latestMigration": "202607290004_membership_notifications.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.handle_new_user()",
+      "schema": "public",
+      "name": "handle_new_user",
+      "latestMigration": "202607290005_email_otp_invite_rotation.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.internal_user_activity_rows()",
+      "schema": "public",
+      "name": "internal_user_activity_rows",
+      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.internal_user_book_stats(p_user_id uuid)",
+      "schema": "public",
+      "name": "internal_user_book_stats",
+      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.is_admin()",
+      "schema": "public",
+      "name": "is_admin",
+      "latestMigration": "202607280002_admin_feedback.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.load_my_account_profile()",
+      "schema": "public",
+      "name": "load_my_account_profile",
+      "latestMigration": "202607290005_email_otp_invite_rotation.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.load_my_feedback_image_paths()",
+      "schema": "public",
+      "name": "load_my_feedback_image_paths",
+      "latestMigration": "202607280003_safe_account_storage_cleanup.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.load_my_legal_consents()",
+      "schema": "public",
+      "name": "load_my_legal_consents",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.load_my_notifications(p_limit integer default 100)",
+      "schema": "public",
+      "name": "load_my_notifications",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.load_public_announcements(p_limit integer default 100)",
+      "schema": "public",
+      "name": "load_public_announcements",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.load_user_state()",
+      "schema": "public",
+      "name": "load_user_state",
+      "latestMigration": "202607280005_concurrent_state_integrity.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.mark_my_notification_read(p_kind text, p_id uuid)",
+      "schema": "public",
+      "name": "mark_my_notification_read",
+      "latestMigration": "202607290004_membership_notifications.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.record_my_legal_consents(p_terms_privacy boolean, p_cross_border boolean, p_age_14_or_over boolean)",
+      "schema": "public",
+      "name": "record_my_legal_consents",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.registration_welcome(p_user_id uuid)",
+      "schema": "public",
+      "name": "registration_welcome",
+      "latestMigration": "202607290005_email_otp_invite_rotation.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.retention_claim_feedback_batch(p_worker_id uuid, p_limit integer default 100)",
+      "schema": "public",
+      "name": "retention_claim_feedback_batch",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.retention_fail_feedback_batch(p_worker_id uuid, p_feedback_ids uuid[], p_error text)",
+      "schema": "public",
+      "name": "retention_fail_feedback_batch",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.retention_finalize_feedback_batch(p_worker_id uuid, p_feedback_ids uuid[])",
+      "schema": "public",
+      "name": "retention_finalize_feedback_batch",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.save_user_state(p_state jsonb, p_expected_revision bigint default null, p_force boolean default false)",
+      "schema": "public",
+      "name": "save_user_state",
+      "latestMigration": "202607310001_state_recovery_guard.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.state_confusion_links_are_valid(p_state jsonb)",
+      "schema": "public",
+      "name": "state_confusion_links_are_valid",
+      "latestMigration": "20260808150845_confusion_links_account_sync_guard.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.state_has_undeclared_deletions(p_existing jsonb, p_incoming jsonb)",
+      "schema": "public",
+      "name": "state_has_undeclared_deletions",
+      "latestMigration": "20260808150845_confusion_links_account_sync_guard.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.submit_feedback(p_feedback_id uuid, p_message text, p_image_paths jsonb default '[]'::jsonb)",
+      "schema": "public",
+      "name": "submit_feedback",
+      "latestMigration": "202607280002_admin_feedback.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.submit_feedback(p_feedback_id uuid, p_message text, p_image_paths jsonb, p_context jsonb, p_expected_image_count integer, p_attachment_rights_confirmed boolean, p_attachment_ai_disclosure text)",
+      "schema": "public",
+      "name": "submit_feedback",
+      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.submit_feedback(p_feedback_id uuid, p_message text, p_image_paths jsonb, p_context jsonb)",
+      "schema": "public",
+      "name": "submit_feedback",
+      "latestMigration": "202607290001_security_hardening.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.sync_record_declares_delete(p_book jsonb, p_domain text, p_key text)",
+      "schema": "public",
+      "name": "sync_record_declares_delete",
+      "latestMigration": "202607310001_state_recovery_guard.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.user_learning_summary(p_user_id uuid)",
+      "schema": "public",
+      "name": "user_learning_summary",
+      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.user_state_document(p_user_id uuid)",
+      "schema": "public",
+      "name": "user_state_document",
+      "latestMigration": "202607310001_state_recovery_guard.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.validate_invitation_code(p_code text)",
+      "schema": "public",
+      "name": "validate_invitation_code",
+      "latestMigration": "202607290005_email_otp_invite_rotation.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    }
+  ],
+  "errors": []
+}

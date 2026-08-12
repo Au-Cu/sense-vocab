@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +13,15 @@ const vocabularyPaths = [
 ];
 const apiUrl = "https://commons.wikimedia.org/w/api.php";
 const batchSize = 40;
+const verifiedAuthorEvidence = new Map([
+  ["en-uk-black.ogg", { author: "Celestianpower", evidenceText: "Pronunciation recorded by Celestianpower" }],
+  ["en-us-frugal.ogg", { author: "EncycloPetey", evidenceText: "Pronunciation of the term in US English, recorded by EncycloPetey" }],
+  ["en-us-give.ogg", { author: "Muke", evidenceText: "Pronunciation of the word give; PD-self publication by Muke" }],
+  ["en-us-hit.ogg", { author: "Muke", evidenceText: "Pronunciation of the word hit; PD-self publication by Muke" }],
+  ["en-us-magnanimous.ogg", { author: "EncycloPetey", evidenceText: "Pronunciation of the term in US English, recorded by EncycloPetey" }],
+  ["en-us-ruffle.ogg", { author: "Dvortygirl", evidenceText: "Pronunciation of the word ruffle, recorded by Dvortygirl" }],
+  ["en-us-tacit.ogg", { author: "EncycloPetey", evidenceText: "Pronunciation of the term in US English, recorded by EncycloPetey" }],
+]);
 
 function wordsOf(value) {
   const words = Array.isArray(value) ? value : value.words;
@@ -67,6 +77,10 @@ function cacheKey(filename) {
     .toLocaleLowerCase("en-US");
 }
 
+function sha256(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
 async function readJson(filePath, fallback) {
   try {
     return JSON.parse(await readFile(filePath, "utf8"));
@@ -87,12 +101,13 @@ async function fetchBatch(filenames) {
     formatversion: "2",
     redirects: "1",
     prop: "imageinfo",
-    iiprop: "extmetadata|url",
+    iiprop: "extmetadata|url|user|comment|timestamp",
+    iilimit: "max",
     titles: filenames.map((name) => `File:${name}`).join("|"),
   });
 
   let lastError;
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     try {
       const response = await fetch(apiUrl, {
         method: "POST",
@@ -102,6 +117,14 @@ async function fetchBatch(filenames) {
         },
         body,
       });
+      if (response.status === 429) {
+        const retryAfter = Number.parseInt(response.headers.get("retry-after") ?? "", 10);
+        const waitMs = Number.isFinite(retryAfter)
+          ? Math.min(Math.max(retryAfter * 1000, 1000), 60000)
+          : Math.min(2000 * 2 ** attempt, 60000);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        continue;
+      }
       if (!response.ok) {
         throw new Error(`Wikimedia API returned ${response.status}.`);
       }
@@ -116,12 +139,57 @@ async function fetchBatch(filenames) {
   throw lastError;
 }
 
+function extractRecordedBy(value) {
+  const text = decodeEntities(value);
+  const match = text.match(/recorded by\s+([^,.;|]+)/i);
+  return match?.[1]?.trim() ?? "";
+}
+
+function authorEvidenceFromPage(page, metadata) {
+  const artist = decodeEntities(metadata.Artist?.value);
+  if (artist) {
+    return { author: artist, basis: "extmetadata:Artist", evidenceText: artist };
+  }
+
+  const description = decodeEntities(metadata.ImageDescription?.value);
+  const descriptionAuthor = extractRecordedBy(description);
+  if (descriptionAuthor) {
+    return {
+      author: descriptionAuthor,
+      basis: "extmetadata:ImageDescription",
+      evidenceText: description,
+    };
+  }
+
+  for (const revision of page?.imageinfo ?? []) {
+    const comment = decodeEntities(revision?.comment);
+    const recordedBy = extractRecordedBy(comment);
+    if (recordedBy) {
+      return { author: recordedBy, basis: "file-history-comment", evidenceText: comment };
+    }
+    if (revision?.user && /(?:PD-self|own pronunciation|own work)/i.test(comment)) {
+      return {
+        author: String(revision.user),
+        basis: "file-history-self-publication",
+        evidenceText: comment,
+      };
+    }
+  }
+
+  return { author: "", basis: "", evidenceText: "" };
+}
+
 function rightsFromPage(page) {
   const imageInfo = page?.imageinfo?.[0];
   const metadata = imageInfo?.extmetadata ?? {};
-  return {
+  const authorEvidence = authorEvidenceFromPage(page, metadata);
+  const rights = {
     filename: String(page?.title ?? "").replace(/^File:/i, ""),
-    author: decodeEntities(metadata.Artist?.value),
+    author: authorEvidence.author,
+    authorEvidenceBasis: authorEvidence.basis,
+    authorEvidenceTextSha256: authorEvidence.evidenceText
+      ? sha256(authorEvidence.evidenceText)
+      : "",
     license: decodeEntities(
       metadata.LicenseShortName?.value || metadata.UsageTerms?.value,
     ),
@@ -134,6 +202,8 @@ function rightsFromPage(page) {
       String(metadata.AttributionRequired?.value ?? "").toLowerCase() !== "false",
     fetchedAt: new Date().toISOString(),
   };
+  rights.evidenceSha256 = sha256(JSON.stringify(rights));
+  return rights;
 }
 
 const documents = await Promise.all(
@@ -158,7 +228,30 @@ cache.formatVersion = 1;
 cache.source = apiUrl;
 cache.files ??= {};
 
-const pending = [...filenames].filter(([key]) => !cache.files[key]);
+let repairedFromVerifiedEvidence = 0;
+for (const [key, evidence] of verifiedAuthorEvidence) {
+  const rights = cache.files[key];
+  if (!rights || rights.author) continue;
+  rights.author = evidence.author;
+  rights.authorEvidenceBasis = "official-file-description-or-history";
+  rights.authorEvidenceUrl = rights.sourcePage;
+  rights.authorEvidenceAccessedAt = "2026-08-09";
+  rights.authorEvidenceTextSha256 = sha256(evidence.evidenceText);
+  rights.evidenceSha256 = sha256(JSON.stringify({
+    ...rights,
+    evidenceSha256: undefined,
+  }));
+  repairedFromVerifiedEvidence += 1;
+}
+if (repairedFromVerifiedEvidence) {
+  cache.updatedAt = new Date().toISOString();
+  await saveCache(cache);
+  console.log(
+    `Applied verified official-page author evidence to ${repairedFromVerifiedEvidence} cached files.`,
+  );
+}
+
+const pending = [...filenames].filter(([key]) => !cache.files[key]?.author);
 console.log(
   `Wikimedia audio metadata: ${filenames.size} unique files, ${pending.length} pending.`,
 );
@@ -176,6 +269,7 @@ for (let start = 0; start < pending.length; start += batchSize) {
   console.log(
     `Fetched ${Math.min(start + batch.length, pending.length)}/${pending.length}.`,
   );
+  await new Promise((resolve) => setTimeout(resolve, 750));
 }
 
 let audioCount = 0;
@@ -192,12 +286,23 @@ for (let documentIndex = 0; documentIndex < documents.length; documentIndex += 1
       if (!rights) continue;
 
       if (rights.author) sense.audioAuthor = rights.author;
+      if (rights.authorEvidenceBasis) {
+        sense.audioAuthorEvidenceBasis = rights.authorEvidenceBasis;
+        sense.audioAuthorEvidenceUrl = rights.authorEvidenceUrl ?? rights.sourcePage;
+        sense.audioAuthorEvidenceAccessedAt =
+          rights.authorEvidenceAccessedAt ?? rights.fetchedAt;
+      }
+      if (rights.authorEvidenceTextSha256) {
+        sense.audioAuthorEvidenceTextSha256 = rights.authorEvidenceTextSha256;
+      }
       if (rights.license) sense.audioLicense = rights.license;
       if (rights.licenseUrl) sense.audioLicenseUrl = rights.licenseUrl;
       if (rights.sourcePage) sense.audioSourcePage = rights.sourcePage;
       if (rights.attribution) sense.audioAttribution = rights.attribution;
       sense.audioMetadataSource = "Wikimedia Commons API";
+      sense.audioMetadataRecord = `${apiUrl}?action=query&prop=imageinfo&iiprop=extmetadata%7Curl&titles=File:${encodeURIComponent(rights.filename)}`;
       sense.audioMetadataFetchedAt = rights.fetchedAt;
+      sense.audioRightsEvidenceSha256 = rights.evidenceSha256;
       enrichedCount += 1;
       if (sense.audioAuthor && sense.audioLicense && sense.audioSourcePage) {
         completeCount += 1;
@@ -205,11 +310,12 @@ for (let documentIndex = 0; documentIndex < documents.length; documentIndex += 1
     }
   }
 
-  await writeFile(
-    vocabularyPaths[documentIndex],
-    `${JSON.stringify(document)}\n`,
-    "utf8",
-  );
+  const preservePrettyCrLf = vocabularyPaths[documentIndex].endsWith("kaoyan-words.json");
+  let serialized = JSON.stringify(document, null, preservePrettyCrLf ? 2 : undefined);
+  serialized = preservePrettyCrLf
+    ? `${serialized.replace(/\r?\n/g, "\r\n")}\r\n`
+    : `${serialized}\n`;
+  await writeFile(vocabularyPaths[documentIndex], serialized, "utf8");
 }
 
 console.log(

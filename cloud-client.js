@@ -20203,7 +20203,14 @@ ${suffix}`;
           assertResult(await client.auth.signOut());
         },
         async loadLegalConsents() {
-          return assertResult(await client.rpc("load_my_legal_consents"));
+          const receipt = assertResult(await client.rpc("load_my_legal_consents"));
+          const expected = window.SENSE_VOCAB_LEGAL_CONFIG;
+          const versionsMatch = Boolean(expected) && receipt?.termsVersion === expected.termsVersion && receipt?.privacyVersion === expected.privacyVersion && receipt?.crossBorderVersion === expected.crossBorderVersion && receipt?.ageVersion === expected.ageVersion;
+          return {
+            ...receipt,
+            complete: Boolean(receipt?.complete && versionsMatch),
+            versionsMatch
+          };
         },
         async recordLegalConsents() {
           return assertResult(await client.rpc("record_my_legal_consents", {
@@ -20259,7 +20266,7 @@ ${suffix}`;
           }
           return assertResult(await client.rpc("delete_my_account"));
         },
-        async submitFeedback(message, files = [], context = null) {
+        async submitFeedback(message, files = [], context = null, attachmentCompliance = {}) {
           const normalizedMessage = String(message ?? "").trim();
           const images = Array.from(files ?? []);
           if (normalizedMessage.length < 3 || normalizedMessage.length > 4e3) {
@@ -20275,7 +20282,10 @@ ${suffix}`;
               p_feedback_id: feedbackId,
               p_message: normalizedMessage,
               p_image_paths: [],
-              p_context: context && typeof context === "object" ? context : {}
+              p_context: context && typeof context === "object" ? context : {},
+              p_expected_image_count: images.length,
+              p_attachment_rights_confirmed: images.length === 0 || attachmentCompliance?.rightsConfirmed === true,
+              p_attachment_ai_disclosure: images.length ? String(attachmentCompliance?.aiDisclosure ?? "") : "not_applicable"
             }));
             const sessionData = assertResult(await client.auth.getSession());
             const userId = sessionData?.session?.user?.id;
@@ -20419,6 +20429,46 @@ ${suffix}`;
           }));
           return hydrateAnnouncementImages(result);
         },
+        async loadAdminCompliance() {
+          return assertResult(await client.rpc("admin_compliance_dashboard"));
+        },
+        async loadAdminComplianceIssue(issueId) {
+          const normalizedId = String(issueId ?? "").trim();
+          if (!UUID_PATTERN.test(normalizedId)) {
+            throw new Error("\u5408\u89C4\u95EE\u9898\u7F16\u53F7\u65E0\u6548\u3002");
+          }
+          return assertResult(await client.rpc("admin_compliance_issue_detail", {
+            p_issue_id: normalizedId
+          }));
+        },
+        async createComplianceIssue(matrixType, category, snapshot) {
+          return assertResult(await client.rpc("admin_create_compliance_issue", {
+            p_matrix_type: String(matrixType ?? "").trim(),
+            p_category: String(category ?? "").trim(),
+            p_snapshot: snapshot
+          }));
+        },
+        async appendComplianceIssueSnapshot(issueId, expectedRevision, snapshot) {
+          const normalizedId = String(issueId ?? "").trim();
+          if (!UUID_PATTERN.test(normalizedId)) {
+            throw new Error("\u5408\u89C4\u95EE\u9898\u7F16\u53F7\u65E0\u6548\u3002");
+          }
+          return assertResult(
+            await client.rpc("admin_append_compliance_issue_snapshot", {
+              p_issue_id: normalizedId,
+              p_expected_revision: Number(expectedRevision),
+              p_snapshot: snapshot
+            })
+          );
+        },
+        async appendComplianceReleaseSnapshot(expectedRevision, snapshot) {
+          return assertResult(
+            await client.rpc("admin_append_compliance_release_snapshot", {
+              p_expected_revision: Number(expectedRevision),
+              p_snapshot: snapshot
+            })
+          );
+        },
         async setAnnouncementPinned(announcementId, pinned) {
           const normalizedId = String(announcementId ?? "").trim();
           if (!UUID_PATTERN.test(normalizedId)) {
@@ -20431,7 +20481,7 @@ ${suffix}`;
             })
           );
         },
-        async publishAnnouncement(title, body, files = []) {
+        async publishAnnouncement(title, body, files = [], compliance = {}) {
           const images = Array.from(files ?? []);
           if (images.length > 4) {
             throw new Error("\u6BCF\u6761\u516C\u544A\u6700\u591A\u4E0A\u4F20 4 \u5F20\u56FE\u7247\u3002");
@@ -20457,11 +20507,37 @@ ${suffix}`;
               uploadedPaths.push(path);
             }
             rpcStarted = true;
+            const rightsMetadata = uploadedPaths.map((path) => ({
+              path,
+              rightsBasis: compliance.rightsBasis,
+              author: compliance.author,
+              sourceUrl: compliance.sourceUrl || null,
+              license: compliance.license || null,
+              authorizationReference: compliance.authorizationReference || null,
+              containsIdentifiablePeople: Boolean(compliance.containsIdentifiablePeople),
+              personConsentBasis: compliance.personConsentBasis || null,
+              provider: compliance.provider || null,
+              model: compliance.model || null,
+              promptHash: compliance.promptHash || null,
+              disclosureLabel: Boolean(compliance.disclosureLabel),
+              humanReviewed: Boolean(compliance.humanReviewed),
+              recordedAt: (/* @__PURE__ */ new Date()).toISOString()
+            }));
             return assertResult(await client.rpc("admin_publish_announcement", {
               p_title: title,
               p_body: body,
               p_announcement_id: announcementId,
-              p_image_paths: uploadedPaths
+              p_image_paths: uploadedPaths,
+              p_rights_metadata: rightsMetadata,
+              p_content_provenance: {
+                textOrigin: compliance.textOrigin,
+                provider: compliance.provider || null,
+                model: compliance.model || null,
+                promptHash: compliance.promptHash || null,
+                disclosureLabel: Boolean(compliance.disclosureLabel),
+                humanReviewed: Boolean(compliance.humanReviewed),
+                recordedAt: (/* @__PURE__ */ new Date()).toISOString()
+              }
             }));
           } catch (error) {
             const commitMayHaveSucceeded = rpcStarted && !error?.code && !Number.isFinite(Number(error?.status));
@@ -20473,6 +20549,32 @@ ${suffix}`;
             }
             throw error;
           }
+        },
+        async takedownAnnouncement(announcementId, reason) {
+          const normalizedId = String(announcementId ?? "").trim();
+          if (!UUID_PATTERN.test(normalizedId)) {
+            throw new Error("\u516C\u544A\u7F16\u53F7\u65E0\u6548\u3002");
+          }
+          const result = assertResult(
+            await client.rpc("admin_begin_announcement_takedown", {
+              p_announcement_id: normalizedId,
+              p_reason: String(reason ?? "").trim()
+            })
+          );
+          const imagePaths = Array.isArray(result?.imagePaths) ? result.imagePaths.filter((path) => {
+            const value = String(path ?? "");
+            return value.startsWith(`${normalizedId}/`) && ANNOUNCEMENT_IMAGE_PATH.test(value);
+          }) : [];
+          if (imagePaths.length) {
+            assertResult(
+              await client.storage.from(ANNOUNCEMENT_BUCKET).remove(imagePaths)
+            );
+          }
+          return assertResult(
+            await client.rpc("admin_finalize_announcement_takedown", {
+              p_announcement_id: normalizedId
+            })
+          );
         },
         async deleteAnnouncement(announcementId) {
           const normalizedId = String(announcementId ?? "").trim();
