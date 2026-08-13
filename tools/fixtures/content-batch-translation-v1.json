@@ -1,0 +1,300 @@
+{
+  "schemaVersion": 1,
+  "jobId": "translation-benchmark-v1",
+  "rulesVersion": "cd-example-translation-v1",
+  "decodeOptions": {
+    "beam_size": 1,
+    "num_hypotheses": 1,
+    "replace_unknowns": true,
+    "max_input_length": 1024,
+    "max_decoding_length": 256
+  },
+  "items": [
+    {
+      "itemId": "bench-001",
+      "wordId": "act",
+      "senseId": "v-1",
+      "pos": "v.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "She wants to act Lady Macbeth, but she is too young for the role.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-002",
+      "wordId": "act",
+      "senseId": "v-2",
+      "pos": "v.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "The emergency brake acts quickly, stopping the car before it reaches the pedestrian crossing.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-003",
+      "wordId": "act",
+      "senseId": "n-3",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Parliament passed the Clean Air Act, and the government began enforcing the new law the following year.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-004",
+      "wordId": "action",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "He is out of action.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-005",
+      "wordId": "agenda",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Other items on the agenda during the meetings, which are expected to continue through Saturday, concern television, rules changes, professional football's hall of fame, players ' benefits and constitutional amendments.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-006",
+      "wordId": "activate",
+      "senseId": "v-1",
+      "pos": "v.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "The comprehensive or master processes activate all or some of the elements within the social system and subsystems.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-007",
+      "wordId": "active",
+      "senseId": "adj-1",
+      "pos": "adj.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "An active man is a man of action.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-008",
+      "wordId": "active",
+      "senseId": "adj-2",
+      "pos": "adj.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "The backup generator remains active and supplies electricity whenever the main grid fails.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-009",
+      "wordId": "active",
+      "senseId": "n-3",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "`The boy threw the ball' uses the active voice.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-010",
+      "wordId": "actual",
+      "senseId": "adj-1",
+      "pos": "adj.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "We saw the actual wedding on television.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-011",
+      "wordId": "interact",
+      "senseId": "v-1",
+      "pos": "v.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "The two medicines can interact and cause dangerous side effects.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-012",
+      "wordId": "react",
+      "senseId": "v-1",
+      "pos": "v.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "She reacted to the fire alarm by leaving the building immediately.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-013",
+      "wordId": "react",
+      "senseId": "v-2",
+      "pos": "v.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Vinegar reacts with baking soda and releases carbon dioxide gas.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-014",
+      "wordId": "react",
+      "senseId": "v-3",
+      "pos": "v.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Citizens reacted against the new tax by organizing a boycott.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-015",
+      "wordId": "transaction",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Each bank transaction records money moving into or out of an account.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-016",
+      "wordId": "transaction",
+      "senseId": "n-2",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "The scientific society published its Transactions with papers from the annual meeting.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-017",
+      "wordId": "character",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Her honest and patient character made her a trusted leader.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-018",
+      "wordId": "character",
+      "senseId": "n-2",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "The rural character of the village is visible in its farms and stone houses.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-019",
+      "wordId": "character",
+      "senseId": "n-3",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Sherlock Holmes is the central character in many detective stories.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-020",
+      "wordId": "characteristic",
+      "senseId": "adj-1",
+      "pos": "adj.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "The bird's characteristic red breast makes it easy to identify.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-021",
+      "wordId": "ambassador",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "What had been the ambassador's suite was now jagged walls of blackened brick.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-022",
+      "wordId": "suite",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "What had been the ambassador's suite was now jagged walls of blackened brick.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-023",
+      "wordId": "calcium",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Calcium, phosphorus and iron are present in worthwhile amounts, and eleven other minerals also have been found in varying trace amounts.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-024",
+      "wordId": "worthwhile",
+      "senseId": "adj-1",
+      "pos": "adj.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "Calcium, phosphorus and iron are present in worthwhile amounts, and eleven other minerals also have been found in varying trace amounts.",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-invalid-empty",
+      "wordId": "invalid-empty",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "exampleZh",
+      "sourceText": "",
+      "sourceLanguage": "en",
+      "targetLanguage": "zh-CN"
+    },
+    {
+      "itemId": "bench-invalid-direction",
+      "wordId": "invalid-direction",
+      "senseId": "n-1",
+      "pos": "n.",
+      "synsetId": null,
+      "targetField": "definition",
+      "sourceText": "这是一个明确的异常方向测试。",
+      "sourceLanguage": "zh-CN",
+      "targetLanguage": "en"
+    }
+  ]
+}

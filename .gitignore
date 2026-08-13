@@ -2,6 +2,8 @@ node_modules/
 dist/
 test-results/
 .test-artifacts/
+data/.content-batch-cache/
+data/.semantic-embedding-cache/
 .wrangler/
 .wrangler-x64/
 .supabase/

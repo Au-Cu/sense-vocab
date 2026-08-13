@@ -2,13 +2,44 @@ import argparse
 import json
 import math
 import re
+import time
 from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
 
-import numpy as np
 from fastembed import TextEmbedding
 from nltk.corpus import wordnet as wn
+
+try:
+    from .batch_content_utils import (
+        atomic_write_json,
+        peak_rss_bytes,
+        sha256_file,
+        sha256_json,
+        sha256_text,
+        utc_now_iso,
+    )
+    from .semantic_example_matching import (
+        EMBEDDING_CACHE_SCHEMA_VERSION,
+        embed_texts_with_cache,
+        fastembed_model_identity,
+        score_candidate_matrix,
+    )
+except ImportError:
+    from batch_content_utils import (
+        atomic_write_json,
+        peak_rss_bytes,
+        sha256_file,
+        sha256_json,
+        sha256_text,
+        utc_now_iso,
+    )
+    from semantic_example_matching import (
+        EMBEDDING_CACHE_SCHEMA_VERSION,
+        embed_texts_with_cache,
+        fastembed_model_identity,
+        score_candidate_matrix,
+    )
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -17,6 +48,8 @@ DEFAULT_WORDS_PATH = DATA / "ielts-new-words.json"
 DEFAULT_REPORT_PATH = DATA / "ielts-semantic-example-audit.json"
 MODEL_CACHE = DATA / ".fastembed-cache"
 MODEL_NAME = "BAAI/bge-small-en-v1.5"
+DEFAULT_EMBEDDING_CACHE_DIR = DATA / ".semantic-embedding-cache"
+MATCHING_RULES_VERSION = "contrastive-semantic-example-v1"
 
 POS_MAP = {
     "noun": "n.",
@@ -375,16 +408,6 @@ def prune_candidates(candidates, senses, limit=14):
     return retained[: max(limit, len(senses) * 4)]
 
 
-def normalized_matrix(vectors):
-    matrix = np.asarray(vectors, dtype=np.float32)
-    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-    return matrix / np.maximum(norms, 1e-12)
-
-
-def safe_cos(left, right):
-    return float(np.dot(left, right))
-
-
 def lexical_overlap(left, right):
     a = lexical_tokens(left)
     b = lexical_tokens(right)
@@ -393,15 +416,43 @@ def lexical_overlap(left, right):
     return len(a & b) / math.sqrt(len(a) * len(b))
 
 
+def audit_result_mapping(selected_rows, rejected_rows):
+    selected = [(row["wordId"], row["senseId"]) for row in selected_rows]
+    rejected = [(row["wordId"], row["senseId"]) for row in rejected_rows]
+    if len(selected) != len(set(selected)):
+        raise RuntimeError("Semantic matcher selected the same stable sense more than once")
+    if len(rejected) != len(set(rejected)):
+        raise RuntimeError("Semantic matcher rejected the same stable sense more than once")
+    overlap = set(selected) & set(rejected)
+    if overlap:
+        raise RuntimeError(
+            "Semantic matcher mapped a stable sense to both selected and rejected output"
+        )
+
+
 def main():
+    total_started = time.perf_counter()
     parser = argparse.ArgumentParser(
         description="Match unresolved IELTS senses to real examples with contrastive embeddings."
     )
     parser.add_argument("--words-path", type=Path, default=DEFAULT_WORDS_PATH)
     parser.add_argument("--report-path", type=Path, default=DEFAULT_REPORT_PATH)
-    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--embedding-cache-dir",
+        type=Path,
+        default=DEFAULT_EMBEDDING_CACHE_DIR,
+    )
+    parser.add_argument("--embedding-batch-size", type=int, default=512)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Compatibility flag; this command is always candidate-only",
+    )
     args = parser.parse_args()
+    if args.embedding_batch_size < 1:
+        parser.error("--embedding-batch-size must be positive")
 
+    gather_started = time.perf_counter()
     words = read_json(args.words_path, [])
     bilingual = read_json(DATA / "ielts-tatoeba-cache.json", {})
     english = read_json(DATA / "ielts-tatoeba-english-cache.json", {})
@@ -440,12 +491,42 @@ def main():
                 texts.add(candidate["anchor"])
         work.append((word_entry, unresolved, candidates))
 
-    model = TextEmbedding(model_name=MODEL_NAME, cache_dir=str(MODEL_CACHE))
+    gather_ms = (time.perf_counter() - gather_started) * 1000
+    model_started = time.perf_counter()
+    try:
+        model = TextEmbedding(
+            model_name=MODEL_NAME,
+            cache_dir=str(MODEL_CACHE),
+            local_files_only=True,
+        )
+    except Exception as error:
+        raise RuntimeError(
+            "Local embedding provider unavailable; install the approved model "
+            f"in {MODEL_CACHE} before running this job"
+        ) from error
+    model_cold_start_ms = (time.perf_counter() - model_started) * 1000
     ordered_texts = sorted(text for text in texts if text)
-    print(f"Embedding {len(ordered_texts)} definitions and candidate sentences...", flush=True)
-    vectors = normalized_matrix(list(model.embed(ordered_texts, batch_size=512)))
-    vector_by_text = dict(zip(ordered_texts, vectors))
+    identity_started = time.perf_counter()
+    model_identity = fastembed_model_identity(model, MODEL_NAME)
+    model_identity_ms = (time.perf_counter() - identity_started) * 1000
+    embedding_cache_path = (
+        args.embedding_cache_dir
+        / f"v{EMBEDDING_CACHE_SCHEMA_VERSION}-{model_identity['assetSha256']}.npz"
+    )
+    print(
+        f"Embedding {len(ordered_texts)} definitions and candidate sentences "
+        "with persistent cache...",
+        flush=True,
+    )
+    vector_by_text, embedding_metrics = embed_texts_with_cache(
+        model,
+        ordered_texts,
+        cache_path=embedding_cache_path,
+        model_identity=model_identity,
+        batch_size=args.embedding_batch_size,
+    )
 
+    scoring_started = time.perf_counter()
     selected_rows = []
     rejected_rows = []
     source_counts = Counter()
@@ -453,8 +534,13 @@ def main():
         if not candidates:
             rejected_rows.extend(
                 {
+                    "itemId": f"{word_entry['id']}:{sense.get('id')}:example",
+                    "wordId": word_entry["id"],
                     "word": word_entry["word"],
                     "senseId": sense.get("id"),
+                    "pos": sense.get("pos"),
+                    "synsetId": sense.get("synsetId"),
+                    "targetField": "example",
                     "meaning": sense.get("meaning"),
                     "reason": "no-candidates",
                 }
@@ -469,72 +555,30 @@ def main():
             if sense.get("example")
         }
         proposals = defaultdict(list)
+        scoring = score_candidate_matrix(
+            all_senses,
+            candidates,
+            vector_by_text,
+            synset_example_lookup=synset_examples,
+            lexical_overlap=lexical_overlap,
+        )
+        sense_indexes = {id(sense): index for index, sense in enumerate(all_senses)}
         for sense in unresolved:
-            definition = str(sense.get("definition", ""))
-            definition_vector = vector_by_text.get(definition)
-            if definition_vector is None:
+            sense_index = sense_indexes[id(sense)]
+            if not scoring["validSense"][sense_index]:
                 continue
-            wn_examples = synset_examples(sense)
-            wn_vectors = [
-                vector_by_text[example]
-                for example in wn_examples
-                if example in vector_by_text
-            ]
-            for candidate in candidates:
-                sentence_vector = vector_by_text[candidate["text"]]
-                sentence_similarity = safe_cos(definition_vector, sentence_vector)
-                anchor_similarity = sentence_similarity
-                if candidate["anchor"] in vector_by_text:
-                    anchor_similarity = safe_cos(
-                        definition_vector,
-                        vector_by_text[candidate["anchor"]],
-                    )
-                wn_similarity = (
-                    max(safe_cos(sentence_vector, vector) for vector in wn_vectors)
-                    if wn_vectors
-                    else sentence_similarity
+            for candidate_index, candidate in enumerate(candidates):
+                sentence_similarity = float(
+                    scoring["sentenceSimilarity"][sense_index, candidate_index]
                 )
-                same_synset = (
-                    candidate["metadata"].get("exactSynsetId")
-                    and candidate["metadata"].get("exactSynsetId") == sense.get("synsetId")
+                anchor_similarity = float(
+                    scoring["anchorSimilarity"][sense_index, candidate_index]
                 )
-                score = (
-                    0.43 * sentence_similarity
-                    + 0.47 * anchor_similarity
-                    + 0.10 * wn_similarity
+                score = float(scoring["score"][sense_index, candidate_index])
+                contrast = float(scoring["contrast"][sense_index, candidate_index])
+                same_synset = bool(
+                    scoring["sameSynset"][sense_index, candidate_index]
                 )
-                score += min(
-                    0.055,
-                    lexical_overlap(
-                        f"{definition} {' '.join(wn_examples)}",
-                        f"{candidate['anchor']} {candidate['text']}",
-                    )
-                    * 0.08,
-                )
-                if same_synset:
-                    score += 0.14
-                if candidate["source"].startswith("semantic-kaikki"):
-                    score += 0.015
-                if len(candidate["text"].split()) >= 9:
-                    score += 0.01
-
-                other_scores = []
-                for other in all_senses:
-                    if other is sense:
-                        continue
-                    other_definition = str(other.get("definition", ""))
-                    other_vector = vector_by_text.get(other_definition)
-                    if other_vector is None:
-                        continue
-                    other_sentence = safe_cos(other_vector, sentence_vector)
-                    other_anchor = (
-                        safe_cos(other_vector, vector_by_text[candidate["anchor"]])
-                        if candidate["anchor"] in vector_by_text
-                        else other_sentence
-                    )
-                    other_scores.append(0.48 * other_sentence + 0.52 * other_anchor)
-                contrast = score - max(other_scores, default=0.0)
-
                 anchored = bool(candidate["anchor"])
                 threshold = 0.53 if anchored else 0.47
                 minimum_contrast = 0.012 if anchored else 0.026
@@ -598,8 +642,13 @@ def main():
             if not selected:
                 rejected_rows.append(
                     {
+                        "itemId": f"{word_entry['id']}:{sense.get('id')}:example",
+                        "wordId": word_entry["id"],
                         "word": word_entry["word"],
                         "senseId": sense.get("id"),
+                        "pos": sense.get("pos"),
+                        "synsetId": sense.get("synsetId"),
+                        "targetField": "example",
                         "meaning": sense.get("meaning"),
                         "reason": "no-confident-unique-match",
                         "candidateCount": len(candidates),
@@ -612,12 +661,30 @@ def main():
             source_counts[candidate["source"]] += 1
             selected_rows.append(
                 {
+                    "itemId": f"{word_entry['id']}:{sense.get('id')}:example",
+                    "wordId": word_entry["id"],
                     "word": word_entry["word"],
                     "senseId": sense.get("id"),
+                    "pos": sense.get("pos"),
+                    "synsetId": sense.get("synsetId"),
+                    "targetField": "example",
                     "meaning": sense.get("meaning"),
                     "definition": sense.get("definition"),
                     "example": candidate["text"],
+                    "exampleZh": candidate["zh"],
+                    "candidateMetadata": candidate["metadata"],
                     "source": candidate["source"],
+                    "currentValueSha256": sha256_text(
+                        str(sense.get("example", ""))
+                    ),
+                    "candidateValueSha256": sha256_text(candidate["text"]),
+                    "inputContextSha256": sha256_json(
+                        {
+                            "definition": sense.get("definition"),
+                            "synsetExamples": synset_examples(sense),
+                        }
+                    ),
+                    "reviewStatus": "pending",
                     "score": round(selected["score"], 4),
                     "contrast": round(selected["contrast"], 4),
                     "sentenceSimilarity": round(
@@ -628,38 +695,72 @@ def main():
                     "sameSynset": selected["sameSynset"],
                 }
             )
-            if not args.dry_run:
-                sense["example"] = candidate["text"]
-                sense["exampleZh"] = candidate["zh"]
-                sense["exampleSource"] = candidate["source"]
-                sense["exampleQualityScore"] = round(selected["score"] * 100, 2)
-                for key_name, value in candidate["metadata"].items():
-                    if value is not None:
-                        sense[key_name] = value
 
+    scoring_ms = (time.perf_counter() - scoring_started) * 1000
+    audit_started = time.perf_counter()
+    audit_result_mapping(selected_rows, rejected_rows)
+    for row in selected_rows:
+        row.update(
+            {
+                "resultStatus": "candidate",
+                "modelRef": "report:modelIdentity",
+                "rulesVersion": MATCHING_RULES_VERSION,
+            }
+        )
+    for row in rejected_rows:
+        row.update(
+            {
+                "resultStatus": "failed",
+                "modelRef": "report:modelIdentity",
+                "rulesVersion": MATCHING_RULES_VERSION,
+            }
+        )
+    audit_ms = (time.perf_counter() - audit_started) * 1000
+    total_ms = (time.perf_counter() - total_started) * 1000
     report = {
+        "schemaVersion": 1,
+        "kind": "sense-vocab-semantic-example-candidates",
+        "status": "candidate-only",
+        "approvalRequired": True,
+        "generatedAt": utc_now_iso(),
+        "rulesVersion": MATCHING_RULES_VERSION,
+        "inputFileSha256": sha256_file(args.words_path),
         "model": MODEL_NAME,
+        "modelIdentity": model_identity,
+        "parameters": {
+            "embeddingBatchSize": args.embedding_batch_size,
+            "selectionRulesVersion": MATCHING_RULES_VERSION,
+        },
         "selected": len(selected_rows),
         "remaining": len(rejected_rows),
         "sourceCounts": dict(source_counts),
         "selectedRows": selected_rows,
         "remainingRows": rejected_rows,
+        "metrics": {
+            "gatherCandidatesMs": round(gather_ms, 3),
+            "modelColdStartMs": round(model_cold_start_ms, 3),
+            "modelAssetHashMs": round(model_identity_ms, 3),
+            "embedding": embedding_metrics,
+            "scoringMs": round(scoring_ms, 3),
+            "auditMs": round(audit_ms, 3),
+            "totalMs": round(total_ms, 3),
+            "peakRssBytes": peak_rss_bytes(),
+        },
     }
-    args.report_path.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+    report["resultSha256"] = sha256_json(
+        {
+            "selectedRows": report["selectedRows"],
+            "remainingRows": report["remainingRows"],
+        }
     )
-    if not args.dry_run:
-        args.words_path.write_text(
-            json.dumps(words, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+    atomic_write_json(args.report_path, report)
     print(
         json.dumps(
             {
                 "selected": report["selected"],
                 "remaining": report["remaining"],
                 "sourceCounts": report["sourceCounts"],
+                "metrics": report["metrics"],
             },
             ensure_ascii=False,
             indent=2,

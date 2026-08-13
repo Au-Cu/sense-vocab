@@ -3,7 +3,7 @@ const wordData = require("../data/kaoyan-words.json");
 
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
-const V1_4_ADDED_SENSE_KEYS = [
+const CONTENT_ADDED_SENSE_KEYS = [
   "prepare:v-2",
   "pension:n-2",
   "port:n-4",
@@ -14,6 +14,26 @@ const V1_4_ADDED_SENSE_KEYS = [
   "prime:adj-2",
   "resume:n-3",
   "soil:n-2",
+  "sanction:n-2",
+  "sanction:n-3",
+  "consent:n-2",
+  "prescribe:v-2",
+  "aside:adv-2",
+  "solid:adj-5",
+  "solo:adv-3",
+  "solution:n-3",
+  "insult:v-2",
+  "specify:v-2",
+  "terminal:n-3",
+  "revenge:v-2",
+  "suspect:v-2",
+  "spectrum:n-2",
+  "vacant:adj-2",
+  "entertain:v-2",
+  "resolution:n-2",
+  "shiver:n-2",
+  "silver:adj-3",
+  "versatile:adj-3",
 ];
 
 test.use({
@@ -117,7 +137,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
       saved.progress[senseKey] ??= { status: "mastered" };
     });
     localStorage.setItem(key, JSON.stringify(saved));
-  }, { key: STORAGE_KEY, addedSenseKeys: V1_4_ADDED_SENSE_KEYS });
+  }, { key: STORAGE_KEY, addedSenseKeys: CONTENT_ADDED_SENSE_KEYS });
 
   // Day 2 morning: review + familiar => mastered; reinforce + familiar => review;
   // an unconfirmed sense remains reinforce and must appear again at the end of the day.
@@ -636,7 +656,7 @@ test("long words stay inside the word card on desktop and mobile", async ({ page
         .map((entry) => entry.id),
       progress,
     }));
-  }, { key: STORAGE_KEY, addedSenseKeys: V1_4_ADDED_SENSE_KEYS });
+  }, { key: STORAGE_KEY, addedSenseKeys: CONTENT_ADDED_SENSE_KEYS });
   await page.reload();
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#wordText")).toHaveText("semiconductor");
@@ -794,6 +814,107 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
   expect(resetState.plan).toBeNull();
   expect(resetState.introducedWords).toEqual([]);
   expect(resetState.bookStates.kaoyan).toBeUndefined();
+});
+
+test("a multi-pronunciation card keeps IPA in senses and sequentially plays every available recording", async ({ page }) => {
+  const bundle = require("../data/vocabulary-bundle.json");
+  const record = bundle.words.find((word) => word.id === "record");
+  const fixture = {
+    schemaVersion: 1,
+    defaultBookId: "kaoyan",
+    bundleVersion: "multi-pronunciation-test-v1",
+    books: [{
+      id: "kaoyan",
+      name: "考研词汇",
+      displayName: "《考研词汇》",
+      entries: [{ wordId: record.id, senseIds: record.senses.map((sense) => sense.id) }],
+    }],
+    words: [record],
+  };
+  const indexFixture = {
+    ...fixture,
+    words: [{
+      id: record.id,
+      word: record.word,
+      senses: record.senses.map((sense, index) => ({
+        id: sense.id,
+        importance: Math.max(1, 100 - index * 3),
+      })),
+    }],
+  };
+
+  await page.route("**/data/vocabulary-index.json*", (route) => route.fulfill({ json: indexFixture }));
+  await page.route("**/data/vocabulary-bundle.json*", (route) => route.fulfill({ json: fixture }));
+  await page.addInitScript(() => {
+    window.__playedPronunciations = [];
+    window.Audio = class PronunciationAudio {
+      constructor(src) {
+        this.src = src;
+        this.listeners = new Map();
+      }
+
+      addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+      }
+
+      removeEventListener(type, listener) {
+        if (this.listeners.get(type) === listener) this.listeners.delete(type);
+      }
+
+      play() {
+        window.__playedPronunciations.push(this.src);
+        setTimeout(() => this.listeners.get("ended")?.(), 0);
+        return Promise.resolve();
+      }
+
+      pause() {}
+    };
+  });
+
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("1");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+
+  await expect(page.locator("#wordText")).toHaveText("record");
+  await expect(page.locator("#wordPronunciations")).toHaveCount(0);
+  await expect(page.locator("#audioButton")).toHaveAttribute(
+    "aria-label",
+    "依次播放全部 2 条可用录音",
+  );
+  await expect.poll(() => page.evaluate(() => window.__playedPronunciations)).toEqual([
+    record.senses[0].audio,
+    record.senses[1].audio,
+  ]);
+  await expect(page.locator(".audio-attribution-entry")).toHaveCount(2);
+  await expect(page.locator("#audioAttribution")).not.toContainText("/ˈrɛkərd/");
+  await expect(page.locator("#audioAttribution")).not.toContainText("/rɪˈkɔrd/");
+
+  await page.locator("#revealButton").click();
+  await expect(page.locator(".sense-ipa")).toHaveText([
+    "/ˈrɛkərd/",
+    "/rɪˈkɔrd/",
+    "/ˈrɛkərd/",
+  ]);
+
+  await page.locator("#audioButton").click();
+  await expect.poll(() => page.evaluate(() => window.__playedPronunciations)).toEqual([
+    record.senses[0].audio,
+    record.senses[1].audio,
+    record.senses[0].audio,
+    record.senses[1].audio,
+  ]);
+
+  await page.screenshot({ path: "test-results/multi-pronunciation-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => (
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth
+  ))).toBe(true);
+  await page.screenshot({ path: "test-results/multi-pronunciation-mobile.png", fullPage: true });
 });
 
 test("partial new learning advances the sliding word window only by completed words", async ({ page }) => {
@@ -1282,6 +1403,51 @@ test("newly added senses without progress rejoin tomorrow's new queue", async ({
   const saved = await readState(page);
   expect(saved.introducedWords.filter((wordId) => wordId === "prepare")).toHaveLength(1);
   expect(saved.activityLog["2026-08-03"]?.newWords ?? []).not.toContain("prepare");
+});
+
+test("approved feedback senses initialize for previously introduced words", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 10,
+      view: "home",
+      plan: {
+        dailyTarget: 1,
+        startedOn: "2026-08-12",
+        createdOn: "2026-08-12",
+        updatedOn: "2026-08-12",
+      },
+      introducedWords: ["versatile"],
+      progress: {
+        "versatile:adj-1": { status: "mastered" },
+        "versatile:adj-2": { status: "review", dueLearningDay: 2 },
+      },
+      activityLog: {},
+      studyWindows: [],
+      learningDayCounter: 1,
+      wordListSort: "mastery",
+    }));
+  }, STORAGE_KEY);
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const saved = await readState(page);
+  expect(saved.progress["versatile:adj-1"].status).toBe("mastered");
+  expect(saved.progress["versatile:adj-2"].status).toBe("review");
+  expect(saved.progress["versatile:adj-3"].status).toBe("new");
+
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("versatile");
+  await page.locator("#revealButton").click();
+  await expect(page.locator('.sense-item[data-key="versatile:adj-3"]')).toBeEnabled();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator('.sense-item[data-key="versatile:adj-3"]')).toBeEnabled();
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth
+  )).toBe(true);
+  await page.locator('.sense-item[data-key="versatile:adj-3"]').click();
+  expect((await readState(page)).progress["versatile:adj-3"].status).toBe("mastered");
 });
 
 test("reinforcement cards keep inactive mastered senses visible before and after marking", async ({ page }) => {

@@ -1104,6 +1104,17 @@ test("study feedback binds the current word and stays a compact secondary action
   })).toBe(true);
   await expect(page.locator("#feedbackIssueSelect")).toBeVisible();
   await expect(page.locator("#feedbackSenseSelect")).toBeVisible();
+  await page.locator("#feedbackMessage").focus();
+  const mobileFeedbackViewport = await page.evaluate(() => ({
+    controlFontSizes: [
+      document.querySelector("#feedbackIssueSelect"),
+      document.querySelector("#feedbackSenseSelect"),
+      document.querySelector("#feedbackMessage"),
+    ].map((control) => Number.parseFloat(getComputedStyle(control).fontSize)),
+    scale: window.visualViewport?.scale ?? 1,
+  }));
+  expect(mobileFeedbackViewport.controlFontSizes.every((size) => size >= 16)).toBe(true);
+  expect(mobileFeedbackViewport.scale).toBe(1);
   await page.screenshot({ path: "test-results/study-feedback-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1100, height: 850 });
   await page.locator("#submitFeedbackButton").click();

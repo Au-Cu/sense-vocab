@@ -74,7 +74,13 @@ test("Tatoeba, Wiktionary, and Wikimedia records retain complete item-level evid
   }
 
   const audio = senses.filter((sense) => sense.audio);
-  expect(audio).toHaveLength(1617);
+  const pronunciationManifest = readJson(
+    "data/content-change-sets/rd-multi-pronunciation-2026-08-12.json",
+  );
+  const addedAudioFields = pronunciationManifest.items.filter((item) =>
+    Object.hasOwn(item.fields, "audio")
+  ).length;
+  expect(audio).toHaveLength(1617 + addedAudioFields);
   for (const sense of audio) {
     expect(sense.audioAuthor).toBeTruthy();
     expect(sense.audioLicense).toBeTruthy();

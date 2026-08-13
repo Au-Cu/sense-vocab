@@ -1,0 +1,1282 @@
+{
+  "schemaVersion": 2,
+  "batchId": "OP-FB-2026-08-13-B",
+  "purpose": "Apply the user-approved CD feedback batch without changing existing stable identities or deleting user data.",
+  "sourcePackage": {
+    "path": "data/content-change-sets/op-fb-2026-08-13-b-source.json",
+    "sha256": "030c8af149bdce1ddb9913a1c64f997284e8cd9dcd9b42a91016c4d0f82179ee",
+    "inputManifestSha256": "8af75ea860bc2f5dea728cf0100f068b35bf0eb14be9754370d235813ef4423f",
+    "outputManifestSha256": "cd92185dbe9a5b7d1d3124f1d3c25496f85f8ca1add62a8805fd40fbae612e85"
+  },
+  "baseline": {
+    "commit": "4c0ae42767c110e092b6249a83cde7223932a00c",
+    "runtimeBundleSha256": "bab0df3b7e655658bbd10b9a99de0be5621d693e4588c1eee2aa274b3bf69f0a",
+    "identityLockSha256": "b5ee6ce74215ccc381004f5992e9ed8c4074a67796afbe0275008ec25cfbe11a",
+    "wordNetLicenseSha256": "ff9698aef1589e32099a19a7bcaeb2f6284020ed13d9a3e47584258737d0bd46",
+    "wordCount": 6607,
+    "senseCount": 10235,
+    "identityWordCount": 6607,
+    "identitySenseCount": 10235
+  },
+  "review": {
+    "status": "approved",
+    "reviewerRole": "product owner",
+    "reviewedAt": "2026-08-13T00:44:45.1656139Z",
+    "scope": "all candidate fields, proposed stable sense IDs, and candidate book scopes"
+  },
+  "compatibility": {
+    "strategy": "explicit-new-sense-initialization",
+    "addedSenseKeys": [
+      "revenge:v-2",
+      "suspect:v-2",
+      "spectrum:n-2",
+      "vacant:adj-2",
+      "entertain:v-2",
+      "resolution:n-2",
+      "shiver:n-2",
+      "silver:adj-3",
+      "versatile:adj-3"
+    ],
+    "behavior": "Existing introduced words initialize approved added senses as selectable new senses and retain every prior sense state."
+  },
+  "generation": {
+    "supplier": "OpenAI",
+    "model": "Codex (GPT-5-based)",
+    "visibleVersion": "GPT-5 family; exact deployment snapshot is not exposed in this runtime",
+    "weightsSource": "OpenAI-managed; weights not distributed to this workspace",
+    "generationSession": "OP-FB-2026-08-13-B",
+    "prompt": "You are the Sense Vocab CD candidate editor for batch OP-FB-2026-08-13-B.\nFor each stable batchItemId, wordId, proposed/existing senseId, POS, target synset and requested field:\n1. Treat the installed WordNet 3.0 target definition as the semantic anchor when a direct lexical membership exists. Never claim a lemma belongs to a synset when it does not.\n2. Use the current runtime entry only to locate the target, compute the old-value hash, and exclude adjacent senses; do not copy its wording as a rights source.\n3. Produce concise natural Chinese fields and independently original English examples. Every field and bilingual pair must express only the target sense. Examples must contain the target word with the target POS and meaning, plus enough context to distinguish adjacent senses.\n4. Do not introduce sexual content unless the target itself requires it. Do not use China-related politics or ideology. None of this batch's targets requires either category.\n5. Preserve the requested IDs as proposals only. For entertain:v-2, use synsetId null because WordNet 3.0 host synset 01194418-v does not contain entertain; create original human-reviewable wording and retain an identity-evidence warning.\n6. Return candidates only. Mark every field pending user review and not commercially cleared.",
+    "promptSha256Utf8": "3e6e229058d24ffd9be50a57c7f5b7aad230ef8e09b34bbdd8f08c8031ab3a79"
+  },
+  "rights": {
+    "outputAuthor": "Sense Vocab product owner as output rightsholder; draft generated with OpenAI Codex and human-reviewed",
+    "outputRightsBasis": "OpenAI Terms of Use, Content section, or OpenAI Services Agreement sections 4.1-4.4, as applicable",
+    "outputRightsUrl": "https://openai.com/policies/row-terms-of-use/",
+    "alternativeBusinessTermsUrl": "https://openai.com/policies/services-agreement/",
+    "alternativeBusinessTermsEffectiveAt": "2026-01-01",
+    "outputRightsEffectiveAt": "2026-01-01",
+    "outputRightsAccessedAt": "2026-08-12",
+    "outputRightsEvidenceSummary": "OpenAI Terms of Use (accessed 2026-08-12), Content: the user retains rights in Input; as between the user and OpenAI, the user owns Output and OpenAI assigns its rights in Output; Output may not be unique and must be evaluated for accuracy and appropriateness before use or sharing.",
+    "outputRightsEvidenceSha256Utf8": "e49e27f7882fa78bc4aa3b1b389c9eb1b07f836a3a9bdbd7d6491b2a9c6ee84a",
+    "permittedUses": [
+      "commercial use",
+      "modification",
+      "local caching",
+      "public display",
+      "redistribution as part of Sense Vocab"
+    ],
+    "obligations": [
+      "retain this generation and review record",
+      "do not represent AI output as exclusively human-generated",
+      "evaluate accuracy and appropriateness before publication"
+    ],
+    "wordnet": {
+      "author": "Princeton University",
+      "license": "WordNet Release 3.0 License",
+      "sourceUrl": "https://wordnet.princeton.edu/license-and-commercial-use",
+      "localEvidence": "docs/licenses/wordnet-3.0-LICENSE.txt",
+      "localEvidenceSha256": "ff9698aef1589e32099a19a7bcaeb2f6284020ed13d9a3e47584258737d0bd46"
+    },
+    "cmudict": {
+      "author": "Carnegie Mellon University",
+      "license": "CMUdict BSD-style License",
+      "sourceUrl": "https://github.com/cmusphinx/cmudict",
+      "localEvidence": "docs/licenses/cmudict-LICENSE.txt",
+      "localEvidenceSha256": "f44d2ded77781dc1e5529fd2a3d62d9767eff9ca0c50ea913634526a646163c8"
+    },
+    "inputMaterials": [
+      "project-owned stable wordId and senseId values",
+      "anonymized issue categories used only as problem signals, without copying feedback text",
+      "WordNet 3.0 semantic identity evidence under the recorded license"
+    ],
+    "residualRisk": "The service does not disclose the exact model snapshot and AI output may not be unique. Human review and field-level hashes mitigate reproducibility and similarity risk; this is not global commercial clearance for historical content. The exact model deployment snapshot remains undisclosed; the reviewed source package and field hashes preserve this batch's evidence.",
+    "sourcePackage": "data/content-change-sets/op-fb-2026-08-13-b-source.json",
+    "sourcePackageSha256": "030c8af149bdce1ddb9913a1c64f997284e8cd9dcd9b42a91016c4d0f82179ee"
+  },
+  "counts": {
+    "approvedCandidateFields": 63,
+    "identityFields": 18,
+    "items": 13
+  },
+  "items": [
+    {
+      "itemId": "FB13-B01",
+      "wordId": "revenge",
+      "senseId": "v-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "报复，复仇",
+        "definition": "take revenge for a perceived wrong",
+        "definitionSentence": "To revenge means to take revenge for a perceived wrong.",
+        "definitionZh": "因自认为受到伤害或冒犯而实施报复。",
+        "example": "He revenged himself on the rival who had publicly insulted him by revealing the rival's deception.",
+        "exampleZh": "他揭露了对手的骗局，以报复对方曾公开侮辱自己。",
+        "pos": "v.",
+        "synsetId": "omw-en-01153486-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "794acc3e2227dc134f633660ba8b885c6bfde814b0ed6b563c17cd24f1b2039e",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "4e0563d66722f266a5d43533a4ff568356c8d6ceeef7502d1429155ace6add63",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "76eee318bff73d833a3c83bfa730825efa5bb88feab750a4d9909a3faa3b4d79",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "fa8da0f3702e37a068e8bfa435a14da74315e5a5efe9728b5fb8f5236d186010",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c251933563795e17bc21322ecd02b831e6a75558cc3c1a81bb6f68fb755c35d6",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "b530f0e07242b72aadc13d18a2468e8b8e48f13806ac98a1b23bd063ce9f7e55",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "1511ed027f584fe7d11421ea7b23935785295b07cf982890071e84c665af8c33",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B02",
+      "wordId": "suspect",
+      "senseId": "v-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "怀疑，猜想",
+        "definition": "imagine to be the case or true or probable",
+        "definitionSentence": "To suspect means to imagine something to be the case, true, or probable.",
+        "definitionZh": "推测某种情况可能属实或很可能发生。",
+        "example": "I suspect the delay was caused by a fault in the control system.",
+        "exampleZh": "我怀疑这次延误是控制系统故障造成的。",
+        "pos": "v.",
+        "synsetId": "omw-en-00921072-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "012f360e999ad4e60ca06798566b4d8f8bf15c5a3ed330e895c152096661eb1f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "f976e98ab66373f965add9253c9629e1758a29dd72cfa9b55a6446d7d9a3d741",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c4260c4aca1967a9915219217b8f5131979f52b2d8b8c905ed1e3182c8facfdc",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a8f5e7bdc3e7119f8af931f07138a6c8a7d6182aa208453fc723cd8287814105",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "58f5c8c4c6e1f060909a24d0079b6cd031004fe6867488e0a871b588c09ec986",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c5019173c0166250cee1f9c8e1d3c3bbcecb387538418242a24e06497128c1c6",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "0718fac82172a15fce15fe1f7d8e4716a6517681268c74a2baec896bf62b2376",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B03",
+      "wordId": "spectrum",
+      "senseId": "n-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "光谱",
+        "definition": "an ordered array of the components of an emission or wave",
+        "definitionSentence": "A spectrum is an ordered array of the components of an emission or wave.",
+        "definitionZh": "辐射或波的各个成分按顺序排列而成的阵列。",
+        "example": "The prism separated the beam into a spectrum of distinct colors.",
+        "exampleZh": "棱镜把这束光分解成由不同颜色组成的光谱。",
+        "pos": "n.",
+        "synsetId": "omw-en-11420831-n"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a684ba49051c7b1169e5cd87f18a515c0df6ce0c02c2a790e8f176dc14900503",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "e9764ccd4a6c7a3cf76f40d3e7d00ca94b07a687fee120ea020b7f52b8eef519",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "add1347119b3a8d32d415d922954f9e959373716fc4bcba2ff2c0747cc91905c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "d4e470ddab370543f3dc55a7b90e5c9291476716397f71afd439e7542284eebd",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "bbb0fd0e3070a342827a9a599f94128a954b84c19b1686423535edc550407b5b",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "783f9fe409596050204c6c9b1690a9b1c99f5bad6287a0f4b39305ce50f5a33a",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fd015ca8e8a88222543c451795ff0646833ce032e87a2bc186c4d3e42d2d8248",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "336b19da62d4474a7a1e70e14d56a45f9ac8a6ca6d86acc637dee5be1393765a",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B04",
+      "wordId": "vacant",
+      "senseId": "adj-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "空着的，空缺的",
+        "definition": "without an occupant or incumbent",
+        "definitionSentence": "Something described as vacant is without an occupant or incumbent.",
+        "definitionZh": "没有人占用，或没有人在任的。",
+        "example": "After the director resigned, the position remained vacant for three months.",
+        "exampleZh": "主任辞职后，这个职位空缺了三个月。",
+        "pos": "adj.",
+        "synsetId": "omw-en-01087977-s"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "77003317f646c1de3b2982f74c78be0e53467ffc81607c694e3a94db8119a9de",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "53a43b883b25e62d215787391860dde5177e9bd29d44d6f0c29dcbff4462ec74",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "3eae5013dda7a59bfcd2fab3d1ce20e7ad3be3b3495bb52e4729348f524fb4b8",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "6113d78d9294b6f6dcd3ad04edd1c91d316d21d39a9a3183f3f13927cef0d2e2",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "9567cde868c338a548e0059fcfdb670af7699b5f9416a74b13a99cc45f21c390",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "4de28a5de1ec59953859e8181c48e99ee9625f59a09d9e995cc5bf5bf2aeee5f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "e51169608e8e7c43e00e5f519296618a4139d94e22140105667ffa273692e3dc",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "0a87e46a2c76a5dfb9d84bab21af80168eeacb56acccf20b4463c974994eae8f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B05A",
+      "wordId": "entertain",
+      "senseId": "v-1",
+      "action": "update",
+      "bookIds": [],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "使娱乐，使愉快"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "e0de32cd99d7ce0d8d0c00dad1bcd62719911768b04184958c9bebf309f27714"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8ab80b4739ff0c8b08970d005d013500825625cce18f300ea4f4756e8510c693",
+          "oldValueSha256": "e2e227095f2d364d518a2a21f6c146e0764ad065860d86e0e241ba0d3657a1d4",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B05B",
+      "wordId": "entertain",
+      "senseId": "v-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "evidence_pending_no_direct_wordnet_membership",
+      "fields": {
+        "meaning": "招待，款待（宾客）",
+        "definition": "receive guests as a host and provide them with food, drink, or other hospitality",
+        "definitionSentence": "To entertain means to receive guests as a host and provide them with food, drink, or other hospitality.",
+        "definitionZh": "作为主人接待宾客，并为其提供饮食或其他款待。",
+        "example": "The couple entertain several neighbors at home every New Year's Eve, serving dinner and arranging guest rooms.",
+        "exampleZh": "这对夫妇每年除夕都在家款待几位邻居，为他们准备晚餐和客房。",
+        "pos": "v.",
+        "synsetId": null
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "1fc4737ca9b77b91ab54e856d55f5cb7c111a8784de1fd440624107094eeca21",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "4f4740ee4ac71ef4f0c3a7b575b486a92fa8f571dca3788e1dda636be7e66db7",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a4d00b43e3f67ac1716321c82d898eda058eefc94ed83d09b8b8ab366cd7b35e",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "3a467798a2c79424f57f5ad94828057ce3dc5aacc3b23929f7a7f98479ac7cc8",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "f9cde04cf481693a01068e60021cf33a2d93475213e3f1a939c88781f6ac1d90",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "2e08c96946449ac25fbd381bf967d9c3a7e5313cfb230631b9c127e31872f287",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "approved_project_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-OP-FB-2026-08-13-B"
+          ],
+          "license": "Project-owned semantic identity decision"
+        },
+        "synsetId": {
+          "origin": "approved_project_semantic_identity",
+          "candidateSha256Utf8": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-OP-FB-2026-08-13-B"
+          ],
+          "license": "Project-owned semantic identity decision"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B06",
+      "wordId": "resolution",
+      "senseId": "n-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "坚定，坚毅",
+        "definition": "the trait of being resolute",
+        "definitionSentence": "Resolution means the trait of being resolute.",
+        "definitionZh": "意志坚定这一品质。",
+        "example": "The climber's resolution remained firm when bad weather delayed the expedition.",
+        "exampleZh": "恶劣天气耽误了探险行程，但这名登山者的决心依然坚定。",
+        "pos": "n.",
+        "synsetId": "omw-en-04861486-n"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "81dc398f5d1089d9b90e8d18cb6eb972f603e00dd3843188f3e8e4cc90c3dce5",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "67d4ecff57631d9273928ada600430bd5b15568dc2e8bbd980d7cbbad5c8a91a",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a3ee75457f720de9e0973e93c7a1240a456c30af1d4c96ef79369e9e85496756",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a8ca249aee4a5a03754ac07d76c28014861126e869ecbcee131fcce3c4353490",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "b3bb259e12354826cd58c57191a536b8f60496deb2a73a3d75ca9625ca602ddb",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "1ca4feec878bbea064cc3ffca49d0478d4d40ca6f371257554ecc66e0c11ac37",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fd015ca8e8a88222543c451795ff0646833ce032e87a2bc186c4d3e42d2d8248",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "b4762bdb618c0432372c50f8985053b6ade5508776b096d38d920f90efb35181",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B07",
+      "wordId": "shiver",
+      "senseId": "n-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "颤抖，战栗",
+        "definition": "a reflex motion caused by cold or fear or excitement",
+        "definitionSentence": "A shiver is a reflex motion caused by cold, fear, or excitement.",
+        "definitionZh": "由寒冷、恐惧或兴奋引起的反射性颤抖。",
+        "example": "A sudden shiver ran through her when the icy wind entered the tent.",
+        "exampleZh": "冰冷的风灌进帐篷时，她突然打了个寒战。",
+        "pos": "n.",
+        "synsetId": "omw-en-00867983-n"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "502aaa744165f3de1f22e84535c1fca4c383dfbdeab43fc3e7c478fb28d75143",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "09ed9816942ef188cd260336222427f7ad143b998beaca20731703f00966ad3f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "7ee414a1f95ce70fdbb27d85fb26eea027628875e7fb244effda91e896e1b330",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "f24c1da07542faa008e6ec85e0f0f47d7bb6c3663ce26364f84009ecbe360320",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a123eef44675bf2c1e40092ecd3d2bde4bdb042d0dc36c4663964397ca53408e",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c0f752cd4ab34f531cbd559fbb9f34141e8c942dbd13c8e63ec53e953fae29a8",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fd015ca8e8a88222543c451795ff0646833ce032e87a2bc186c4d3e42d2d8248",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "324349ea356c51aa4cb25bb26d27c53e5c9ab0be0fc5cb84ce5abe1aee9d4cef",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B08",
+      "wordId": "silver",
+      "senseId": "adj-3",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 94,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "银制的",
+        "definition": "made from or largely consisting of silver",
+        "definitionSentence": "Something described as silver is made from or largely consists of silver.",
+        "definitionZh": "由银制成或主要含银的。",
+        "example": "The museum displayed a silver cup beside the gold coins.",
+        "exampleZh": "博物馆在金币旁陈列了一只银杯。",
+        "pos": "adj.",
+        "synsetId": "omw-en-01529053-s"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "9904580c66261f18c942334c822ec626ccbf447aba1afd5de41144f2d7fc138f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "21f76bf7547402bd0f345e2f2da5015715fc7deab6fe7b31999d657990c306df",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "70a979d38153dff710d0f7fc578dfb30cf939103247d234f9e7cd343cfe8448b",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "9b5be17a713878a5f65f5568c069420275d90e48c9140318b06dd62d41490aaf",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "46b8929abbd7663f3f0e3c6b75b9e00ae4eed0e2ebd29286150e96dd868883fc",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "97a129035258e63eda9eca50bdedad34c98730349e3b2456e4bb0f72af18a747",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "e51169608e8e7c43e00e5f519296618a4139d94e22140105667ffa273692e3dc",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "0ac1c74284ef1ea378c2a462464449ad6ffb4bf32364a934e60a5e130be5bed7",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B09A",
+      "wordId": "versatile",
+      "senseId": "adj-1",
+      "action": "update",
+      "bookIds": [],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "definitionZh": "具有很大多样性或种类丰富的。",
+        "example": "The library's versatile collection ranges from medieval manuscripts to digital media.",
+        "exampleZh": "这座图书馆的藏品种类丰富，从中世纪手稿到数字媒体都有。"
+      },
+      "expectedOldValueSha256": {
+        "definitionZh": "633e7a42a59d5190e909df774abf04e81f908b69f793d6c058071e602372345a",
+        "example": "c87ed603ed31fb38cbaed649e407ae29b1c14300b75234ed3ba99958f08216fa",
+        "exampleZh": "90f60f8d241ba899abf7f6362a3c044df75348e3f55098a36bded1b240a8e676"
+      },
+      "fieldEvidence": {
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "bf2a0dc7addfe893e4587b9eace88a0a8b63c8fb0506b63345db276640eb2c0a",
+          "oldValueSha256": "70f3d6da3cca2e2cc29ba3d1338f3e05be6da7c896a0e81852acd0119d3c035b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "b50e4dc7ecd26b6df3162806482615ce4d1ef5dd396319aa7206a3aa8c8f7f5a",
+          "oldValueSha256": "9eaa87da7377263f86ffe384e42a24679c5c36ac33d9cd43cb6aa1b290ed7d55",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "3dbece93d0e0096f85d3fa9ae1e9e322ad187db0c421d5349ffd7ba09d7d7712",
+          "oldValueSha256": "c3a8dc7124968501617a45500350726cf5b0c3d07f2cdd85a9d89eaedbd65312",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B09B",
+      "wordId": "versatile",
+      "senseId": "adj-2",
+      "action": "update",
+      "bookIds": [],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "易变的，反复无常的",
+        "definitionZh": "容易变化或反复无常的。",
+        "example": "His versatile temperament shifted from enthusiasm to irritation within a single meeting.",
+        "exampleZh": "他的性情反复无常，在一次会议中就从热情转为烦躁。"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "fbdd606360636c53d8ff52a6c6faaa6414dec1f7edcc93e553fed87215bcacad",
+        "definitionZh": "3e0c7a080d4173cc986fe2c16c3676657f19fb08e34506eb08f40c847b9a9d8f",
+        "example": "81f0ed0a9ebffe185c2bc8ff1e86b6ceff0ea5632f4f0cd62b1b7f6a8896ec31",
+        "exampleZh": "b7994c5b171e40566e11eba555e44b1302dce278be58b5471e0b278c96431889"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "036d2596cb77a24f21310f8f54dd9da87179801a8d8f4a4ee69259f909c5c1fb",
+          "oldValueSha256": "d1cfe501e656cf2ef4298d1db22d893c2ed549459989da407a3076f39c7d5d4b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8936420236df4089946305c1fddcc1e9a18914fca99999cb29947261fed666b9",
+          "oldValueSha256": "087cc758ab2bbde434e462a4abb394e78fb8ed5039475d36315c7861ec26a309",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "3d48ed14f576ad29b0125c41103a9ca8b5f0e393ecf21752e4ead9b879737a2f",
+          "oldValueSha256": "1f726708f377f8d53d5cd7097ae5af1ba51c87c45de22cf98ccb91c7a2e1553d",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "ac0989e550f3dd10c07b67b7766dccddf321875f831f8ae021226a20eee85a06",
+          "oldValueSha256": "b7bb292c5545885eb712b9580a9ab30bd2b9db63f1cf789b9f3018aae73bbfa8",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B09C",
+      "wordId": "versatile",
+      "senseId": "adj-3",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 94,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "多才多艺的，能胜任多种工作的",
+        "definition": "competent in many areas and able to turn with ease from one thing to another",
+        "definitionSentence": "Someone described as versatile is competent in many areas and can turn with ease from one thing to another.",
+        "definitionZh": "能胜任多个领域，并能轻松从一项工作转到另一项的。",
+        "example": "The versatile engineer can design circuits, write control software, and explain the system clearly to clients.",
+        "exampleZh": "这位多才多艺的工程师既能设计电路、编写控制软件，也能向客户清楚讲解系统。",
+        "pos": "adj.",
+        "synsetId": "omw-en-02228163-s"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "880d6542b6e66265ac3b3df622edb7a983b9f4582925fd0ed1f4f0c28a0a5e9d",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definition": {
+          "origin": "wordnet_3_0_verbatim",
+          "candidateSha256Utf8": "ccd8096bfc61eb2b76347f0252853b529a58b3705725b69f421c2b835f269308",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "definitionSentence": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8f44abb6321494882083862ae517b23e6c05d4f8be760f841d8979877c29a6d2",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "2271608fb30d819e1c27801710275c3b879d22073c5555250894c19b4bf9b549",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "1237cf65f8240b550bd27069420839d23fb0cbd36abc9d88c932cb1d9f64c33e",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "443f028af1ad20967c3dbfc81ae2ac8a1e3c3a852a74f02fd20a4cf3985ea26c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "e51169608e8e7c43e00e5f519296618a4139d94e22140105667ffa273692e3dc",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "3ad17e796c0a12600f88280392e4f53ad204f25f15dec692dfbbb089c4b442c7",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "FB13-B10",
+      "wordId": "version",
+      "senseId": "n-2",
+      "action": "update",
+      "bookIds": [],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "exampleZh": "他对那场打斗的说法与我的不同。"
+      },
+      "expectedOldValueSha256": {
+        "exampleZh": "6245a4cf000f034567f3c1a4b99f9f571aa57c32d67a24789937013fbff0fb17"
+      },
+      "fieldEvidence": {
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "1272678664360e2fac5f8f84369e1e3854fca3141af04af4e23b16301118a1a3",
+          "oldValueSha256": "db291d811deea7a0adfc0cdfc7a4057cc1b1954b695f79fb45e491211c4d0e8b",
+          "sourceIds": [
+            "E-RUNTIME-SNAPSHOT-2026-08-13",
+            "E-WORDNET-3.0"
+          ],
+          "license": "No separate candidate-content license asserted"
+        }
+      }
+    }
+  ],
+  "noChangeItems": []
+}

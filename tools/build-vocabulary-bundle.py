@@ -71,7 +71,7 @@ def normalize_word(entry, book_source, existing_word=None):
         default=0,
     ) + 1
 
-    for sense in entry.get("senses", []):
+    for sense_index, sense in enumerate(entry.get("senses", [])):
         if not sense.get("pos") or not sense.get("meaning"):
             continue
         # The reviewed Kaoyan source historically deduplicated by POS + Chinese
@@ -101,6 +101,7 @@ def normalize_word(entry, book_source, existing_word=None):
         seen.add(key)
         normalized = dict(sense)
         matched_id = None
+        matched_existing = None
         for match_key in sense_match_keys(sense):
             matched = next(
                 (
@@ -112,7 +113,20 @@ def normalize_word(entry, book_source, existing_word=None):
             )
             if matched:
                 matched_id = matched.get("id")
+                matched_existing = matched
                 break
+        # A reviewed change set may update every textual match key while the
+        # protected source order and part of speech remain unchanged. Preserve
+        # the established runtime ID in that narrow case; the identity audit
+        # still blocks any wider reorder or incompatible remapping.
+        if not matched_id and sense_index < len(existing_senses):
+            positional_candidate = existing_senses[sense_index]
+            if (
+                positional_candidate.get("id") not in used_ids
+                and positional_candidate.get("pos") == sense.get("pos")
+            ):
+                matched_id = positional_candidate.get("id")
+                matched_existing = positional_candidate
         if matched_id:
             normalized["id"] = matched_id
         else:
@@ -120,6 +134,17 @@ def normalize_word(entry, book_source, existing_word=None):
                 next_id_number += 1
             normalized["id"] = f"{sense['pos'].rstrip('.')}-{next_id_number}"
             next_id_number += 1
+        # Rights enrichment is attached to the exact recording URL. Source
+        # normalization must not discard that evidence on a reproducible
+        # rebuild when the recording itself is unchanged.
+        if (
+            matched_existing
+            and normalized.get("audio")
+            and normalized.get("audio") == matched_existing.get("audio")
+        ):
+            for field, value in matched_existing.items():
+                if field.startswith("audio") and field not in normalized:
+                    normalized[field] = value
         used_ids.add(normalized["id"])
         normalized["importance"] = max(
             1,

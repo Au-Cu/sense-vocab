@@ -5,7 +5,9 @@
     "20260809060413_compliance_release_controls.sql",
     "20260809153605_compliance_issue_cards.sql",
     "20260809161847_compliance_runtime_fixes.sql",
-    "20260809162137_compliance_dashboard_ambiguity_fix.sql"
+    "20260809162137_compliance_dashboard_ambiguity_fix.sql",
+    "20260812051224_increase_feedback_submission_limits.sql",
+    "20260812154800_update_compliance_dashboard_latest_evidence.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -19,7 +21,7 @@
   "counts": {
     "discoveredFunctionSignatures": 64,
     "securityDefinerSignatures": 55,
-    "explicitFinalGrants": 47,
+    "explicitFinalGrants": 48,
     "browserRpcNames": 36
   },
   "grants": [
@@ -303,6 +305,12 @@
     },
     {
       "signature": "public.admin_compliance_dashboard()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.submit_feedback(uuid, text, jsonb, jsonb, integer, boolean, text)",
       "roles": [
         "authenticated"
       ]
@@ -835,7 +843,7 @@
       "key": "public.submit_feedback(p_feedback_id uuid, p_message text, p_image_paths jsonb, p_context jsonb, p_expected_image_count integer, p_attachment_rights_confirmed boolean, p_attachment_ai_disclosure text)",
       "schema": "public",
       "name": "submit_feedback",
-      "latestMigration": "20260809060413_compliance_release_controls.sql",
+      "latestMigration": "20260812051224_increase_feedback_submission_limits.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": true,
       "checksCallerIdentity": true

@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "CD-COMPLIANCE-DASHBOARD-2026-08-12",
+  "generatedAt": "2026-08-12T23:41:37+08:00",
+  "scope": "Latest content-cleanup candidate review and deployed multi-pronunciation evidence",
+  "candidatePackage": {
+    "batchId": "CD-CLEAN-CONTINUOUS-2026-08-12-A",
+    "status": "pending_user_final_review_not_applied_not_commercially_cleared",
+    "requiredFieldCount": 24583,
+    "candidateFieldCount": 21848,
+    "evidencePendingFieldCount": 2735,
+    "candidateByField": {
+      "definitionZh": 8803,
+      "example": 5351,
+      "exampleZh": 7694
+    },
+    "evidencePendingByField": {
+      "definitionZh": 1069,
+      "example": 761,
+      "exampleZh": 905
+    },
+    "sourceCategoryFieldHits": {
+      "historicalGoogleTranslation": 8917,
+      "semCorExample": 2840,
+      "quotationExampleAndTranslation": 628,
+      "unknownSemanticExampleAndTranslation": 170,
+      "internalTranslationMissingAuthor": 8470,
+      "internalRewriteMissingAuthor": 3558
+    },
+    "focusReview": {
+      "reviewedFieldCount": 455,
+      "rewrittenFieldCount": 334,
+      "passedUnchangedFieldCount": 121,
+      "focusBlockerCount": 0,
+      "d019FailureCount": 0,
+      "status": "completed_pending_user_final_review",
+      "promptSha256": "13eded720652632716e0e0daf65e1ba3e0e55a7ca17334141a0fc7c3a27d0b7b",
+      "inputSha256": "dffa287c4bd853b3c6fe381fbcd9becebe0367a5599b069624125cd236f0664d",
+      "revisionManifestSha256": "146d475a48039758799aa33f29a1d97ab2e8e8a599fee29971e45ceb3d0187b4",
+      "outputSha256": "ccfb415454a97f67949d36b770ae726e7246087290ee046c86c422e9e4f334c9"
+    },
+    "reviewWorkbook": {
+      "fileName": "Sense-Vocab-重点复核完成-待终审-2026-08-12.xlsx",
+      "sha256": "6f0ec817d1cf0a7ff2ae95845d113a0d9405a19dba7c4a4796f8da34d29543bc",
+      "sizeBytes": 6531056
+    },
+    "machineEvidence": {
+      "fileName": "Sense-Vocab-重点复核完成-机器证据-2026-08-12.json",
+      "sha256": "e8f0aaf3b6cd749de37809e26f5ad746389bb676843aa6c98cd7ab937663b91c",
+      "sizeBytes": 52590543
+    },
+    "generationEvidence": {
+      "supplier": "OpenAI",
+      "modelFamily": "Codex, GPT-5-based",
+      "exactDeploymentVersion": null,
+      "commercialClearance": "blocked_pending_exact_model_version_and_field_review",
+      "legacyContentUsedAsRightsSource": false
+    },
+    "identityCompatibility": {
+      "stableIdsChanged": false,
+      "bookReferencesChanged": false,
+      "userStateWriteOrMigration": false,
+      "runtimeWrite": false,
+      "databaseWrite": false,
+      "deployment": false
+    },
+    "baseline": {
+      "repositoryCommit": "4c0ae42767c110e092b6249a83cde7223932a00c",
+      "runtimeBundleSha256": "f52aa4ef650751602adf9a396fe84a3076d02125d096521ed4141113040d6774",
+      "identityLockSha256": "b5ee6ce74215ccc381004f5992e9ed8c4074a67796afbe0275008ec25cfbe11a",
+      "rightsLedgerSha256": "240cc81289792b0a65ebc10238495ff5de6f3724a7e2cd0bcf4c17c5fc2397d7",
+      "provenanceSha256": "2da1325ad81e8e2da035521b64cc8b0953a439c60c3ab3a2e67e06d76ae0f82c"
+    }
+  },
+  "currentRuntime": {
+    "appVersion": "1.5.0",
+    "repositoryCommit": "4c0ae42767c110e092b6249a83cde7223932a00c",
+    "workingTreeContainsUncommittedDeployedChanges": true,
+    "runtimeBundleSha256": "bab0df3b7e655658bbd10b9a99de0be5621d693e4588c1eee2aa274b3bf69f0a",
+    "identityLockSha256": "b5ee6ce74215ccc381004f5992e9ed8c4074a67796afbe0275008ec25cfbe11a",
+    "rightsLedgerSha256": "0892a39f1694958bc420aba869a1ee548c6252c7b9c070dd74a1647f7235f9a9",
+    "rightsLedgerSummarySha256": "79086001753be50cdbbcf1392d66c46da7a5b56f7090f2588544e0238d0b04b9",
+    "rightsSummarySha256": "a5367d2e86294fa96f65c34ff5983f102de98b36119642b82ad018ae74c87672",
+    "provenanceSha256": "2da1325ad81e8e2da035521b64cc8b0953a439c60c3ab3a2e67e06d76ae0f82c",
+    "senseCount": 10235,
+    "rightsLedgerCounts": {
+      "cleared": 17,
+      "blocker": 10218
+    },
+    "translationSourcesRequiringCommercialReview": 8917,
+    "legacyExternalServicesRequiringReplacement": 2
+  },
+  "pronunciationChangeSet": {
+    "batchId": "RD-MULTI-PRONUNCIATION-2026-08-12",
+    "deploymentUrl": "https://ff0e7607.sense-vocab.pages.dev",
+    "runtimeAudioBoundSenseCount": 1747,
+    "addedOrRepairedAudioBindingCount": 130,
+    "reviewedPronunciationCount": 112,
+    "resolvedPronunciationCount": 110,
+    "evidencePendingPronunciationCount": 2,
+    "unresolvedPronunciations": [
+      {
+        "wordId": "decrease",
+        "senseId": "n-1",
+        "ipa": "ˈdikris",
+        "status": "evidence_pending",
+        "runtimeAudioBinding": false
+      },
+      {
+        "wordId": "insult",
+        "senseId": "v-2",
+        "ipa": "ɪnˈsʌlt",
+        "status": "evidence_pending",
+        "runtimeAudioBinding": false
+      }
+    ],
+    "changeSetSha256": "4ad46d43e4585a0c1064a86a96e0e8366e6562abe7582aebcd1c935def12b7a2",
+    "fieldRightsLedgerSha256": "acbd318029b03b28439d172e48cc387fb2ee911f8189d5fce3a122ed189a341a",
+    "wikimediaEvidenceCacheSha256": "a215a75e01ff6b731ea9c4925dd5f8036eebb8a2660b3b9d2c34723b398c8b71",
+    "changeSetDecision": "CLEARED_for_138_applied_audio_ipa_and_ipa_source_fields_only",
+    "historicalGlobalCommercialGate": "blocked_outside_this_change_set",
+    "verification": {
+      "buildWeb": "passed",
+      "tests": "104_of_104_passed",
+      "productionCoreFileHashesMatchDist": true
+    }
+  },
+  "commercialReleaseConclusion": {
+    "conclusion": "not_releasable",
+    "basis": [
+      "The candidate package is pending user final review and has not been applied to the runtime lexicon.",
+      "2735 target fields remain evidence_pending.",
+      "The exact deployed Codex model version is unavailable, so candidate output is not commercially cleared.",
+      "The current runtime rights ledger still contains 10218 BLOCKER senses.",
+      "Unrelated regulatory, operator, supplier, privacy, and release-scope blockers remain open."
+    ]
+  }
+}

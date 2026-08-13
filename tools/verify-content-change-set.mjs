@@ -6,12 +6,15 @@ import { fileURLToPath } from "node:url";
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(toolsDir, "..");
 const dataDir = path.join(rootDir, "data");
-const manifest = JSON.parse(await readFile(path.join(
-  dataDir, "content-change-sets", "op-fb-2026-08-12-a.json",
-), "utf8"));
-const ledger = JSON.parse(await readFile(path.join(
-  dataDir, "content-change-sets", "op-fb-2026-08-12-a-rights-ledger.json",
-), "utf8"));
+const manifestArgument = process.argv.find((argument) => argument.endsWith(".json"));
+const manifestPath = manifestArgument
+  ? path.resolve(rootDir, manifestArgument)
+  : path.join(dataDir, "content-change-sets", "op-fb-2026-08-12-a.json");
+const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+const ledger = JSON.parse(await readFile(
+  manifestPath.replace(/\.json$/i, "-rights-ledger.json"),
+  "utf8",
+));
 const bundle = JSON.parse(await readFile(path.join(dataDir, "vocabulary-bundle.json"), "utf8"));
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
@@ -25,6 +28,12 @@ if (sha256(manifest.generation.prompt) !== manifest.generation.promptSha256Utf8)
 if (sha256(manifest.rights.outputRightsEvidenceSummary) !==
   manifest.rights.outputRightsEvidenceSha256Utf8) {
   failures.push("OpenAI terms evidence hash mismatch");
+}
+if (manifest.sourcePackage) {
+  const sourcePackage = await readFile(path.join(rootDir, manifest.sourcePackage.path));
+  if (sha256(sourcePackage) !== manifest.sourcePackage.sha256) {
+    failures.push("reviewed source package hash mismatch");
+  }
 }
 for (const source of [manifest.rights.wordnet, manifest.rights.cmudict]) {
   const evidence = await readFile(path.join(rootDir, source.localEvidence));
@@ -59,6 +68,11 @@ for (const item of manifest.items) {
       !row.evidenceSha256 ||
       row.newValueSha256 !== fieldSha256(value)) {
       failures.push(`rights record incomplete ${item.wordId}:${item.senseId}:${field}`);
+    }
+    const evidence = item.fieldEvidence?.[field];
+    if (evidence?.candidateSha256Utf8 &&
+      evidence.candidateSha256Utf8 !== sha256(String(value ?? "null"))) {
+      failures.push(`candidate hash mismatch ${item.wordId}:${item.senseId}:${field}`);
     }
   }
   for (const bookId of item.bookIds ?? []) {

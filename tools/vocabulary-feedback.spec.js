@@ -214,6 +214,47 @@ test("approved feedback change set retains field-level rights evidence", () => {
   }
 });
 
+test("approved 2026-08-13 feedback batch preserves identities and rights", () => {
+  const bundle = readJson("data/vocabulary-bundle.json");
+  const manifest = readJson("data/content-change-sets/op-fb-2026-08-13-b.json");
+  const ledger = readJson(
+    "data/content-change-sets/op-fb-2026-08-13-b-rights-ledger.json",
+  );
+  const expected = {
+    revenge: ["v-2", "omw-en-01153486-v"],
+    suspect: ["v-2", "omw-en-00921072-v"],
+    spectrum: ["n-2", "omw-en-11420831-n"],
+    vacant: ["adj-2", "omw-en-01087977-s"],
+    entertain: ["v-2", null],
+    resolution: ["n-2", "omw-en-04861486-n"],
+    shiver: ["n-2", "omw-en-00867983-n"],
+    silver: ["adj-3", "omw-en-01529053-s"],
+    versatile: ["adj-3", "omw-en-02228163-s"],
+  };
+
+  for (const [wordId, [senseId, synsetId]] of Object.entries(expected)) {
+    const sense = bundle.words.find((word) => word.id === wordId)
+      .senses.find((candidate) => candidate.id === senseId);
+    expect(sense).toMatchObject({
+      synsetId,
+      generationBatchId: "OP-FB-2026-08-13-B",
+      humanReviewStatus: "approved",
+    });
+  }
+  expect(manifest.review).toMatchObject({
+    status: "approved",
+    reviewerRole: "product owner",
+  });
+  expect(ledger).toMatchObject({
+    decision: "CLEARED",
+    historicalGlobalCommercialGate: "BLOCKED outside this change set",
+    rowCount: 81,
+  });
+  expect(ledger.rows.every((row) => row.risk === "CLEARED")).toBe(true);
+  expect(byWord(bundle.words, "version").senses.find((sense) => sense.id === "n-2")
+    .exampleZh).toBe("他对那场打斗的说法与我的不同。");
+});
+
 test("approved new senses are visible together on desktop and mobile", async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
   await page.goto(APP_URL);

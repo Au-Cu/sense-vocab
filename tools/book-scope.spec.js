@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const crypto = require("node:crypto");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -47,7 +48,18 @@ test("the shared pool preserves the reviewed Kaoyan book and adds IELTS", async 
   );
   expect(index.words).toHaveLength(bundle.words.length);
   expect(index.words.reduce((total, word) => total + word.senses.length, 0))
-    .toBe(10235);
+    .toBe(10244);
+});
+
+test("reviewed heteronyms have distinct sourced recordings without changing stable IDs", () => {
+  const output = execFileSync(
+    process.execPath,
+    [path.join(ROOT_DIR, "tools", "verify-pronunciation-audio-change-set.mjs")],
+    { cwd: ROOT_DIR, encoding: "utf8" },
+  );
+  expect(output).toContain('"targetWords": 56');
+  expect(output).toContain('"unresolvedPronunciations": 2');
+  expect(output).toContain('"fieldRightsRows": 138');
 });
 
 test("the home shell stays usable while detailed vocabulary loads slowly", async ({ page }) => {

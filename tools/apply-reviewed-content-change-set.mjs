@@ -6,17 +6,12 @@ import { fileURLToPath } from "node:url";
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(toolsDir, "..");
 const dataDir = path.join(rootDir, "data");
-const manifestPath = path.join(
-  dataDir,
-  "content-change-sets",
-  "op-fb-2026-08-12-a.json",
-);
+const manifestArgument = process.argv.find((argument) => argument.endsWith(".json"));
+const manifestPath = manifestArgument
+  ? path.resolve(rootDir, manifestArgument)
+  : path.join(dataDir, "content-change-sets", "op-fb-2026-08-12-a.json");
 const bundlePath = path.join(dataDir, "vocabulary-bundle.json");
-const ledgerPath = path.join(
-  dataDir,
-  "content-change-sets",
-  "op-fb-2026-08-12-a-rights-ledger.json",
-);
+const ledgerPath = manifestPath.replace(/\.json$/i, "-rights-ledger.json");
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -27,8 +22,10 @@ function fieldSha256(value) {
 }
 
 function fieldRights(field, value, manifest, item) {
+  const evidence = item.fieldEvidence?.[field];
   const semanticFields = new Set(["pos", "synsetId"]);
-  if (semanticFields.has(field)) {
+  if (evidence?.origin?.startsWith("wordnet_3_0") ||
+    (semanticFields.has(field) && value !== null)) {
     return {
       authorOrRightsholder: manifest.rights.wordnet.author,
       directSource: manifest.rights.wordnet.sourceUrl,
@@ -48,6 +45,16 @@ function fieldRights(field, value, manifest, item) {
       use: "pronunciation transcription",
     };
   }
+  if (evidence?.origin === "approved_project_semantic_identity") {
+    return {
+      authorOrRightsholder: "Sense Vocab product owner",
+      directSource: manifest.rights.sourcePackage,
+      license: "Project-owned semantic identity decision",
+      evidenceLocation: manifest.rights.sourcePackage,
+      evidenceSha256: manifest.rights.sourcePackageSha256,
+      use: "approved semantic identity without a WordNet membership claim",
+    };
+  }
   return {
     authorOrRightsholder: manifest.rights.outputAuthor,
     directSource: manifest.rights.outputRightsUrl,
@@ -59,21 +66,24 @@ function fieldRights(field, value, manifest, item) {
 }
 
 function reviewedMetadata(manifest, item) {
-  const source = `openai-codex-reviewed:${manifest.batchId}`;
+  const sourceFor = (field) => item.fieldEvidence?.[field]?.origin ===
+      "wordnet_3_0_verbatim"
+    ? `wordnet-3.0-reviewed:${manifest.batchId}`
+    : `openai-codex-reviewed:${manifest.batchId}`;
   const metadata = {
     auditStatus: "human-reviewed",
     generationBatchId: manifest.batchId,
     humanReviewStatus: manifest.review.status,
     humanReviewedAt: manifest.review.reviewedAt,
   };
-  if (Object.hasOwn(item.fields, "meaning")) metadata.meaningSource = source;
+  if (Object.hasOwn(item.fields, "meaning")) metadata.meaningSource = sourceFor("meaning");
   if (Object.hasOwn(item.fields, "definition") ||
     Object.hasOwn(item.fields, "definitionSentence")) {
-    metadata.definitionSource = source;
+    metadata.definitionSource = sourceFor("definition");
   }
-  if (Object.hasOwn(item.fields, "definitionZh")) metadata.definitionZhSource = source;
-  if (Object.hasOwn(item.fields, "example")) metadata.exampleSource = source;
-  if (Object.hasOwn(item.fields, "exampleZh")) metadata.exampleZhSource = source;
+  if (Object.hasOwn(item.fields, "definitionZh")) metadata.definitionZhSource = sourceFor("definitionZh");
+  if (Object.hasOwn(item.fields, "example")) metadata.exampleSource = sourceFor("example");
+  if (Object.hasOwn(item.fields, "exampleZh")) metadata.exampleZhSource = sourceFor("exampleZh");
   return metadata;
 }
 
@@ -138,6 +148,15 @@ for (const item of manifest.items) {
   if (!word) throw new Error(`Unknown wordId: ${item.wordId}`);
   let sense = word.senses.find((candidate) => candidate.id === item.senseId);
   const before = sense ? structuredClone(sense) : null;
+  if (item.action !== "add") {
+    for (const [field, expectedHash] of Object.entries(
+      item.expectedOldValueSha256 ?? {},
+    )) {
+      if (fieldSha256(before?.[field] ?? null) !== expectedHash) {
+        throw new Error(`Reviewed old value changed: ${item.wordId}:${item.senseId}:${field}`);
+      }
+    }
+  }
   if (item.action === "add") {
     if (sense) throw new Error(`Sense already exists: ${item.wordId}:${item.senseId}`);
     sense = {
@@ -207,6 +226,7 @@ const ledger = {
   decision: "CLEARED",
   historicalGlobalCommercialGate: "BLOCKED outside this change set",
   promptSha256Utf8: manifest.generation.promptSha256Utf8,
+  sourcePackageSha256: manifest.sourcePackage?.sha256 ?? null,
   reviewedAt: manifest.review.reviewedAt,
   rowCount: rightsRows.length,
   rows: rightsRows,

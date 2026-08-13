@@ -184,7 +184,8 @@ const bundleHash = sha256(bundleBytes);
 const bundle = JSON.parse(bundleBytes.toString("utf8"));
 try {
   const files = (await readdir(changeSetDir))
-    .filter((name) => name.endsWith("-rights-ledger.json"));
+    .filter((name) => name.endsWith("-rights-ledger.json"))
+    .sort();
   for (const name of files) {
     const ledger = JSON.parse(await readFile(path.join(changeSetDir, name), "utf8"));
     for (const row of ledger.rows ?? []) {

@@ -1,0 +1,482 @@
+{
+  "schemaVersion": 1,
+  "kind": "sense-vocab-content-batch-benchmark",
+  "generatedAt": "2026-08-12T09:59:26.937Z",
+  "machine": {
+    "processor": "Snapdragon (TM) 8cx Gen 3 @ 2.69 GHz",
+    "logicalCpus": 8,
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.5",
+    "packages": {
+      "ctranslate2": "4.8.1",
+      "sentencepiece": "0.2.2",
+      "fastembed": "0.8.0",
+      "numpy": "2.1.3",
+      "nltk": "3.9.1"
+    }
+  },
+  "implementation": {
+    "gitCommit": "4c0ae42767c110e092b6249a83cde7223932a00c",
+    "fileSha256": {
+      "tools/batch_content_utils.py": "57e765fbb1adb6c667f39cc8a249e7eca2f0d6b27d608d56506ef3687c0ce633",
+      "tools/translation_provider.py": "64b17e1c3cdd06b62dc9da5b5f75aee043fdca1bb8400afa0515ff451c426c43",
+      "tools/content_batch_job.py": "ab5f23cf6c8bdad1b244fa1eaec6cc9b8ca611de5173d73499936a34626dec0d",
+      "tools/semantic_example_matching.py": "5241d3be28b649212c03b78b5c6727fde7533c3389e4d020cd2aacb14f390187",
+      "tools/match-ielts-semantic-examples.py": "22c6e3aba7fa3a1a2e8a7d63ef34c778bf00449cfba4e80e10f6b7a59ecc0d6a",
+      "tools/benchmark-content-batch.py": "9a9125fa9594208be5d51b10ef67bfa95ed5f1f0f8cdac25b5ccd5a1902eb152"
+    }
+  },
+  "fixture": {
+    "path": "tools/fixtures/content-batch-translation-v1.json",
+    "sha256": "c391e78c4b259a38a39285158c43abfaf477703626bca345c3215fed2eb17a22",
+    "items": 26,
+    "identityAudit": {
+      "checkedItems": 24,
+      "mappingErrors": [],
+      "passed": true
+    },
+    "coverage": {
+      "validItems": 24,
+      "invalidItems": 2,
+      "uniqueTexts": 22,
+      "duplicateTextGroups": 2,
+      "polysemousWordIds": 5,
+      "shortestWords": 5,
+      "longestWords": 30
+    }
+  },
+  "model": {
+    "provider": "argos-opus-en-zh-cc-by-4.0",
+    "assetSha256": "aded2408c9e95a1bf2fd3bd65262462d7498bc11357a2b699a5e0eb6efa801be",
+    "assetBytes": 84887616,
+    "assets": [
+      {
+        "path": "metadata.json",
+        "bytes": 135,
+        "sha256": "106086bc1b77d2d5c298aa38be69e8e87263eeb4167b4614b08a030c43d31b6a"
+      },
+      {
+        "path": "model/config.json",
+        "bytes": 216,
+        "sha256": "3a8660f12559a223969532ff191e5e6f50d4ff24164517edbd6a5090dc5144c6"
+      },
+      {
+        "path": "model/model.bin",
+        "bytes": 82713318,
+        "sha256": "1a039114d9456b6528fabb65b455b6f156319634a0f984b1f6018f7737d67598"
+      },
+      {
+        "path": "model/shared_vocabulary.json",
+        "bytes": 1367577,
+        "sha256": "c0b6e24705ec0489d5b810de365959c1013aecd644cfeca161b54ea1df6a7dc0"
+      },
+      {
+        "path": "sentencepiece.model",
+        "bytes": 806370,
+        "sha256": "872224b85a11edc9d769a94949fd387b67ea85b50708db9f91f32f5b497a9af3"
+      }
+    ]
+  },
+  "command": "py tools/benchmark-content-batch.py --batch-size 24 --inter-threads 1 --intra-threads 8 --repeats 3 --tuning-repeats 2",
+  "translation": {
+    "items": 24,
+    "uniqueTexts": 22,
+    "modelColdStartMs": 9337.251,
+    "batchSize": 24,
+    "interThreads": 1,
+    "intraThreads": 8,
+    "computeType": "float32",
+    "decodeOptions": {
+      "beam_size": 1,
+      "num_hypotheses": 1,
+      "replace_unknowns": true,
+      "max_input_length": 1024,
+      "max_decoding_length": 256
+    },
+    "runs": [
+      {
+        "repeat": 1,
+        "serialSeconds": 4.788498,
+        "batchSeconds": 1.088101,
+        "speedup": 4.400784,
+        "serialItemsPerSecond": 5.01201,
+        "batchItemsPerSecond": 22.056776,
+        "outputMismatchCount": 0
+      },
+      {
+        "repeat": 2,
+        "serialSeconds": 4.467855,
+        "batchSeconds": 1.077696,
+        "speedup": 4.145748,
+        "serialItemsPerSecond": 5.371705,
+        "batchItemsPerSecond": 22.269737,
+        "outputMismatchCount": 0
+      },
+      {
+        "repeat": 3,
+        "serialSeconds": 4.413912,
+        "batchSeconds": 1.064185,
+        "speedup": 4.147692,
+        "serialItemsPerSecond": 5.437354,
+        "batchItemsPerSecond": 22.552468,
+        "outputMismatchCount": 0
+      }
+    ],
+    "medianSpeedup": 4.147692,
+    "speedTarget": 1.5,
+    "speedTargetMet": true,
+    "mappingOrderPreserved": true,
+    "serialOutputListSha256": "09d00ef39137887ca6c9715d6fd7363911040b5004c88351d5996519b55268c9",
+    "batchOutputListSha256": "09d00ef39137887ca6c9715d6fd7363911040b5004c88351d5996519b55268c9",
+    "outputMismatchCount": 0,
+    "outputMismatches": []
+  },
+  "translationTuning": {
+    "items": 22,
+    "repeats": 2,
+    "rows": [
+      {
+        "interThreads": 1,
+        "intraThreads": 8,
+        "batchSize": 4,
+        "runsSeconds": [
+          2.39487,
+          2.444142
+        ],
+        "medianSeconds": 2.419506,
+        "medianItemsPerSecond": 9.092766
+      },
+      {
+        "interThreads": 1,
+        "intraThreads": 8,
+        "batchSize": 8,
+        "runsSeconds": [
+          1.667223,
+          1.649479
+        ],
+        "medianSeconds": 1.658351,
+        "medianItemsPerSecond": 13.266191
+      },
+      {
+        "interThreads": 1,
+        "intraThreads": 8,
+        "batchSize": 16,
+        "runsSeconds": [
+          1.44026,
+          1.652378
+        ],
+        "medianSeconds": 1.546319,
+        "medianItemsPerSecond": 14.227338
+      },
+      {
+        "interThreads": 1,
+        "intraThreads": 8,
+        "batchSize": 24,
+        "runsSeconds": [
+          1.144314,
+          1.246707
+        ],
+        "medianSeconds": 1.195511,
+        "medianItemsPerSecond": 18.402179
+      },
+      {
+        "interThreads": 2,
+        "intraThreads": 4,
+        "batchSize": 4,
+        "runsSeconds": [
+          2.372255,
+          2.333852
+        ],
+        "medianSeconds": 2.353054,
+        "medianItemsPerSecond": 9.349553
+      },
+      {
+        "interThreads": 2,
+        "intraThreads": 4,
+        "batchSize": 8,
+        "runsSeconds": [
+          1.583539,
+          1.58054
+        ],
+        "medianSeconds": 1.582039,
+        "medianItemsPerSecond": 13.906101
+      },
+      {
+        "interThreads": 2,
+        "intraThreads": 4,
+        "batchSize": 16,
+        "runsSeconds": [
+          1.422795,
+          1.449537
+        ],
+        "medianSeconds": 1.436166,
+        "medianItemsPerSecond": 15.318567
+      },
+      {
+        "interThreads": 2,
+        "intraThreads": 4,
+        "batchSize": 24,
+        "runsSeconds": [
+          1.350722,
+          1.219119
+        ],
+        "medianSeconds": 1.284921,
+        "medianItemsPerSecond": 17.121679
+      },
+      {
+        "interThreads": 4,
+        "intraThreads": 2,
+        "batchSize": 4,
+        "runsSeconds": [
+          2.067917,
+          2.04442
+        ],
+        "medianSeconds": 2.056168,
+        "medianItemsPerSecond": 10.699513
+      },
+      {
+        "interThreads": 4,
+        "intraThreads": 2,
+        "batchSize": 8,
+        "runsSeconds": [
+          1.584672,
+          1.52402
+        ],
+        "medianSeconds": 1.554346,
+        "medianItemsPerSecond": 14.153863
+      },
+      {
+        "interThreads": 4,
+        "intraThreads": 2,
+        "batchSize": 16,
+        "runsSeconds": [
+          2.052498,
+          2.01292
+        ],
+        "medianSeconds": 2.032709,
+        "medianItemsPerSecond": 10.822995
+      },
+      {
+        "interThreads": 4,
+        "intraThreads": 2,
+        "batchSize": 24,
+        "runsSeconds": [
+          2.179746,
+          1.850533
+        ],
+        "medianSeconds": 2.01514,
+        "medianItemsPerSecond": 10.917357
+      }
+    ],
+    "fastest": {
+      "interThreads": 1,
+      "intraThreads": 8,
+      "batchSize": 24,
+      "runsSeconds": [
+        1.144314,
+        1.246707
+      ],
+      "medianSeconds": 1.195511,
+      "medianItemsPerSecond": 18.402179
+    },
+    "selectedDefault": {
+      "interThreads": 1,
+      "intraThreads": 8,
+      "batchSize": 24,
+      "runsSeconds": [
+        1.144314,
+        1.246707
+      ],
+      "medianSeconds": 1.195511,
+      "medianItemsPerSecond": 18.402179
+    },
+    "selectedVsFastestRatio": 1.0,
+    "selectionPolicy": "Use all 8 logical CPUs without oversubscription; choose the best measured batch among 4, 8, 16, and 24. Larger batches are not assumed faster without a new benchmark."
+  },
+  "structuredJob": {
+    "firstRun": {
+      "status": "completed_with_errors",
+      "summary": {
+        "total": 26,
+        "successful": 24,
+        "failed": 2,
+        "pending": 0,
+        "cacheHits": 0,
+        "resumeHits": 0,
+        "deduplicated": 2
+      },
+      "metrics": {
+        "modelAssetHashMs": 460.596,
+        "cacheReadMs": 18.68,
+        "cacheWriteMs": 16.334,
+        "peakRssBytes": 724701184,
+        "checkpointedItems": 22,
+        "checkpointedInputTokens": 335,
+        "checkpointedInferenceMs": 1876.261,
+        "coldStartMs": 445.768,
+        "tokenizationMs": 1.439,
+        "inferenceMs": 1876.261,
+        "batchCalls": 3,
+        "failedBatchCalls": 0,
+        "retryCount": 0,
+        "inputTokens": 335,
+        "successfulItems": 22,
+        "failedItems": 0,
+        "auditMs": 0.462,
+        "totalMs": 2879.012,
+        "inferredUniqueItems": 22,
+        "itemsPerSecond": 11.725,
+        "tokensPerSecond": 178.547,
+        "cacheHitRate": 0.0
+      },
+      "invalidErrors": {
+        "bench-invalid-empty": "invalid_source",
+        "bench-invalid-direction": "provider_unavailable"
+      }
+    },
+    "unchangedRerun": {
+      "status": "completed_with_errors",
+      "summary": {
+        "total": 26,
+        "successful": 24,
+        "failed": 2,
+        "pending": 0,
+        "cacheHits": 24,
+        "resumeHits": 0,
+        "deduplicated": 0
+      },
+      "metrics": {
+        "modelAssetHashMs": 495.13,
+        "cacheReadMs": 6.639,
+        "cacheWriteMs": 0.0,
+        "peakRssBytes": 724701184,
+        "auditMs": 0.355,
+        "totalMs": 522.635,
+        "inferredUniqueItems": 0,
+        "itemsPerSecond": null,
+        "tokensPerSecond": null,
+        "cacheHitRate": 0.923077
+      },
+      "modelWasLoaded": false,
+      "successfulOutputHashesMatch": true
+    },
+    "interruption": {
+      "checkpointStatus": "interrupted",
+      "checkpointSummary": {
+        "total": 6,
+        "successful": 2,
+        "failed": 0,
+        "pending": 4,
+        "cacheHits": 0,
+        "resumeHits": 0,
+        "deduplicated": 0
+      },
+      "checkpointMetrics": {
+        "modelAssetHashMs": 442.374,
+        "cacheReadMs": 15.225,
+        "cacheWriteMs": 1.697,
+        "peakRssBytes": 724701184,
+        "checkpointedItems": 2,
+        "checkpointedInputTokens": 37,
+        "checkpointedInferenceMs": 449.266,
+        "totalMs": 1378.42
+      },
+      "resumeStatus": "complete",
+      "resumeSummary": {
+        "total": 6,
+        "successful": 6,
+        "failed": 0,
+        "pending": 0,
+        "cacheHits": 0,
+        "resumeHits": 2,
+        "deduplicated": 0
+      },
+      "resumeMetrics": {
+        "modelAssetHashMs": 469.495,
+        "cacheReadMs": 5.15,
+        "cacheWriteMs": 10.845,
+        "peakRssBytes": 724701184,
+        "checkpointedItems": 4,
+        "checkpointedInputTokens": 81,
+        "checkpointedInferenceMs": 1028.871,
+        "coldStartMs": 454.384,
+        "tokenizationMs": 0.46,
+        "inferenceMs": 1028.871,
+        "batchCalls": 3,
+        "failedBatchCalls": 0,
+        "retryCount": 0,
+        "inputTokens": 81,
+        "successfulItems": 4,
+        "failedItems": 0,
+        "auditMs": 0.174,
+        "totalMs": 1999.727,
+        "inferredUniqueItems": 4,
+        "itemsPerSecond": 3.888,
+        "tokensPerSecond": 78.727,
+        "cacheHitRate": 0.333333
+      },
+      "completedOutputHashesValid": true
+    }
+  },
+  "semanticScoring": {
+    "senses": 128,
+    "candidates": 256,
+    "embeddingWidth": 384,
+    "legacySeconds": 33.233857,
+    "vectorizedSeconds": 0.504035,
+    "speedup": 65.935626,
+    "maxScoreDelta": 5.1856040947373394e-08,
+    "maxContrastDelta": 8.258037269281981e-08,
+    "tolerance": 1e-06,
+    "withinTolerance": true,
+    "rankingIdentical": true,
+    "peakRssBytes": 76214272,
+    "realSample": {
+      "runtimeWordGroups": 32,
+      "runtimeSenses": 85,
+      "scoringRepeats": 100,
+      "stableIdentitySha256": "80d96c8630bdf35f9d5c578281002bb2b8969afa938acb2bb90ad31db77ca45a",
+      "modelLoadMs": 593.421,
+      "modelIdentity": {
+        "model": "BAAI/bge-small-en-v1.5",
+        "snapshot": "52398278842ec682c6f32300af41344b1c0b0bb2",
+        "assetSha256": "19f81c1577ad2d25c69f08b03156a2053ed9d956e7eb8d49275476425cf4e0a0",
+        "assetBytes": 67179163,
+        "normalizationVersion": "l2-normalized-float32-v1"
+      },
+      "firstEmbedding": {
+        "requestedTexts": 170,
+        "cacheHits": 0,
+        "embeddedTexts": 170,
+        "cacheHitRate": 0.0,
+        "cacheReadMs": 0.621,
+        "embeddingMs": 4255.143,
+        "cacheWriteMs": 39.081,
+        "itemsPerSecond": 39.952,
+        "peakRssBytes": 704901120
+      },
+      "unchangedEmbeddingRerun": {
+        "requestedTexts": 170,
+        "cacheHits": 170,
+        "embeddedTexts": 0,
+        "cacheHitRate": 1.0,
+        "cacheReadMs": 31.936,
+        "embeddingMs": 0.002,
+        "cacheWriteMs": 0.0,
+        "itemsPerSecond": null,
+        "peakRssBytes": 705224704
+      },
+      "legacySeconds": 2.581852,
+      "vectorizedSeconds": 3.900226,
+      "speedup": 0.661975,
+      "maxScoreDelta": 1.3887882233110105e-07,
+      "maxContrastDelta": 1.803040503567388e-07,
+      "tolerance": 1e-06,
+      "withinTolerance": true,
+      "rankingIdentical": true,
+      "peakRssBytes": 705269760
+    }
+  },
+  "totalSeconds": 135.450777,
+  "peakRssBytes": 724701184
+}

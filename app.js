@@ -56,7 +56,7 @@ const SENSE_STATUS = Object.freeze({
   REVIEW: "review",
   MASTERED: "mastered",
 });
-const V1_4_ADDED_SENSE_KEYS = new Set([
+const CONTENT_ADDED_SENSE_KEYS = new Set([
   "prepare:v-2",
   "pension:n-2",
   "port:n-4",
@@ -67,6 +67,26 @@ const V1_4_ADDED_SENSE_KEYS = new Set([
   "prime:adj-2",
   "resume:n-3",
   "soil:n-2",
+  "sanction:n-2",
+  "sanction:n-3",
+  "consent:n-2",
+  "prescribe:v-2",
+  "aside:adv-2",
+  "solid:adj-5",
+  "solo:adv-3",
+  "solution:n-3",
+  "insult:v-2",
+  "specify:v-2",
+  "terminal:n-3",
+  "revenge:v-2",
+  "suspect:v-2",
+  "spectrum:n-2",
+  "vacant:adj-2",
+  "entertain:v-2",
+  "resolution:n-2",
+  "shiver:n-2",
+  "silver:adj-3",
+  "versatile:adj-3",
 ]);
 
 function updateAppViewportHeight() {
@@ -721,6 +741,9 @@ function createStudyCard(type, wordId, activeKeys) {
     type,
     wordId,
     activeSenseKeys: sortSenseKeysByImportance(activeKeys),
+    newSenseKeys: ["new", "extra", "advance"].includes(type)
+      ? sortSenseKeysByImportance(activeKeys)
+      : [],
     senseKeys: [],
     confirmedKeys: [],
     expandedMasteredKeys: [],
@@ -1246,7 +1269,7 @@ function sanitizeState() {
   });
 
   const introduced = new Set(state.introducedWords);
-  V1_4_ADDED_SENSE_KEYS.forEach((key) => {
+  CONTENT_ADDED_SENSE_KEYS.forEach((key) => {
     const { wordId } = splitSenseKey(key);
     if (introduced.has(wordId) && isKnownSenseKey(key) && !state.progress[key]) {
       progressFor(key);
@@ -1301,6 +1324,9 @@ function sanitizeState() {
           ...card,
           type: card.type === "new-review" ? "reinforcement" : card.type,
           activeSenseKeys: sortSenseKeysByImportance(activeSenseKeys),
+          newSenseKeys: Array.isArray(card.newSenseKeys)
+            ? sortSenseKeysByImportance(card.newSenseKeys)
+            : [],
           senseKeys: sortSenseKeysByImportance(card.senseKeys),
           confirmedKeys: Array.isArray(card.confirmedKeys)
             ? card.confirmedKeys.filter(isKnownSenseKey)
@@ -1845,7 +1871,21 @@ function buildStudyQueue({
 }) {
   const reviewCards = includeReviews ? buildReviewCards(reviewLearningDay) : [];
   const newCards = buildNewCards(newLimit, newType);
-  return [...reviewCards, ...newCards];
+  const reviewsByWord = new Map(reviewCards.map((card) => [card.wordId, card]));
+  const standaloneNewCards = [];
+  newCards.forEach((newCard) => {
+    const reviewCard = reviewsByWord.get(newCard.wordId);
+    if (!reviewCard) {
+      standaloneNewCards.push(newCard);
+      return;
+    }
+    reviewCard.newSenseKeys = sortSenseKeysByImportance(newCard.activeSenseKeys);
+    reviewCard.activeSenseKeys = sortSenseKeysByImportance([
+      ...new Set([...reviewCard.activeSenseKeys, ...newCard.activeSenseKeys]),
+    ]);
+    refreshCardDisplayKeys(reviewCard);
+  });
+  return [...reviewCards, ...standaloneNewCards];
 }
 
 function buildReinforcementCards(reinforcementLearningDay = activeLearningDay()) {
@@ -2012,30 +2052,96 @@ function exampleAttribution(sense) {
   return "";
 }
 
+function normalizeIpa(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .trim();
+}
+
+function pronunciationIdentity(value) {
+  let normalized = normalizeIpa(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll("ɹ", "r")
+    .replaceAll("ɚ", "ər")
+    .replaceAll("ɝ", "ɜr")
+    .replace(/[.()\sː]/g, "");
+  const vowelNuclei = normalized.match(/[aeiouyɑɐɒæəɘɜɞɛɤɪɨɔɵœøɶʊʉʌɯ]+/g) ?? [];
+  if (vowelNuclei.length <= 1) normalized = normalized.replace(/[ˈˌ]/g, "");
+  return normalized;
+}
+
+function audioRecordingsForWord(word) {
+  const recordings = [];
+  const byUrl = new Map();
+  const byPronunciation = new Map();
+
+  word?.senses?.forEach((sense) => {
+    const sourceUrl = safeAudioUrl(sense.audio);
+    if (!sourceUrl) return;
+    const ipa = normalizeIpa(sense.ipa);
+    const pronunciationKey = ipa
+      ? pronunciationIdentity(ipa)
+      : `url:${sourceUrl}`;
+    const existing = byUrl.get(sourceUrl) ?? byPronunciation.get(pronunciationKey);
+    if (existing) {
+      if (sense.pos && !existing.positions.includes(sense.pos)) {
+        existing.positions.push(sense.pos);
+      }
+      byUrl.set(sourceUrl, existing);
+      byPronunciation.set(pronunciationKey, existing);
+      return;
+    }
+
+    const recording = {
+      sourceUrl,
+      sense,
+      ipa,
+      positions: sense.pos ? [sense.pos] : [],
+    };
+    byUrl.set(sourceUrl, recording);
+    byPronunciation.set(pronunciationKey, recording);
+    recordings.push(recording);
+  });
+
+  return recordings;
+}
+
 function renderAudioAttribution(word) {
   audioAttribution.replaceChildren();
   audioAttribution.hidden = true;
-  const sense = word?.senses?.find((entry) => entry.audio);
-  if (!sense?.audioAuthor || !sense.audioLicense || !sense.audioSourcePage) return;
+  const recordings = audioRecordingsForWord(word)
+    .filter(({ sense }) => (
+      sense.audioAuthor && sense.audioLicense && sense.audioSourcePage
+    ));
+  if (!recordings.length) return;
 
-  audioAttribution.append(document.createTextNode(`录音：${sense.audioAuthor} · `));
-  if (sense.audioLicenseUrl) {
-    const licenseLink = document.createElement("a");
-    licenseLink.href = sense.audioLicenseUrl;
-    licenseLink.target = "_blank";
-    licenseLink.rel = "noopener noreferrer";
-    licenseLink.textContent = sense.audioLicense;
-    audioAttribution.append(licenseLink);
-  } else {
-    audioAttribution.append(document.createTextNode(sense.audioLicense));
-  }
-  audioAttribution.append(document.createTextNode(" · "));
-  const sourceLink = document.createElement("a");
-  sourceLink.href = sense.audioSourcePage;
-  sourceLink.target = "_blank";
-  sourceLink.rel = "noopener noreferrer";
-  sourceLink.textContent = "来源页";
-  audioAttribution.append(sourceLink);
+  recordings.forEach(({ sense }, index) => {
+    if (index > 0) audioAttribution.append(document.createElement("br"));
+    const entry = document.createElement("span");
+    entry.className = "audio-attribution-entry";
+    const recordingLabel = recordings.length > 1 ? `录音 ${index + 1}` : "录音";
+    entry.append(document.createTextNode(`${recordingLabel}：${sense.audioAuthor} · `));
+    if (sense.audioLicenseUrl) {
+      const licenseLink = document.createElement("a");
+      licenseLink.href = sense.audioLicenseUrl;
+      licenseLink.target = "_blank";
+      licenseLink.rel = "noopener noreferrer";
+      licenseLink.textContent = sense.audioLicense;
+      entry.append(licenseLink);
+    } else {
+      entry.append(document.createTextNode(sense.audioLicense));
+    }
+    entry.append(document.createTextNode(" · "));
+    const sourceLink = document.createElement("a");
+    sourceLink.href = sense.audioSourcePage;
+    sourceLink.target = "_blank";
+    sourceLink.rel = "noopener noreferrer";
+    sourceLink.textContent = "来源页";
+    entry.append(sourceLink);
+    audioAttribution.append(entry);
+  });
   audioAttribution.hidden = false;
 }
 
@@ -2090,11 +2196,10 @@ function todayNewWordCount() {
 
   const session = ensureTodaySession();
   if (hasUnfinishedQueue()) {
-    const newTypes = new Set(["new", "extra", "advance"]);
     return new Set(
       session.queue
         .slice(session.currentIndex)
-        .filter((card) => newTypes.has(card.type))
+        .filter((card) => isNewLearningCard(card) || card.newSenseKeys?.length)
         .map((card) => card.wordId),
     ).size;
   }
@@ -2127,6 +2232,11 @@ function cardProgressCategory(card) {
   return null;
 }
 
+function cardProgressCategoryForKey(card, key) {
+  if ((card?.newSenseKeys ?? []).includes(key)) return "new";
+  return cardProgressCategory(card);
+}
+
 function currentQueueCounts() {
   const session = ensureTodaySession();
   const counts = {
@@ -2142,21 +2252,18 @@ function currentQueueCounts() {
     (session.revealed ? "select" : "hidden");
 
   session.queue.forEach((card, index) => {
-    const category = cardProgressCategory(card);
-    if (!category) return;
     const keys = activeSenseKeysForCard(card).filter(isKnownSenseKey);
-    counts[category].total += keys.length;
-    if (index < progressIndex) {
-      counts[category].completed += keys.length;
-      return;
-    }
-    if (index !== progressIndex) return;
-    if (progressPhase === "examples") {
-      counts[category].completed += keys.length;
-      return;
-    }
     const confirmed = new Set(card.confirmedKeys ?? []);
-    counts[category].completed += keys.filter((key) => confirmed.has(key)).length;
+    keys.forEach((key) => {
+      const category = cardProgressCategoryForKey(card, key);
+      if (!category) return;
+      counts[category].total += 1;
+      if (index < progressIndex ||
+        (index === progressIndex && progressPhase === "examples") ||
+        (index === progressIndex && confirmed.has(key))) {
+        counts[category].completed += 1;
+      }
+    });
   });
 
   if (!session.reinforcementAdded) {
@@ -2722,6 +2829,11 @@ function renderStudy() {
     ? "回到当前词"
     : phase === "examples" ? "下一词" : "完成";
   audioButton.hidden = finished;
+  const recordingCount = audioRecordingsForWord(word).length;
+  audioButton.setAttribute(
+    "aria-label",
+    recordingCount > 1 ? `依次播放全部 ${recordingCount} 条可用录音` : "播放读音",
+  );
   renderAudioAttribution(finished ? null : word);
   revealButton.disabled = finished;
   revealButton.classList.toggle("is-finished", finished);
@@ -3819,26 +3931,74 @@ function safeAudioUrl(sourceUrl) {
   }
 }
 
-function playWordAudio(wordTextValue, sourceUrl = "") {
-  if (!wordTextValue) return;
+function playWordAudio(word) {
+  if (!word?.word) return;
 
   stopWordAudio();
   const playbackGeneration = audioPlaybackGeneration;
-  const pronunciationUrl =
-    safeAudioUrl(sourceUrl) ||
-    `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(
-      wordTextValue,
-    )}&type=2`;
+  const dedicatedUrls = audioRecordingsForWord(word)
+    .map((recording) => recording.sourceUrl);
+  const pronunciationUrls = dedicatedUrls.length
+    ? dedicatedUrls
+    : [
+      `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(
+        word.word,
+      )}&type=2`,
+    ];
+  let playedAny = false;
 
-  const audio = new Audio(pronunciationUrl);
-  activeAudio = audio;
-  audio.play().catch(() => {
-    if (
-      playbackGeneration !== audioPlaybackGeneration ||
-      activeAudio !== audio
-    ) return;
-    speakWithLocalVoice(wordTextValue, playbackGeneration);
-  });
+  const playNext = (index) => {
+    if (playbackGeneration !== audioPlaybackGeneration) return;
+    if (index >= pronunciationUrls.length) {
+      activeAudio = null;
+      if (!playedAny) speakWithLocalVoice(word.word, playbackGeneration);
+      return;
+    }
+
+    let audio;
+    try {
+      audio = new Audio(pronunciationUrls[index]);
+    } catch {
+      playNext(index + 1);
+      return;
+    }
+    activeAudio = audio;
+    let settled = false;
+    const supportsPlaybackEvents = typeof audio.addEventListener === "function";
+    const settle = (succeeded) => {
+      if (settled) return;
+      settled = true;
+      if (supportsPlaybackEvents) {
+        audio.removeEventListener("ended", handleEnded);
+        audio.removeEventListener("error", handleError);
+      }
+      if (
+        playbackGeneration !== audioPlaybackGeneration ||
+        activeAudio !== audio
+      ) return;
+      if (succeeded) playedAny = true;
+      activeAudio = null;
+      playNext(index + 1);
+    };
+    const handleEnded = () => settle(true);
+    const handleError = () => settle(false);
+    if (supportsPlaybackEvents) {
+      audio.addEventListener("ended", handleEnded, { once: true });
+      audio.addEventListener("error", handleError, { once: true });
+    }
+
+    try {
+      Promise.resolve(audio.play())
+        .then(() => {
+          if (!supportsPlaybackEvents) settle(true);
+        })
+        .catch(handleError);
+    } catch {
+      handleError();
+    }
+  };
+
+  playNext(0);
 }
 
 function maybeAutoPlayCurrentWord() {
@@ -3850,10 +4010,7 @@ function maybeAutoPlayCurrentWord() {
   if (!key || !word || key === lastAutoPlayedCardKey) return;
 
   lastAutoPlayedCardKey = key;
-  playWordAudio(
-    word.word,
-    word.senses.find((sense) => sense.audio)?.audio ?? "",
-  );
+  playWordAudio(word);
 }
 
 function speakCurrentWord() {
@@ -3861,10 +4018,7 @@ function speakCurrentWord() {
 
   const word = currentWord();
   if (!word) return;
-  playWordAudio(
-    word.word,
-    word.senses.find((sense) => sense.audio)?.audio ?? "",
-  );
+  playWordAudio(word);
 }
 
 function playSenseTapSound() {
@@ -3945,7 +4099,7 @@ function markSenseFamiliar(key, options = {}) {
   const progress = progressFor(key);
   const date = activeStudyDate();
   const learningDay = activeLearningDay();
-  if (isNewLearningCard(card)) {
+  if (isNewLearningKey(card, key)) {
     setProgressMastered(progress, date, learningDay);
   } else if (card.type === "reinforcement") {
     setProgressPending(
@@ -4070,6 +4224,10 @@ function animateSenseReorder(previousLayout, selectedKey) {
 
 function isNewLearningCard(card) {
   return card?.type === "new" || card?.type === "extra" || card?.type === "advance";
+}
+
+function isNewLearningKey(card, key) {
+  return isNewLearningCard(card) || (card?.newSenseKeys ?? []).includes(key);
 }
 
 function unknownSenseKeysForCurrentCard() {
@@ -4746,10 +4904,7 @@ function tutorialSessionForWord(wordId, { revealed = false } = {}) {
   render();
   if (revealed) {
     lastAutoPlayedCardKey = currentCardKey();
-    playWordAudio(
-      word.word,
-      word.senses.find((sense) => sense.audio)?.audio ?? "",
-    );
+    playWordAudio(word);
   }
   return true;
 }

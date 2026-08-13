@@ -48,6 +48,20 @@ test("database writes are revision-gated and feedback uploads are row-bound", as
   expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
 });
 
+test("feedback quota expansion preserves the authenticated RPC boundary", async () => {
+  const migration = await read(
+    "supabase/migrations/20260812051224_increase_feedback_submission_limits.sql",
+  );
+  expect(migration).toContain(
+    "perform pg_advisory_xact_lock(hashtextextended(v_user_id::text, 9137))",
+  );
+  expect(migration).toMatch(/interval '1 hour'[\s\S]*?\) >= 20 then/);
+  expect(migration).toMatch(/interval '1 day'[\s\S]*?\) >= 60 then/);
+  expect(migration).toContain("from public, anon");
+  expect(migration).toContain("to authenticated");
+  expect(migration).not.toMatch(/\b(?:delete|update)\s+public\.feedback_reports\b/i);
+});
+
 test("account snapshots block undeclared record loss and keep recovery copies private", async () => {
   const migration = await read(
     "supabase/migrations/202607310001_state_recovery_guard.sql",

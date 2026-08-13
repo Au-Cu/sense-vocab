@@ -1,0 +1,4 @@
+-r requirements-translation.txt
+fastembed==0.8.0
+numpy==2.1.3
+nltk==3.9.1

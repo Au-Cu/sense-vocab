@@ -7,10 +7,13 @@ const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(toolsDir, "..");
 const dataDir = path.join(rootDir, "data");
 const cachePath = path.join(dataDir, "wikimedia-audio-rights-cache.json");
-const vocabularyPaths = [
-  path.join(dataDir, "vocabulary-bundle.json"),
-  path.join(dataDir, "kaoyan-words.json"),
-];
+const requestedPaths = process.argv.slice(2);
+const vocabularyPaths = requestedPaths.length
+  ? requestedPaths.map((value) => path.resolve(rootDir, value))
+  : [
+    path.join(dataDir, "vocabulary-bundle.json"),
+    path.join(dataDir, "kaoyan-words.json"),
+  ];
 const apiUrl = "https://commons.wikimedia.org/w/api.php";
 const batchSize = 40;
 const verifiedAuthorEvidence = new Map([
@@ -23,12 +26,17 @@ const verifiedAuthorEvidence = new Map([
   ["en-us-tacit.ogg", { author: "EncycloPetey", evidenceText: "Pronunciation of the term in US English, recorded by EncycloPetey" }],
 ]);
 
-function wordsOf(value) {
+function audioRecordsOf(value) {
   const words = Array.isArray(value) ? value : value.words;
-  if (!Array.isArray(words)) {
-    throw new Error("Vocabulary file does not contain a word array.");
+  if (Array.isArray(words)) {
+    return words.flatMap((word) => word.senses ?? []);
   }
-  return words;
+  if (Array.isArray(value?.items)) {
+    return value.items
+      .map((item) => item?.fields)
+      .filter((fields) => fields?.audio);
+  }
+  throw new Error("Audio metadata target contains neither vocabulary words nor change-set items.");
 }
 
 function decodeEntities(value) {
@@ -211,11 +219,9 @@ const documents = await Promise.all(
 );
 const filenames = new Map();
 for (const document of documents) {
-  for (const word of wordsOf(document)) {
-    for (const sense of word.senses ?? []) {
-      const filename = originalFilename(sense.audio);
-      if (filename) filenames.set(cacheKey(filename), filename);
-    }
+  for (const record of audioRecordsOf(document)) {
+    const filename = originalFilename(record.audio);
+    if (filename) filenames.set(cacheKey(filename), filename);
   }
 }
 
@@ -251,7 +257,17 @@ if (repairedFromVerifiedEvidence) {
   );
 }
 
-const pending = [...filenames].filter(([key]) => !cache.files[key]?.author);
+const pending = [...filenames].filter(([key]) => {
+  const rights = cache.files[key];
+  return !(
+    rights?.author
+    && rights.authorEvidenceBasis
+    && rights.authorEvidenceTextSha256
+    && rights.license
+    && rights.sourcePage
+    && rights.evidenceSha256
+  );
+});
 console.log(
   `Wikimedia audio metadata: ${filenames.size} unique files, ${pending.length} pending.`,
 );
@@ -277,41 +293,42 @@ let enrichedCount = 0;
 let completeCount = 0;
 for (let documentIndex = 0; documentIndex < documents.length; documentIndex += 1) {
   const document = documents[documentIndex];
-  for (const word of wordsOf(document)) {
-    for (const sense of word.senses ?? []) {
-      if (!sense.audio) continue;
-      audioCount += 1;
-      const filename = originalFilename(sense.audio);
-      const rights = cache.files[cacheKey(filename)];
-      if (!rights) continue;
+  for (const record of audioRecordsOf(document)) {
+    if (!record.audio) continue;
+    audioCount += 1;
+    const filename = originalFilename(record.audio);
+    const rights = cache.files[cacheKey(filename)];
+    if (!rights) continue;
 
-      if (rights.author) sense.audioAuthor = rights.author;
-      if (rights.authorEvidenceBasis) {
-        sense.audioAuthorEvidenceBasis = rights.authorEvidenceBasis;
-        sense.audioAuthorEvidenceUrl = rights.authorEvidenceUrl ?? rights.sourcePage;
-        sense.audioAuthorEvidenceAccessedAt =
-          rights.authorEvidenceAccessedAt ?? rights.fetchedAt;
-      }
-      if (rights.authorEvidenceTextSha256) {
-        sense.audioAuthorEvidenceTextSha256 = rights.authorEvidenceTextSha256;
-      }
-      if (rights.license) sense.audioLicense = rights.license;
-      if (rights.licenseUrl) sense.audioLicenseUrl = rights.licenseUrl;
-      if (rights.sourcePage) sense.audioSourcePage = rights.sourcePage;
-      if (rights.attribution) sense.audioAttribution = rights.attribution;
-      sense.audioMetadataSource = "Wikimedia Commons API";
-      sense.audioMetadataRecord = `${apiUrl}?action=query&prop=imageinfo&iiprop=extmetadata%7Curl&titles=File:${encodeURIComponent(rights.filename)}`;
-      sense.audioMetadataFetchedAt = rights.fetchedAt;
-      sense.audioRightsEvidenceSha256 = rights.evidenceSha256;
-      enrichedCount += 1;
-      if (sense.audioAuthor && sense.audioLicense && sense.audioSourcePage) {
-        completeCount += 1;
-      }
+    if (rights.author) record.audioAuthor = rights.author;
+    if (rights.authorEvidenceBasis) {
+      record.audioAuthorEvidenceBasis = rights.authorEvidenceBasis;
+      record.audioAuthorEvidenceUrl = rights.authorEvidenceUrl ?? rights.sourcePage;
+      record.audioAuthorEvidenceAccessedAt =
+        rights.authorEvidenceAccessedAt ?? rights.fetchedAt;
+    }
+    if (rights.authorEvidenceTextSha256) {
+      record.audioAuthorEvidenceTextSha256 = rights.authorEvidenceTextSha256;
+    }
+    if (rights.license) record.audioLicense = rights.license;
+    if (rights.licenseUrl) record.audioLicenseUrl = rights.licenseUrl;
+    if (rights.sourcePage) record.audioSourcePage = rights.sourcePage;
+    if (rights.attribution) record.audioAttribution = rights.attribution;
+    record.audioMetadataSource = "Wikimedia Commons API";
+    record.audioMetadataRecord = `${apiUrl}?action=query&prop=imageinfo&iiprop=extmetadata%7Curl&titles=File:${encodeURIComponent(rights.filename)}`;
+    record.audioMetadataFetchedAt = rights.fetchedAt;
+    record.audioRightsEvidenceSha256 = rights.evidenceSha256;
+    enrichedCount += 1;
+    if (record.audioAuthor && record.audioLicense && record.audioSourcePage) {
+      completeCount += 1;
     }
   }
 
   const preservePrettyCrLf = vocabularyPaths[documentIndex].endsWith("kaoyan-words.json");
-  let serialized = JSON.stringify(document, null, preservePrettyCrLf ? 2 : undefined);
+  const pretty = preservePrettyCrLf || vocabularyPaths[documentIndex].includes(
+    `${path.sep}content-change-sets${path.sep}`,
+  );
+  let serialized = JSON.stringify(document, null, pretty ? 2 : undefined);
   serialized = preservePrettyCrLf
     ? `${serialized.replace(/\r?\n/g, "\r\n")}\r\n`
     : `${serialized}\n`;
