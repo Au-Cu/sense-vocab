@@ -1,0 +1,584 @@
+{
+  "schemaVersion": 1,
+  "batchId": "op-feedback-2026-08-13",
+  "generatedAt": "2026-08-13T15:52:04.508Z",
+  "generationMode": "candidate_only_read_only_formal_workspace",
+  "formalWorkspaceModifiedByThisTask": false,
+  "reviewStatus": "待用户审核",
+  "commercialClearance": "not_claimed",
+  "baseline": {
+    "gitCommit": "a38a0afa159d4188acd2bbdd345530db68fca7f6",
+    "version": "1.6.0",
+    "bundleSha256": "f72dd2c51d0140cc4d3332c45c2a93e6793489beed1eba17d9d4e4367d1944e6",
+    "identityLockSha256": "c8653642102e5433fcc0312d359fe380695b5ea02442b0f2cfac56103b0cce30",
+    "wordPool": {
+      "wordCount": 6607,
+      "senseCount": 10244,
+      "identitySha256": "bfcf4a18f44e681a15daa3c5b19ee7b2e6700a89d7b712dfbf3c7c0ef29d798b"
+    }
+  },
+  "counts": {
+    "batchItems": 2,
+    "fields": 7,
+    "addFields": 5,
+    "replaceFields": 2,
+    "generationBlockers": 0,
+    "identityImplementationPendingItems": 1
+  },
+  "hashSchemes": {
+    "candidateSha256Utf8": "SHA-256 of the raw candidate string encoded as UTF-8",
+    "candidateSha256JsonUtf8": "SHA-256 of JSON.stringify(candidate string) encoded as UTF-8; compatible with the current field ledger convention",
+    "oldValueSha256JsonUtf8": "SHA-256 of JSON.stringify(current value or null) encoded as UTF-8",
+    "manifestHashes": "SHA-256 of recursively key-sorted compact JSON encoded as UTF-8"
+  },
+  "model": {
+    "supplier": "OpenAI",
+    "name": "Codex, GPT-5-based",
+    "visibleVersion": "Exact deployment snapshot is not exposed in this runtime",
+    "weightsSource": "OpenAI-hosted proprietary model; weights not available to this task",
+    "generationSession": "op-feedback-2026-08-13"
+  },
+  "prompt": "Batch op-feedback-2026-08-13. For every item, lock the supplied batch item ID, wordId, senseId, POS, synset and target meaning before writing. Use the local WordNet 3.0 synset only as a licensed semantic anchor and use the current runtime entry only to identify existing and adjacent senses; do not copy any dictionary example, feedback wording, web result, paid content or legacy high-risk field. Independently create only the requested fields. Each field and the combined set must express the target sense, and each example must use the target word in the target part of speech and sense with enough context to exclude adjacent senses. Chinese must be concise, natural and faithful. Do not generate sexual content unless unavoidable for the target sense, and do not use China-related political or ideological material. Return field-level candidates, hashes, evidence references, target-binding review, adjacent-sense exclusion, D-019 assessments and residual risks. F-01: propose volunteer:n-3, noun, omw-en-10759151-n, a general person who freely does work, usually unpaid; exclude the military volunteer synset omw-en-10759331-n and the current verb/adjective senses. Generate meaning, definition, definitionZh, example and exampleZh. F-02: replace visual:adj-1 example and exampleZh for omw-en-02516148-s meaning visible; exclude visual:adj-2 relating to or using sight.",
+  "promptSha256Utf8": "94f71a1cd0838e1e4d035cb581f8faadb70e68b5d9fcca7ebc2780c2816acd6a",
+  "inputManifestSha256": "32f34fecad69a70b45f2463e3fa1dd8e255a332c38f92ae0315893c773592fb7",
+  "outputManifestSha256": "e48424e1b2b29addf2e03a770448999d287b504a59ec9f4170c69c43055553d7",
+  "inputManifest": {
+    "batchId": "op-feedback-2026-08-13",
+    "gitCommit": "a38a0afa159d4188acd2bbdd345530db68fca7f6",
+    "bundleSha256": "f72dd2c51d0140cc4d3332c45c2a93e6793489beed1eba17d9d4e4367d1944e6",
+    "identityLockSha256": "c8653642102e5433fcc0312d359fe380695b5ea02442b0f2cfac56103b0cce30",
+    "identitySummary": {
+      "formatVersion": 1,
+      "schemaVersion": 1,
+      "defaultBookId": "kaoyan",
+      "books": [
+        {
+          "id": "kaoyan",
+          "name": "考研词汇",
+          "entryCount": 5042,
+          "senseReferenceCount": 7927,
+          "identitySha256": "d180e22974b5b6273d601aad8de3c533285c8e6f00205a7747b46445c31e304e"
+        },
+        {
+          "id": "ielts",
+          "name": "雅思词汇",
+          "entryCount": 4827,
+          "senseReferenceCount": 7558,
+          "identitySha256": "52abdce421e4a33c951598e69dc8bd54e6bb81251483686dbf1d775c89505214"
+        }
+      ],
+      "wordPool": {
+        "wordCount": 6607,
+        "senseCount": 10244,
+        "identitySha256": "bfcf4a18f44e681a15daa3c5b19ee7b2e6700a89d7b712dfbf3c7c0ef29d798b"
+      }
+    },
+    "evidence": [
+      {
+        "evidenceId": "E-RUNTIME-BUNDLE-2026-08-13",
+        "sha256": "f72dd2c51d0140cc4d3332c45c2a93e6793489beed1eba17d9d4e4367d1944e6"
+      },
+      {
+        "evidenceId": "E-IDENTITY-LOCK-2026-08-13",
+        "sha256": "c8653642102e5433fcc0312d359fe380695b5ea02442b0f2cfac56103b0cce30"
+      },
+      {
+        "evidenceId": "E-WORDNET-NOUN-3.0",
+        "sha256": "489f145e0f68877c0be5bd0eb4117adaaac52f38f6204eb8d85dbe2158b614cc"
+      },
+      {
+        "evidenceId": "E-WORDNET-ADJ-3.0",
+        "sha256": "f24b635368be441501c9b8001e9271fd3b30b203f00d91e332979e6f8fe35646"
+      },
+      {
+        "evidenceId": "E-WORDNET-LICENSE-3.0",
+        "sha256": "ff9698aef1589e32099a19a7bcaeb2f6284020ed13d9a3e47584258737d0bd46"
+      },
+      {
+        "evidenceId": "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "sha256": null
+      },
+      {
+        "evidenceId": "E-CODEX-GENERATION",
+        "sha256": null
+      }
+    ],
+    "requestedItems": [
+      {
+        "batchItemId": "F-01",
+        "wordId": "volunteer",
+        "senseId": "n-3",
+        "synsetId": "omw-en-10759151-n",
+        "pos": "n."
+      },
+      {
+        "batchItemId": "F-02",
+        "wordId": "visual",
+        "senseId": "adj-1",
+        "synsetId": "omw-en-02516148-s",
+        "pos": "adj."
+      }
+    ]
+  },
+  "outputManifest": [
+    {
+      "batchItemId": "F-01",
+      "contentId": "volunteer:n-3:meaning",
+      "action": "add",
+      "candidateSha256Utf8": "0ec8f7a5360ffac113bf97b9b5100519186d0d74ad38586a7c5faeab47d4e135",
+      "candidateSha256JsonUtf8": "2c3e59ca93a847097782526aa70b7640ee0d88d90c092e6dba7432b91c772bc3"
+    },
+    {
+      "batchItemId": "F-01",
+      "contentId": "volunteer:n-3:definition",
+      "action": "add",
+      "candidateSha256Utf8": "0f5688ed350a2304310fd7814e4b7c2019ae7560ff6672d38065b35c67845762",
+      "candidateSha256JsonUtf8": "9eb32e556e70b3e33197a203c38283cb4ade22a2e56c3c8b96f799a1f1259afc"
+    },
+    {
+      "batchItemId": "F-01",
+      "contentId": "volunteer:n-3:definitionZh",
+      "action": "add",
+      "candidateSha256Utf8": "a647bf4bf3abdc0daa7027d76190d03b4dd5018ed42e857dc17e40f7c3bbdf0c",
+      "candidateSha256JsonUtf8": "684735d3affcd8d0222e136600bb78ca7192d272d59595520deb983a5b86c031"
+    },
+    {
+      "batchItemId": "F-01",
+      "contentId": "volunteer:n-3:example",
+      "action": "add",
+      "candidateSha256Utf8": "5695efb4052220606f6b5ca16c9dcec110a6724b100149cfd816d392314ccfd3",
+      "candidateSha256JsonUtf8": "0beb6d57aa883572d25e7b2719555c5040d5e8d4687e1b158d085f1477e113f1"
+    },
+    {
+      "batchItemId": "F-01",
+      "contentId": "volunteer:n-3:exampleZh",
+      "action": "add",
+      "candidateSha256Utf8": "33644f94a872a45ed7525b06475d7ec82dc24890124c2b122124f97b62140d5c",
+      "candidateSha256JsonUtf8": "d744fbd665d7cc8cbf3c7821694beeb1ff32e4182d261d7546eb6ae91b242be7"
+    },
+    {
+      "batchItemId": "F-02",
+      "contentId": "visual:adj-1:example",
+      "action": "replace",
+      "candidateSha256Utf8": "19827aa90a6bcdb9f7f494414caeef1440f347f65a47936c5e6318481c6284d2",
+      "candidateSha256JsonUtf8": "0494e85a5d012dc0fab9329d4aa9e9b48d36dcf676791697189a5ecb073fdd09"
+    },
+    {
+      "batchItemId": "F-02",
+      "contentId": "visual:adj-1:exampleZh",
+      "action": "replace",
+      "candidateSha256Utf8": "95d91335400ba3ba3fbcbd08bbc7ad176c52ccf6123b980cfa8c54b033dd5719",
+      "candidateSha256JsonUtf8": "01e870208c5c51ba99d15f7dbd802251219ce5a2f4d506368c5d275b7828c397"
+    }
+  ],
+  "evidenceCatalog": [
+    {
+      "evidenceId": "E-RUNTIME-BUNDLE-2026-08-13",
+      "type": "diagnostic_runtime_snapshot",
+      "asset": "data/vocabulary-bundle.json",
+      "sha256": "f72dd2c51d0140cc4d3332c45c2a93e6793489beed1eba17d9d4e4367d1944e6",
+      "use": "Stable identity, current fields, existing book references and adjacent-sense exclusion only; no legacy field was used as candidate wording.",
+      "rightsBasis": "Current project runtime material supplied within the authorized workspace."
+    },
+    {
+      "evidenceId": "E-IDENTITY-LOCK-2026-08-13",
+      "type": "identity_snapshot",
+      "asset": "data/content-identity-lock.json",
+      "sha256": "c8653642102e5433fcc0312d359fe380695b5ea02442b0f2cfac56103b0cce30",
+      "use": "Word/sense/book identity baseline only.",
+      "rightsBasis": "Current project identity material supplied within the authorized workspace."
+    },
+    {
+      "evidenceId": "E-WORDNET-NOUN-3.0",
+      "type": "licensed_semantic_anchor",
+      "asset": "node_modules/wordnet/db/data.noun",
+      "sha256": "489f145e0f68877c0be5bd0eb4117adaaac52f38f6204eb8d85dbe2158b614cc",
+      "targetOffsets": [
+        "10759151",
+        "10759331"
+      ],
+      "authorOrRightsholder": "Princeton University",
+      "license": "WordNet Release 3.0 License",
+      "licenseEvidenceId": "E-WORDNET-LICENSE-3.0",
+      "use": "Confirm target synset membership and exclude the military adjacent synset; no WordNet example text copied."
+    },
+    {
+      "evidenceId": "E-WORDNET-ADJ-3.0",
+      "type": "licensed_semantic_anchor",
+      "asset": "node_modules/wordnet/db/data.adj",
+      "sha256": "f24b635368be441501c9b8001e9271fd3b30b203f00d91e332979e6f8fe35646",
+      "targetOffsets": [
+        "02516148",
+        "02869563"
+      ],
+      "authorOrRightsholder": "Princeton University",
+      "license": "WordNet Release 3.0 License",
+      "licenseEvidenceId": "E-WORDNET-LICENSE-3.0",
+      "use": "Confirm visible sense and exclude the relating-to-sight sense; no WordNet example text copied."
+    },
+    {
+      "evidenceId": "E-WORDNET-LICENSE-3.0",
+      "type": "license_text",
+      "asset": "docs/licenses/wordnet-3.0-LICENSE.txt",
+      "sha256": "ff9698aef1589e32099a19a7bcaeb2f6284020ed13d9a3e47584258737d0bd46",
+      "authorOrRightsholder": "Princeton University",
+      "license": "WordNet Release 3.0 License",
+      "scope": {
+        "commercialUse": "permitted",
+        "modification": "permitted",
+        "caching": "permitted",
+        "publicDistribution": "permitted",
+        "redistribution": "permitted",
+        "attributionNotice": "retain copyright notice, conditions and disclaimer in copies",
+        "shareAlike": "not required by this license",
+        "additionalDuty": "do not use the Princeton name in advertising or publicity without prior specific written permission"
+      }
+    },
+    {
+      "evidenceId": "E-ANONYMIZED-SEMANTIC-LOCATOR",
+      "type": "authorized_problem_locator",
+      "use": "Target selection and validation only: general volunteer noun and visual meaning visible.",
+      "rightsBasis": "Anonymous project instruction supplied for this batch; no feedback text, identity, attachment or third-party wording was used or reproduced."
+    },
+    {
+      "evidenceId": "E-CODEX-GENERATION",
+      "type": "ai_assisted_independent_generation",
+      "authorOrRightsholder": "Sense Vocab project candidate, AI-assisted in the authorized CD task",
+      "supplier": "OpenAI",
+      "model": "Codex, GPT-5-based",
+      "visibleVersion": "Exact deployment snapshot is not exposed in this runtime",
+      "weightsSource": "OpenAI-hosted proprietary model; weights not available to this task",
+      "promptSha256Utf8": "94f71a1cd0838e1e4d035cb581f8faadb70e68b5d9fcca7ebc2780c2816acd6a",
+      "prompt": "Batch op-feedback-2026-08-13. For every item, lock the supplied batch item ID, wordId, senseId, POS, synset and target meaning before writing. Use the local WordNet 3.0 synset only as a licensed semantic anchor and use the current runtime entry only to identify existing and adjacent senses; do not copy any dictionary example, feedback wording, web result, paid content or legacy high-risk field. Independently create only the requested fields. Each field and the combined set must express the target sense, and each example must use the target word in the target part of speech and sense with enough context to exclude adjacent senses. Chinese must be concise, natural and faithful. Do not generate sexual content unless unavoidable for the target sense, and do not use China-related political or ideological material. Return field-level candidates, hashes, evidence references, target-binding review, adjacent-sense exclusion, D-019 assessments and residual risks. F-01: propose volunteer:n-3, noun, omw-en-10759151-n, a general person who freely does work, usually unpaid; exclude the military volunteer synset omw-en-10759331-n and the current verb/adjective senses. Generate meaning, definition, definitionZh, example and exampleZh. F-02: replace visual:adj-1 example and exampleZh for omw-en-02516148-s meaning visible; exclude visual:adj-2 relating to or using sight.",
+      "rightsBasis": "New expressions were independently generated from authorized semantic anchors; no external page or legacy candidate text was copied.",
+      "clearance": "evidence_pending_user_review_not_cleared"
+    }
+  ],
+  "items": [
+    {
+      "batchItemId": "F-01",
+      "wordId": "volunteer",
+      "senseId": "n-3",
+      "synsetId": "omw-en-10759151-n",
+      "pos": "n.",
+      "action": "propose_append_sense",
+      "currentSenses": [
+        {
+          "senseId": "v-1",
+          "pos": "v.",
+          "synsetId": "omw-en-02425112-v",
+          "meaning": "自愿"
+        },
+        {
+          "senseId": "adj-2",
+          "pos": "adj.",
+          "synsetId": "omw-en-02521183-s",
+          "meaning": "无偿的"
+        }
+      ],
+      "currentBookReferences": [
+        {
+          "bookId": "kaoyan",
+          "existingSenseIds": [
+            "v-1",
+            "adj-2"
+          ]
+        },
+        {
+          "bookId": "ielts",
+          "existingSenseIds": [
+            "v-1",
+            "adj-2"
+          ]
+        }
+      ],
+      "proposedBookReferenceAction": "not_in_scope_evidence_pending",
+      "review": {
+        "targetBindingAssessment": "pass_pending_user_review: all five fields express a general person who voluntarily performs work, normally without pay; the example uses volunteer as a countable noun.",
+        "adjacentSenseExclusion": "pass: excludes current volunteer:v-1 (the act of offering), current volunteer:adj-2 (unpaid as an attribute), and military volunteer omw-en-10759331-n; no enlistment or armed-service context appears.",
+        "bilingualAlignment": "pass: the Chinese meaning/definition and translation preserve the same general volunteer sense and the unpaid-work signal.",
+        "sexualContentAssessment": "pass: none.",
+        "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+        "examFitAssessment": "pass: common vocabulary and a clear public-service setting suitable for both current word-book audiences.",
+        "remainingRisk": "T2 implementation risk remains: n-3 is absent from the current identity set. The request does not authorize a specific new book reference. OP must explicitly decide book membership and initialize existing users without changing prior sense states. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+      },
+      "status": "待用户审核"
+    },
+    {
+      "batchItemId": "F-02",
+      "wordId": "visual",
+      "senseId": "adj-1",
+      "synsetId": "omw-en-02516148-s",
+      "pos": "adj.",
+      "action": "replace_existing_fields_only",
+      "currentSenses": [
+        {
+          "senseId": "adj-1",
+          "pos": "adj.",
+          "synsetId": "omw-en-02516148-s",
+          "meaning": "可见的，看得见的，能用眼睛看见的"
+        },
+        {
+          "senseId": "adj-2",
+          "pos": "adj.",
+          "synsetId": "omw-en-02869563-a",
+          "meaning": "视觉的"
+        }
+      ],
+      "currentBookReferences": [
+        {
+          "bookId": "kaoyan",
+          "existingSenseIds": [
+            "adj-1",
+            "adj-2"
+          ]
+        },
+        {
+          "bookId": "ielts",
+          "existingSenseIds": [
+            "adj-1",
+            "adj-2"
+          ]
+        }
+      ],
+      "proposedBookReferenceAction": "unchanged",
+      "review": {
+        "targetBindingAssessment": "pass_pending_user_review: visual functions as a predicate adjective meaning visible; rain and the runway provide direct visibility context.",
+        "adjacentSenseExclusion": "pass: the sentence does not describe a sight-related method, image, signal or visual faculty, so it excludes visual:adj-2 relating to or using sight.",
+        "bilingualAlignment": "pass: 始终都能看见 directly renders remained visual and does not use the ambiguous phrase 视觉接触.",
+        "sexualContentAssessment": "pass: none.",
+        "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+        "examFitAssessment": "pass_with_note: natural aviation usage supplies a strong visible-versus-sight-related distinction; the sense itself is less common than visible, so user review of register remains appropriate.",
+        "remainingRisk": "The visible sense of visual is comparatively marked/technical in modern usage. User should confirm the aviation register. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+      },
+      "status": "待用户审核"
+    }
+  ],
+  "fields": [
+    {
+      "batchItemId": "F-01",
+      "wordId": "volunteer",
+      "senseId": "n-3",
+      "synsetId": "omw-en-10759151-n",
+      "pos": "n.",
+      "action": "add",
+      "field": "meaning",
+      "candidateValue": "志愿者，义务工作者",
+      "contentId": "volunteer:n-3:meaning",
+      "oldValue": null,
+      "oldValueSha256JsonUtf8": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "candidateSha256Utf8": "0ec8f7a5360ffac113bf97b9b5100519186d0d74ad38586a7c5faeab47d4e135",
+      "candidateSha256JsonUtf8": "2c3e59ca93a847097782526aa70b7640ee0d88d90c092e6dba7432b91c772bc3",
+      "status": "待用户审核",
+      "clearance": "evidence_pending_user_review_not_cleared",
+      "evidenceRefs": [
+        "E-RUNTIME-BUNDLE-2026-08-13",
+        "E-IDENTITY-LOCK-2026-08-13",
+        "E-WORDNET-NOUN-3.0",
+        "E-WORDNET-LICENSE-3.0",
+        "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "E-CODEX-GENERATION"
+      ],
+      "targetBindingAssessment": "pass_pending_user_review: all five fields express a general person who voluntarily performs work, normally without pay; the example uses volunteer as a countable noun.",
+      "adjacentSenseExclusion": "pass: excludes current volunteer:v-1 (the act of offering), current volunteer:adj-2 (unpaid as an attribute), and military volunteer omw-en-10759331-n; no enlistment or armed-service context appears.",
+      "bilingualAlignment": "pass: the Chinese meaning/definition and translation preserve the same general volunteer sense and the unpaid-work signal.",
+      "sexualContentAssessment": "pass: none.",
+      "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+      "examFitAssessment": "pass: common vocabulary and a clear public-service setting suitable for both current word-book audiences.",
+      "remainingRisk": "T2 implementation risk remains: n-3 is absent from the current identity set. The request does not authorize a specific new book reference. OP must explicitly decide book membership and initialize existing users without changing prior sense states. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+    },
+    {
+      "batchItemId": "F-01",
+      "wordId": "volunteer",
+      "senseId": "n-3",
+      "synsetId": "omw-en-10759151-n",
+      "pos": "n.",
+      "action": "add",
+      "field": "definition",
+      "candidateValue": "a person who freely offers to do work, usually without being paid",
+      "contentId": "volunteer:n-3:definition",
+      "oldValue": null,
+      "oldValueSha256JsonUtf8": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "candidateSha256Utf8": "0f5688ed350a2304310fd7814e4b7c2019ae7560ff6672d38065b35c67845762",
+      "candidateSha256JsonUtf8": "9eb32e556e70b3e33197a203c38283cb4ade22a2e56c3c8b96f799a1f1259afc",
+      "status": "待用户审核",
+      "clearance": "evidence_pending_user_review_not_cleared",
+      "evidenceRefs": [
+        "E-RUNTIME-BUNDLE-2026-08-13",
+        "E-IDENTITY-LOCK-2026-08-13",
+        "E-WORDNET-NOUN-3.0",
+        "E-WORDNET-LICENSE-3.0",
+        "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "E-CODEX-GENERATION"
+      ],
+      "targetBindingAssessment": "pass_pending_user_review: all five fields express a general person who voluntarily performs work, normally without pay; the example uses volunteer as a countable noun.",
+      "adjacentSenseExclusion": "pass: excludes current volunteer:v-1 (the act of offering), current volunteer:adj-2 (unpaid as an attribute), and military volunteer omw-en-10759331-n; no enlistment or armed-service context appears.",
+      "bilingualAlignment": "pass: the Chinese meaning/definition and translation preserve the same general volunteer sense and the unpaid-work signal.",
+      "sexualContentAssessment": "pass: none.",
+      "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+      "examFitAssessment": "pass: common vocabulary and a clear public-service setting suitable for both current word-book audiences.",
+      "remainingRisk": "T2 implementation risk remains: n-3 is absent from the current identity set. The request does not authorize a specific new book reference. OP must explicitly decide book membership and initialize existing users without changing prior sense states. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+    },
+    {
+      "batchItemId": "F-01",
+      "wordId": "volunteer",
+      "senseId": "n-3",
+      "synsetId": "omw-en-10759151-n",
+      "pos": "n.",
+      "action": "add",
+      "field": "definitionZh",
+      "candidateValue": "自愿参加工作或服务、通常不领取报酬的人。",
+      "contentId": "volunteer:n-3:definitionZh",
+      "oldValue": null,
+      "oldValueSha256JsonUtf8": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "candidateSha256Utf8": "a647bf4bf3abdc0daa7027d76190d03b4dd5018ed42e857dc17e40f7c3bbdf0c",
+      "candidateSha256JsonUtf8": "684735d3affcd8d0222e136600bb78ca7192d272d59595520deb983a5b86c031",
+      "status": "待用户审核",
+      "clearance": "evidence_pending_user_review_not_cleared",
+      "evidenceRefs": [
+        "E-RUNTIME-BUNDLE-2026-08-13",
+        "E-IDENTITY-LOCK-2026-08-13",
+        "E-WORDNET-NOUN-3.0",
+        "E-WORDNET-LICENSE-3.0",
+        "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "E-CODEX-GENERATION"
+      ],
+      "targetBindingAssessment": "pass_pending_user_review: all five fields express a general person who voluntarily performs work, normally without pay; the example uses volunteer as a countable noun.",
+      "adjacentSenseExclusion": "pass: excludes current volunteer:v-1 (the act of offering), current volunteer:adj-2 (unpaid as an attribute), and military volunteer omw-en-10759331-n; no enlistment or armed-service context appears.",
+      "bilingualAlignment": "pass: the Chinese meaning/definition and translation preserve the same general volunteer sense and the unpaid-work signal.",
+      "sexualContentAssessment": "pass: none.",
+      "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+      "examFitAssessment": "pass: common vocabulary and a clear public-service setting suitable for both current word-book audiences.",
+      "remainingRisk": "T2 implementation risk remains: n-3 is absent from the current identity set. The request does not authorize a specific new book reference. OP must explicitly decide book membership and initialize existing users without changing prior sense states. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+    },
+    {
+      "batchItemId": "F-01",
+      "wordId": "volunteer",
+      "senseId": "n-3",
+      "synsetId": "omw-en-10759151-n",
+      "pos": "n.",
+      "action": "add",
+      "field": "example",
+      "candidateValue": "Every Saturday, the volunteer sorts donated books at the community library without receiving payment.",
+      "contentId": "volunteer:n-3:example",
+      "oldValue": null,
+      "oldValueSha256JsonUtf8": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "candidateSha256Utf8": "5695efb4052220606f6b5ca16c9dcec110a6724b100149cfd816d392314ccfd3",
+      "candidateSha256JsonUtf8": "0beb6d57aa883572d25e7b2719555c5040d5e8d4687e1b158d085f1477e113f1",
+      "status": "待用户审核",
+      "clearance": "evidence_pending_user_review_not_cleared",
+      "evidenceRefs": [
+        "E-RUNTIME-BUNDLE-2026-08-13",
+        "E-IDENTITY-LOCK-2026-08-13",
+        "E-WORDNET-NOUN-3.0",
+        "E-WORDNET-LICENSE-3.0",
+        "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "E-CODEX-GENERATION"
+      ],
+      "targetBindingAssessment": "pass_pending_user_review: all five fields express a general person who voluntarily performs work, normally without pay; the example uses volunteer as a countable noun.",
+      "adjacentSenseExclusion": "pass: excludes current volunteer:v-1 (the act of offering), current volunteer:adj-2 (unpaid as an attribute), and military volunteer omw-en-10759331-n; no enlistment or armed-service context appears.",
+      "bilingualAlignment": "pass: the Chinese meaning/definition and translation preserve the same general volunteer sense and the unpaid-work signal.",
+      "sexualContentAssessment": "pass: none.",
+      "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+      "examFitAssessment": "pass: common vocabulary and a clear public-service setting suitable for both current word-book audiences.",
+      "remainingRisk": "T2 implementation risk remains: n-3 is absent from the current identity set. The request does not authorize a specific new book reference. OP must explicitly decide book membership and initialize existing users without changing prior sense states. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+    },
+    {
+      "batchItemId": "F-01",
+      "wordId": "volunteer",
+      "senseId": "n-3",
+      "synsetId": "omw-en-10759151-n",
+      "pos": "n.",
+      "action": "add",
+      "field": "exampleZh",
+      "candidateValue": "每周六，这名志愿者都会在社区图书馆整理捐赠的图书，而且不领取报酬。",
+      "contentId": "volunteer:n-3:exampleZh",
+      "oldValue": null,
+      "oldValueSha256JsonUtf8": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+      "candidateSha256Utf8": "33644f94a872a45ed7525b06475d7ec82dc24890124c2b122124f97b62140d5c",
+      "candidateSha256JsonUtf8": "d744fbd665d7cc8cbf3c7821694beeb1ff32e4182d261d7546eb6ae91b242be7",
+      "status": "待用户审核",
+      "clearance": "evidence_pending_user_review_not_cleared",
+      "evidenceRefs": [
+        "E-RUNTIME-BUNDLE-2026-08-13",
+        "E-IDENTITY-LOCK-2026-08-13",
+        "E-WORDNET-NOUN-3.0",
+        "E-WORDNET-LICENSE-3.0",
+        "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "E-CODEX-GENERATION"
+      ],
+      "targetBindingAssessment": "pass_pending_user_review: all five fields express a general person who voluntarily performs work, normally without pay; the example uses volunteer as a countable noun.",
+      "adjacentSenseExclusion": "pass: excludes current volunteer:v-1 (the act of offering), current volunteer:adj-2 (unpaid as an attribute), and military volunteer omw-en-10759331-n; no enlistment or armed-service context appears.",
+      "bilingualAlignment": "pass: the Chinese meaning/definition and translation preserve the same general volunteer sense and the unpaid-work signal.",
+      "sexualContentAssessment": "pass: none.",
+      "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+      "examFitAssessment": "pass: common vocabulary and a clear public-service setting suitable for both current word-book audiences.",
+      "remainingRisk": "T2 implementation risk remains: n-3 is absent from the current identity set. The request does not authorize a specific new book reference. OP must explicitly decide book membership and initialize existing users without changing prior sense states. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+    },
+    {
+      "batchItemId": "F-02",
+      "wordId": "visual",
+      "senseId": "adj-1",
+      "synsetId": "omw-en-02516148-s",
+      "pos": "adj.",
+      "action": "replace",
+      "field": "example",
+      "candidateValue": "The runway remained visual throughout the final approach despite the light rain.",
+      "contentId": "visual:adj-1:example",
+      "oldValue": "The pilot maintained visual contact with the runway after the fog lifted enough to see its lights.",
+      "oldValueSha256JsonUtf8": "551673e209650715fa16a8cdb9bf78bfe75fcc30b15e5628180551b390dc6259",
+      "candidateSha256Utf8": "19827aa90a6bcdb9f7f494414caeef1440f347f65a47936c5e6318481c6284d2",
+      "candidateSha256JsonUtf8": "0494e85a5d012dc0fab9329d4aa9e9b48d36dcf676791697189a5ecb073fdd09",
+      "status": "待用户审核",
+      "clearance": "evidence_pending_user_review_not_cleared",
+      "evidenceRefs": [
+        "E-RUNTIME-BUNDLE-2026-08-13",
+        "E-IDENTITY-LOCK-2026-08-13",
+        "E-WORDNET-ADJ-3.0",
+        "E-WORDNET-LICENSE-3.0",
+        "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "E-CODEX-GENERATION"
+      ],
+      "targetBindingAssessment": "pass_pending_user_review: visual functions as a predicate adjective meaning visible; rain and the runway provide direct visibility context.",
+      "adjacentSenseExclusion": "pass: the sentence does not describe a sight-related method, image, signal or visual faculty, so it excludes visual:adj-2 relating to or using sight.",
+      "bilingualAlignment": "pass: 始终都能看见 directly renders remained visual and does not use the ambiguous phrase 视觉接触.",
+      "sexualContentAssessment": "pass: none.",
+      "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+      "examFitAssessment": "pass_with_note: natural aviation usage supplies a strong visible-versus-sight-related distinction; the sense itself is less common than visible, so user review of register remains appropriate.",
+      "remainingRisk": "The visible sense of visual is comparatively marked/technical in modern usage. User should confirm the aviation register. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+    },
+    {
+      "batchItemId": "F-02",
+      "wordId": "visual",
+      "senseId": "adj-1",
+      "synsetId": "omw-en-02516148-s",
+      "pos": "adj.",
+      "action": "replace",
+      "field": "exampleZh",
+      "candidateValue": "尽管下着小雨，在最后进近过程中始终都能看见跑道。",
+      "contentId": "visual:adj-1:exampleZh",
+      "oldValue": "当雾气消散到足以看到灯光后，飞行员与跑道保持了视觉接触。",
+      "oldValueSha256JsonUtf8": "95686d55bad453216d6489182b0ccabd26d421861f12ace3c3966e5719b0c1ad",
+      "candidateSha256Utf8": "95d91335400ba3ba3fbcbd08bbc7ad176c52ccf6123b980cfa8c54b033dd5719",
+      "candidateSha256JsonUtf8": "01e870208c5c51ba99d15f7dbd802251219ce5a2f4d506368c5d275b7828c397",
+      "status": "待用户审核",
+      "clearance": "evidence_pending_user_review_not_cleared",
+      "evidenceRefs": [
+        "E-RUNTIME-BUNDLE-2026-08-13",
+        "E-IDENTITY-LOCK-2026-08-13",
+        "E-WORDNET-ADJ-3.0",
+        "E-WORDNET-LICENSE-3.0",
+        "E-ANONYMIZED-SEMANTIC-LOCATOR",
+        "E-CODEX-GENERATION"
+      ],
+      "targetBindingAssessment": "pass_pending_user_review: visual functions as a predicate adjective meaning visible; rain and the runway provide direct visibility context.",
+      "adjacentSenseExclusion": "pass: the sentence does not describe a sight-related method, image, signal or visual faculty, so it excludes visual:adj-2 relating to or using sight.",
+      "bilingualAlignment": "pass: 始终都能看见 directly renders remained visual and does not use the ambiguous phrase 视觉接触.",
+      "sexualContentAssessment": "pass: none.",
+      "chinaPoliticsAssessment": "pass: no China-related political or ideological material.",
+      "examFitAssessment": "pass_with_note: natural aviation usage supplies a strong visible-versus-sight-related distinction; the sense itself is less common than visible, so user review of register remains appropriate.",
+      "remainingRisk": "The visible sense of visual is comparatively marked/technical in modern usage. User should confirm the aviation register. AI/provider rights evidence and user approval are still pending; this is not CLEARED."
+    }
+  ],
+  "overallRemainingRisk": "Every field remains pending user review and field-level implementation evidence. F-01 also requires an explicit book-reference and historical-user initialization decision. No field is asserted CLEARED or published."
+}

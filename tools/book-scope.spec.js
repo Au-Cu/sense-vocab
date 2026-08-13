@@ -48,7 +48,7 @@ test("the shared pool preserves the reviewed Kaoyan book and adds IELTS", async 
   );
   expect(index.words).toHaveLength(bundle.words.length);
   expect(index.words.reduce((total, word) => total + word.senses.length, 0))
-    .toBe(10244);
+    .toBe(10245);
 });
 
 test("reviewed heteronyms have distinct sourced recordings without changing stable IDs", () => {
@@ -134,7 +134,7 @@ test("plans, progress, statistics, and word lists switch by book", async ({ page
   expect(saved.bookStates.kaoyan).toBeUndefined();
 });
 
-test("a Wikimedia pronunciation exposes author, license, and source page", async ({ page }) => {
+test("a Wikimedia pronunciation keeps long attribution off the learning card", async ({ page }) => {
   await openFreshApp(page);
   await page.locator("#planButton").click();
   await page.locator("#bookSelect").selectOption("ielts");
@@ -143,19 +143,9 @@ test("a Wikimedia pronunciation exposes author, license, and source page", async
   await page.locator("#wordListButton").click();
   await page.locator(".word-list-item[data-word-id='in']").click();
 
-  const attribution = page.locator("#audioAttribution");
-  await expect(attribution).toBeVisible();
-  await expect(attribution).toContainText("录音：Speaker: Pvanp7 Recorder: Pvanp7");
-  await expect(attribution).toContainText("CC0");
-  await expect(attribution.locator("a")).toHaveCount(2);
-  await expect(attribution.locator("a").nth(0)).toHaveAttribute(
-    "href",
-    "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
-  );
-  await expect(attribution.locator("a").nth(1)).toHaveAttribute(
-    "href",
-    "https://commons.wikimedia.org/wiki/File:LL-Q1860_(eng)-Pvanp7-in_(stressed).wav",
-  );
+  await expect(page.locator("#audioAttribution")).toHaveCount(0);
+  await expect(page.locator(".audio-attribution-entry")).toHaveCount(0);
+  await expect(page.locator(".sense-attribution")).toHaveCount(0);
 });
 
 test("legacy single-book history migrates only into Kaoyan", async ({ page }) => {

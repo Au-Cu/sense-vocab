@@ -17,6 +17,7 @@ data/*
 !data/content-rights-summary.json
 !data/content-rights-ledger.jsonl
 !data/content-rights-ledger-summary.json
+!data/public-attributions.json
 !data/supabase-security-audit.json
 !data/content-change-sets/
 !data/content-change-sets/*.json

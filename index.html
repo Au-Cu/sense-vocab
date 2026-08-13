@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260813-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260813-2" />
   </head>
   <body>
     <main class="app-shell">
       <section class="study-panel" id="homePanel" aria-live="polite" aria-busy="true">
+        <p class="account-bootstrap-status" role="status">正在确认本机账户记录……</p>
         <div class="home-summary">
           <section class="home-card" aria-labelledby="todayPlanHeading">
             <p class="home-card-title" id="todayPlanHeading">今日计划</p>
@@ -180,7 +181,6 @@
               </svg>
             </button>
           </div>
-          <p class="audio-attribution" id="audioAttribution" hidden></p>
         </div>
 
         <div class="sense-area" id="senseArea" hidden>
@@ -764,7 +764,7 @@
     <script src="./legal-config.js?v=20260809-1"></script>
     <script src="./cloud-client.js?v=20260809-1"></script>
     <script src="./sync-state.js?v=20260728-3"></script>
-    <script src="./app.js?v=20260813-1"></script>
-    <script src="./account.js?v=20260808-1"></script>
+    <script src="./app.js?v=20260814-1"></script>
+    <script src="./account.js?v=20260813-2"></script>
   </body>
 </html>

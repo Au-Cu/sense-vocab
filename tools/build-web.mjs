@@ -32,6 +32,7 @@ for (const file of [
   "admin.js",
   "legal.html",
   "legal.css",
+  "legal-sources.js",
   "legal-config.js",
   "THIRD_PARTY_NOTICES.md",
   "THIRD_PARTY_LICENSES.md",
@@ -71,6 +72,10 @@ await copyFile(
 await copyFile(
   path.join(rootDir, "data", "content-rights-ledger-summary.json"),
   path.join(distDir, "data", "content-rights-ledger-summary.json"),
+);
+await copyFile(
+  path.join(rootDir, "data", "public-attributions.json"),
+  path.join(distDir, "data", "public-attributions.json"),
 );
 
 await build({

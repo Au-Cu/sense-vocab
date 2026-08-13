@@ -57,6 +57,7 @@ const SENSE_STATUS = Object.freeze({
   MASTERED: "mastered",
 });
 const CONTENT_ADDED_SENSE_KEYS = new Set([
+  "volunteer:n-3",
   "prepare:v-2",
   "pension:n-2",
   "port:n-4",
@@ -171,7 +172,6 @@ const confusionSearchResults = document.querySelector("#confusionSearchResults")
 const wordText = document.querySelector("#wordText");
 const revealButton = document.querySelector("#revealButton");
 const audioButton = document.querySelector("#audioButton");
-const audioAttribution = document.querySelector("#audioAttribution");
 const senseArea = document.querySelector("#senseArea");
 const morphologyPanel = document.querySelector("#morphologyPanel");
 const senseHint = document.querySelector("#senseHint");
@@ -261,6 +261,8 @@ let audioPlaybackGeneration = 0;
 let lastAutoPlayedCardKey = null;
 let soundContext = null;
 let wordFitFrame = null;
+let renderedStudyCardKey = null;
+let studyScrollResetFrame = null;
 let pendingCrossDayReturn = false;
 let midnightRefreshTimer = null;
 let wordListQuery = "";
@@ -2030,28 +2032,6 @@ function exampleTranslation(sense) {
   return sense.exampleZh ? `译文：${sense.exampleZh}` : "";
 }
 
-function exampleAttribution(sense) {
-  const source = String(sense.exampleSource ?? "").toLowerCase();
-  if (!source) return "";
-  if (source.includes("tatoeba")) {
-    const sentence = sense.exampleSourceId ? ` #${sense.exampleSourceId}` : "";
-    const owner = sense.exampleOwner ? ` · ${sense.exampleOwner}` : "";
-    const license = sense.exampleLicense ? ` · ${sense.exampleLicense}` : "";
-    return `来源：Tatoeba${sentence}${owner}${license}`;
-  }
-  if (source.includes("kaikki") || source.includes("wiktionary")) {
-    const label = source.includes("quotation") ? "Wiktionary/Kaikki 引文" : "Wiktionary/Kaikki";
-    return `来源：${label}${sense.exampleLicense ? ` · ${sense.exampleLicense}` : ""}`;
-  }
-  if (source.includes("semcor")) {
-    return "来源：SemCor 3.0（Brown Corpus 衍生；商业权利尚未确认）";
-  }
-  if (source.includes("wordnet")) {
-    return `来源：Princeton WordNet${sense.exampleLicense ? ` · ${sense.exampleLicense}` : ""}`;
-  }
-  return "";
-}
-
 function normalizeIpa(value) {
   return String(value ?? "")
     .trim()
@@ -2106,43 +2086,6 @@ function audioRecordingsForWord(word) {
   });
 
   return recordings;
-}
-
-function renderAudioAttribution(word) {
-  audioAttribution.replaceChildren();
-  audioAttribution.hidden = true;
-  const recordings = audioRecordingsForWord(word)
-    .filter(({ sense }) => (
-      sense.audioAuthor && sense.audioLicense && sense.audioSourcePage
-    ));
-  if (!recordings.length) return;
-
-  recordings.forEach(({ sense }, index) => {
-    if (index > 0) audioAttribution.append(document.createElement("br"));
-    const entry = document.createElement("span");
-    entry.className = "audio-attribution-entry";
-    const recordingLabel = recordings.length > 1 ? `录音 ${index + 1}` : "录音";
-    entry.append(document.createTextNode(`${recordingLabel}：${sense.audioAuthor} · `));
-    if (sense.audioLicenseUrl) {
-      const licenseLink = document.createElement("a");
-      licenseLink.href = sense.audioLicenseUrl;
-      licenseLink.target = "_blank";
-      licenseLink.rel = "noopener noreferrer";
-      licenseLink.textContent = sense.audioLicense;
-      entry.append(licenseLink);
-    } else {
-      entry.append(document.createTextNode(sense.audioLicense));
-    }
-    entry.append(document.createTextNode(" · "));
-    const sourceLink = document.createElement("a");
-    sourceLink.href = sense.audioSourcePage;
-    sourceLink.target = "_blank";
-    sourceLink.rel = "noopener noreferrer";
-    sourceLink.textContent = "来源页";
-    entry.append(sourceLink);
-    audioAttribution.append(entry);
-  });
-  audioAttribution.hidden = false;
 }
 
 function progressFor(key) {
@@ -2350,7 +2293,16 @@ function canStartAdvanceStudy() {
 function render() {
   if (!state) return;
 
-  ensureTodaySession();
+  const session = ensureTodaySession();
+  const studyCard = state.view === "study" ? currentCard() : null;
+  const studyCardKey = state.view !== "study"
+    ? null
+    : state.wordBrowse
+      ? `browse:${state.wordBrowse.wordId}`
+      : studyCard
+        ? `session:${session.studyDate}:${session.currentIndex}:${studyCard.wordId}`
+        : `finished:${session.studyDate}:${session.currentIndex}:${session.queue.length}`;
+  const studyCardChanged = studyCardKey !== null && studyCardKey !== renderedStudyCardKey;
   homePanel.hidden = state.view !== "home";
   studyPanel.hidden = state.view !== "study";
   wordListPanel.hidden = state.view !== "word-list";
@@ -2359,6 +2311,28 @@ function render() {
   renderStudy();
   if (state.view === "word-list") renderWordList();
   if (state.view === "confusion") renderConfusionPanel();
+  renderedStudyCardKey = studyCardKey;
+  if (studyCardChanged) resetStudyScrollPosition();
+}
+
+function resetStudyScrollPosition() {
+  const reset = () => {
+    const scrollingElement = document.scrollingElement;
+    if (scrollingElement) {
+      scrollingElement.scrollLeft = 0;
+      scrollingElement.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
+  };
+
+  reset();
+  if (studyScrollResetFrame !== null) {
+    window.cancelAnimationFrame(studyScrollResetFrame);
+  }
+  studyScrollResetFrame = window.requestAnimationFrame(() => {
+    studyScrollResetFrame = null;
+    reset();
+  });
 }
 
 function fitWordText() {
@@ -2578,13 +2552,13 @@ function wordLearningInfo(word) {
     })
     .map(([date]) => date)
     .filter(isDate);
-  const encounterDates = [
+  const encounterDates = [...new Set([
     ...actualProgressDates,
     ...activityDates,
     ...(actualProgressDates.length || activityDates.length
       ? []
       : legacyProgressDates),
-  ].sort();
+  ])].sort();
   const firstLearned = encounterDates[0] ?? null;
   const lastLearned = encounterDates.at(-1) ?? null;
 
@@ -2596,9 +2570,7 @@ function wordLearningInfo(word) {
   });
   const mastered = keys.length > 0 && masteredDates.every(Boolean);
   const masteredOn = mastered ? masteredDates.sort().at(-1) : null;
-  const duration = firstLearned
-    ? daysBetween(firstLearned, masteredOn ?? lastLearned ?? firstLearned) + 1
-    : 0;
+  const duration = encounterDates.length;
   const introducedOrder = state.introducedWords.indexOf(word.id);
 
   return {
@@ -2782,7 +2754,6 @@ function renderStudy() {
     senseArea.hidden = true;
     nextButton.disabled = true;
     audioButton.hidden = true;
-    renderAudioAttribution(null);
     revealButton.disabled = true;
     revealButton.classList.remove("is-finished", "is-mastered");
     wordText.textContent = "正在加载学习内容";
@@ -2834,7 +2805,6 @@ function renderStudy() {
     "aria-label",
     recordingCount > 1 ? `依次播放全部 ${recordingCount} 条可用录音` : "播放读音",
   );
-  renderAudioAttribution(finished ? null : word);
   revealButton.disabled = finished;
   revealButton.classList.toggle("is-finished", finished);
   revealButton.classList.toggle("is-mastered", fullyMastered);
@@ -2978,13 +2948,6 @@ function renderStudy() {
       translation.className = "sense-example-zh";
       translation.textContent = exampleTranslation(sense);
       exampleGroup.append(example, translation);
-      const attributionText = exampleAttribution(sense);
-      if (attributionText) {
-        const attribution = document.createElement("span");
-        attribution.className = "sense-attribution";
-        attribution.textContent = attributionText;
-        exampleGroup.append(attribution);
-      }
       copy.append(definitionGroup, exampleGroup);
     }
 
@@ -5227,7 +5190,6 @@ async function initializeApp() {
     advanceStudyButton.disabled = true;
   }
   moreButton.disabled = false;
-  homePanel.setAttribute("aria-busy", "false");
   document.documentElement.dataset.appReady = "true";
   window.dispatchEvent(new CustomEvent("sensevocab:app-ready"));
   maybeStartAutomaticTutorial();

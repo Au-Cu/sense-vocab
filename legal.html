@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex,follow" />
     <title>条款、隐私与内容来源｜义项背词</title>
-    <link rel="stylesheet" href="./legal.css" />
+    <link rel="stylesheet" href="./legal.css?v=20260813-1" />
   </head>
   <body>
     <main class="legal-shell">
@@ -13,7 +13,7 @@
         <a class="back-link" href="./index.html">返回应用</a>
         <p class="eyebrow">免费测试版</p>
         <h1>条款、隐私与内容来源</h1>
-        <p class="updated">版本：2026-08-09-v3　生效日期：2026 年 8 月 9 日</p>
+        <p class="updated">版本：2026-08-13-v1　生效日期：2026 年 8 月 13 日</p>
       </header>
 
       <nav class="legal-nav" aria-label="本页目录">
@@ -161,6 +161,65 @@
           公告图片发布时必须逐项绑定权利元数据。收到可信权利通知后，管理员先把公告切换为不可公开读取的
           “下架处理中”，再删除公开存储对象并完成下架；来源、处理理由和审计记录继续按争议处理需要留存。
         </p>
+
+        <h3>项目级声明</h3>
+        <div class="source-notice-grid">
+          <article>
+            <h4>Princeton WordNet 3.0</h4>
+            <p>WordNet 3.0 Copyright 2006 by Princeton University. All rights reserved.</p>
+            <p>
+              复制、修改或分发时须保留完整版权、许可条件和免责声明，且不得以 Princeton 名称作宣传背书。
+              <a href="https://wordnet.princeton.edu/license-and-commercial-use" target="_blank" rel="noopener">官方许可</a>、
+              <a href="./THIRD_PARTY_LICENSES.md" target="_blank" rel="noopener">发行包内完整许可文本</a>。
+            </p>
+          </article>
+          <article>
+            <h4>Tatoeba</h4>
+            <p>
+              项目级来源见 <a href="https://tatoeba.org/" target="_blank" rel="noopener">Tatoeba</a>；
+              逐句作者状态、CC BY 2.0 FR 许可和句子页见下方目录。
+            </p>
+          </article>
+          <article>
+            <h4>Wiktionary / Kaikki</h4>
+            <p>
+              本项目对当前冻结数据选择 CC BY-SA 4.0 路径。修改后的适用文本继续遵守署名与相同方式共享；
+              逐项词条页、历史页和修改说明见下方目录。
+            </p>
+          </article>
+          <article>
+            <h4>CC0 与公有领域</h4>
+            <p>法律上无需署名的录音仍保留作者或文件页指定署名方、Commons 文件页与许可标记，作为礼貌性来源说明。</p>
+          </article>
+        </div>
+
+        <h3>仍未完成权利确认</h3>
+        <p class="notice">
+          SemCor、quotation 和 semantic 来源的既有权利问题仍保持 BLOCKER。把学习卡上的长警告迁移到本页，
+          不表示已经获得授权、完成商业清关或可以用于收费发行；当前全局商业发行结论仍为不可发行。
+        </p>
+
+        <h3>逐资产来源目录</h3>
+        <p id="sourceCatalogSummary">正在读取公开来源目录……</p>
+        <div class="source-catalog-controls">
+          <label for="sourceCatalogSearch">
+            <span>按单词、义项或内容 ID 查询</span>
+            <input id="sourceCatalogSearch" type="search" autocomplete="off" disabled />
+          </label>
+          <label for="sourceCatalogKind">
+            <span>资产类型</span>
+            <select id="sourceCatalogKind" disabled>
+              <option value="all">全部</option>
+              <option value="audio">录音</option>
+              <option value="example">例句</option>
+            </select>
+          </label>
+        </div>
+        <p class="source-catalog-status" id="sourceCatalogStatus" role="status" aria-live="polite">
+          正在加载……
+        </p>
+        <div class="source-catalog-list" id="sourceCatalogList"></div>
+        <button class="source-catalog-more" id="sourceCatalogMore" type="button" hidden>显示更多</button>
       </section>
 
       <section id="contact">
@@ -177,5 +236,6 @@
         </p>
       </section>
     </main>
+    <script src="./legal-sources.js?v=20260813-1" defer></script>
   </body>
 </html>

@@ -294,3 +294,81 @@ test("approved new senses are visible together on desktop and mobile", async ({ 
   await expect(page.locator("#wordListPanel")).toBeVisible();
   await expect(page.locator("#wordSearchInput")).toHaveValue("sanction");
 });
+
+test("approved volunteer noun and visual example stay bound to both books", async ({ page }) => {
+  const response = await page.request.get(`${APP_URL}data/vocabulary-bundle.json`);
+  expect(response.ok()).toBeTruthy();
+  const bundle = await response.json();
+  const volunteer = byWord(bundle.words, "volunteer");
+  const volunteerNoun = volunteer.senses.find((sense) => sense.id === "n-3");
+  expect(volunteerNoun).toMatchObject({
+    pos: "n.",
+    meaning: "志愿者，义务工作者",
+    synsetId: "omw-en-10759151-n",
+    humanReviewStatus: "approved",
+  });
+  expect(volunteerNoun.definition).toBe(
+    "a person who freely offers to do work, usually without being paid",
+  );
+  expect(volunteerNoun.exampleZh).toBe(
+    "每周六，这名志愿者都会在社区图书馆整理捐赠的图书，而且不领取报酬。",
+  );
+
+  for (const bookId of ["kaoyan", "ielts"]) {
+    const entry = bundle.books.find((book) => book.id === bookId)
+      .entries.find((candidate) => candidate.wordId === "volunteer");
+    expect(entry.senseIds).toEqual(["v-1", "adj-2", "n-3"]);
+  }
+
+  const visual = byWord(bundle.words, "visual").senses.find(
+    (sense) => sense.id === "adj-1",
+  );
+  expect(visual.example).toBe(
+    "The runway remained visual throughout the final approach despite the light rain.",
+  );
+  expect(visual.exampleZh).toBe(
+    "尽管下着小雨，在最后进近过程中始终都能看见跑道。",
+  );
+});
+
+test("approved volunteer and visual content is visible while present remains available", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto(APP_URL);
+  await page.waitForFunction(() =>
+    document.documentElement.dataset.vocabularyReady === "true"
+  );
+  await page.locator("#wordListButton").click();
+
+  const openWordCard = async (wordId) => {
+    await page.locator("#wordSearchInput").fill(wordId);
+    const target = page.locator(`.word-list-item[data-word-id="${wordId}"]`);
+    await expect(target).toHaveCount(1);
+    await target.click();
+    await expect(page.locator("#wordText")).toHaveText(wordId);
+  };
+  const returnToList = async () => {
+    await page.locator("#exitStudyButton").click();
+    await expect(page.locator("#wordListPanel")).toBeVisible();
+  };
+
+  await openWordCard("volunteer");
+  await expect(page.locator('.sense-item[data-key="volunteer:n-3"]')).toHaveCount(1);
+  await expect(page.locator("#senseArea")).toContainText(
+    "a person who freely offers to do work, usually without being paid",
+  );
+  await returnToList();
+
+  await openWordCard("visual");
+  await expect(page.locator('.sense-item[data-key="visual:adj-1"]')).toContainText(
+    "The runway remained visual throughout the final approach despite the light rain.",
+  );
+  await returnToList();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openWordCard("present");
+  await expect(page.locator('.sense-item[data-key="present:adj-6"]')).toHaveCount(1);
+  await expect(page.locator('.sense-item[data-key="present:adj-6"]')).toContainText("出席的");
+  await page.waitForFunction(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth
+  );
+});

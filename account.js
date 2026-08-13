@@ -669,6 +669,7 @@
 
   function announceAccountReady() {
     document.documentElement.dataset.accountReady = "true";
+    document.querySelector("#homePanel")?.setAttribute("aria-busy", "false");
     window.dispatchEvent(new CustomEvent("sensevocab:account-ready"));
   }
 
@@ -1285,6 +1286,10 @@
     if (!await ensureLegalConsent(session)) return;
 
     currentUser = user;
+    const accountCache = app.getAccountState(user.id);
+    app.activateAccount(user.id, accountCache);
+    announceAccountScope(user);
+    setSyncStatus("本机账户记录已加载，正在核对云端…", "pending");
     setMessage("正在读取云端记录……");
     showPrimaryAccountView();
 
@@ -1295,7 +1300,6 @@
         refreshNotifications({ silent: true }),
       ]);
       const remote = normalizedRemote(remoteResult);
-      const accountCache = app.getAccountState(user.id);
       const syncMeta = loadSyncMeta(user.id);
       const guestState = app.getGuestState();
       const accountHasUnsyncedData = Boolean(syncMeta.dirty) &&

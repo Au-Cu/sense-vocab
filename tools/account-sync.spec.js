@@ -47,10 +47,12 @@ async function waitForAccount(page) {
   });
 }
 
-async function installFakeCloud(page, remote = null) {
-  await page.addInitScript((initialRemote) => {
+async function installFakeCloud(page, remote = null, options = {}) {
+  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs }) => {
     window.__fakeCloud = {
       remote: initialRemote,
+      session: persistedSession,
+      loadStateDelayMs,
       saves: [],
       signOuts: 0,
       signUps: [],
@@ -93,7 +95,7 @@ async function installFakeCloud(page, remote = null) {
     };
     window.__SENSE_VOCAB_CLOUD_FACTORY__ = () => ({
       async getSession() {
-        return null;
+        return window.__fakeCloud.session;
       },
       onAuthStateChange() {
         return { data: { subscription: { unsubscribe() {} } } };
@@ -124,11 +126,10 @@ async function installFakeCloud(page, remote = null) {
         return {};
       },
       async signIn(email) {
-        return {
-          session: {
-            user: { id: "user-1", email },
-          },
+        window.__fakeCloud.session = {
+          user: { id: "user-1", email },
         };
+        return { session: window.__fakeCloud.session };
       },
       async sendPasswordRecoveryOtp(email) {
         window.__fakeCloud.recoveryRequests.push(email);
@@ -149,6 +150,7 @@ async function installFakeCloud(page, remote = null) {
       },
       async signOut() {
         window.__fakeCloud.signOuts += 1;
+        window.__fakeCloud.session = null;
       },
       async loadLegalConsents() {
         return { complete: window.__fakeCloud.legalComplete };
@@ -178,6 +180,11 @@ async function installFakeCloud(page, remote = null) {
       },
       async loadState() {
         window.__fakeCloud.loadStateCalls += 1;
+        if (window.__fakeCloud.loadStateDelayMs > 0) {
+          await new Promise((resolve) => {
+            setTimeout(resolve, window.__fakeCloud.loadStateDelayMs);
+          });
+        }
         return window.__fakeCloud.remote ?? {
           found: false,
           revision: 0,
@@ -239,7 +246,11 @@ async function installFakeCloud(page, remote = null) {
         return { ok: true, id: "feedback-1" };
       },
     });
-  }, remote);
+  }, {
+    initialRemote: remote,
+    persistedSession: options.session ?? null,
+    loadStateDelayMs: options.loadStateDelayMs ?? 0,
+  });
 }
 
 async function openAccount(page) {
@@ -787,6 +798,60 @@ test("recommended conflict merge persists the converged state locally and remote
   } finally {
     await reloadedContext.close();
   }
+});
+
+test("reload hides guest progress and restores the account cache before cloud convergence", async ({ page }) => {
+  const guestState = makeState(10);
+  guestState.introducedWords = ["abandon"];
+  const accountState = makeState(40);
+  accountState.introducedWords = ["act", "ability"];
+  await installFakeCloud(page, {
+    found: true,
+    revision: 8,
+    state: accountState,
+  }, {
+    session: { user: { id: "user-1", email: "member@example.com" } },
+    loadStateDelayMs: 800,
+  });
+  await page.addInitScript(({ guestKey, accountKey, guest, account }) => {
+    localStorage.setItem(guestKey, JSON.stringify(guest));
+    localStorage.setItem(accountKey, JSON.stringify(account));
+  }, {
+    guestKey: STORAGE_KEY,
+    accountKey: ACCOUNT_KEY,
+    guest: guestState,
+    account: accountState,
+  });
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await expect.poll(() => page.evaluate(() => {
+    return window.SenseVocabApp.getActiveStorageKey();
+  }), { timeout: 500 }).toBe(ACCOUNT_KEY);
+
+  const duringBootstrap = await page.evaluate(() => ({
+    accountReady: document.documentElement.dataset.accountReady ?? null,
+    activeWords: window.SenseVocabApp.getState().introducedWords,
+    homeSummaryDisplay: getComputedStyle(document.querySelector(".home-summary")).display,
+    homeCardDisplay: getComputedStyle(document.querySelector(".home-card")).display,
+    planButtonDisplay: getComputedStyle(document.querySelector("#planButton")).display,
+    homeBusy: document.querySelector("#homePanel").getAttribute("aria-busy"),
+  }));
+  expect(duringBootstrap.accountReady).toBeNull();
+  expect(duringBootstrap.activeWords.sort()).toEqual(["ability", "act"]);
+  expect(duringBootstrap.homeSummaryDisplay).not.toBe("none");
+  expect(duringBootstrap.homeCardDisplay).toBe("none");
+  expect(duringBootstrap.planButtonDisplay).not.toBe("none");
+  expect(duringBootstrap.homeBusy).toBe("true");
+
+  await waitForAccount(page);
+  await expect(page.locator(".home-summary")).toBeVisible();
+  await expect(page.locator("#homeCompletedWords")).toHaveText("2");
+  await expect(page.locator("#homePanel")).toHaveAttribute("aria-busy", "false");
+  const persisted = await page.evaluate((accountKey) => {
+    return JSON.parse(localStorage.getItem(accountKey)).introducedWords;
+  }, ACCOUNT_KEY);
+  expect(persisted.sort()).toEqual(["ability", "act"]);
 });
 
 test("a CAS conflict automatically merges independent device learning", async ({ page }) => {

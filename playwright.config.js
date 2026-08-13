@@ -15,6 +15,7 @@ module.exports = defineConfig({
     "confusion-globe.spec.js",
     "vocabulary-feedback.spec.js",
     "compliance-rights.spec.js",
+    "public-attribution.spec.js",
   ],
   fullyParallel: false,
   workers: 1,

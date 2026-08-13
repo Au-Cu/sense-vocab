@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 2,
+  "batchId": "OP-FB-2026-08-13-C",
+  "purpose": "Apply the user-approved CD feedback batch without changing existing stable identities or deleting user data.",
+  "sourcePackage": {
+    "path": "data/content-change-sets/op-fb-2026-08-13-c-source.json",
+    "sha256": "75a716f29fa02c88d555e3c4595e4005c56f2101d2b940007536fe78733d3e0f",
+    "inputManifestSha256": "32f34fecad69a70b45f2463e3fa1dd8e255a332c38f92ae0315893c773592fb7",
+    "outputManifestSha256": "e48424e1b2b29addf2e03a770448999d287b504a59ec9f4170c69c43055553d7"
+  },
+  "baseline": {
+    "commit": "a38a0afa159d4188acd2bbdd345530db68fca7f6",
+    "runtimeBundleSha256": "f72dd2c51d0140cc4d3332c45c2a93e6793489beed1eba17d9d4e4367d1944e6",
+    "identityLockSha256": "c8653642102e5433fcc0312d359fe380695b5ea02442b0f2cfac56103b0cce30",
+    "wordCount": 6607,
+    "senseCount": 10244
+  },
+  "review": {
+    "status": "approved",
+    "reviewerRole": "product owner",
+    "reviewedAt": "2026-08-13T16:08:35.9821869Z",
+    "scope": "all candidate fields, stable identities, both approved book references, and one display field that exactly reuses the approved definition text"
+  },
+  "compatibility": {
+    "strategy": "explicit-new-sense-initialization",
+    "addedSenseKeys": [
+      "volunteer:n-3"
+    ],
+    "behavior": "Existing introduced words initialize approved added senses as selectable new senses and retain every prior sense state."
+  },
+  "generation": {
+    "supplier": "OpenAI",
+    "model": "Codex, GPT-5-based",
+    "visibleVersion": "Exact deployment snapshot is not exposed in this runtime",
+    "weightsSource": "OpenAI-hosted proprietary model; weights not available to this task",
+    "generationSession": "op-feedback-2026-08-13",
+    "prompt": "Batch op-feedback-2026-08-13. For every item, lock the supplied batch item ID, wordId, senseId, POS, synset and target meaning before writing. Use the local WordNet 3.0 synset only as a licensed semantic anchor and use the current runtime entry only to identify existing and adjacent senses; do not copy any dictionary example, feedback wording, web result, paid content or legacy high-risk field. Independently create only the requested fields. Each field and the combined set must express the target sense, and each example must use the target word in the target part of speech and sense with enough context to exclude adjacent senses. Chinese must be concise, natural and faithful. Do not generate sexual content unless unavoidable for the target sense, and do not use China-related political or ideological material. Return field-level candidates, hashes, evidence references, target-binding review, adjacent-sense exclusion, D-019 assessments and residual risks. F-01: propose volunteer:n-3, noun, omw-en-10759151-n, a general person who freely does work, usually unpaid; exclude the military volunteer synset omw-en-10759331-n and the current verb/adjective senses. Generate meaning, definition, definitionZh, example and exampleZh. F-02: replace visual:adj-1 example and exampleZh for omw-en-02516148-s meaning visible; exclude visual:adj-2 relating to or using sight.",
+    "promptSha256Utf8": "94f71a1cd0838e1e4d035cb581f8faadb70e68b5d9fcca7ebc2780c2816acd6a"
+  },
+  "rights": {
+    "outputAuthor": "Sense Vocab product owner as output rightsholder; draft generated with OpenAI Codex and human-reviewed",
+    "outputRightsBasis": "OpenAI Terms of Use, Content section, or OpenAI Services Agreement sections 4.1-4.4, as applicable",
+    "outputRightsUrl": "https://openai.com/policies/row-terms-of-use/",
+    "alternativeBusinessTermsUrl": "https://openai.com/policies/services-agreement/",
+    "alternativeBusinessTermsEffectiveAt": "2026-01-01",
+    "outputRightsEffectiveAt": "2026-01-01",
+    "outputRightsAccessedAt": "2026-08-12",
+    "outputRightsEvidenceSummary": "OpenAI Terms of Use (accessed 2026-08-12), Content: the user retains rights in Input; as between the user and OpenAI, the user owns Output and OpenAI assigns its rights in Output; Output may not be unique and must be evaluated for accuracy and appropriateness before use or sharing.",
+    "outputRightsEvidenceSha256Utf8": "e49e27f7882fa78bc4aa3b1b389c9eb1b07f836a3a9bdbd7d6491b2a9c6ee84a",
+    "permittedUses": [
+      "commercial use",
+      "modification",
+      "local caching",
+      "public display",
+      "redistribution as part of Sense Vocab"
+    ],
+    "obligations": [
+      "retain this generation and review record",
+      "do not represent AI output as exclusively human-generated",
+      "evaluate accuracy and appropriateness before publication"
+    ],
+    "wordnet": {
+      "author": "Princeton University",
+      "license": "WordNet Release 3.0 License",
+      "sourceUrl": "https://wordnet.princeton.edu/license-and-commercial-use",
+      "localEvidence": "docs/licenses/wordnet-3.0-LICENSE.txt",
+      "localEvidenceSha256": "ff9698aef1589e32099a19a7bcaeb2f6284020ed13d9a3e47584258737d0bd46"
+    },
+    "cmudict": {
+      "author": "Carnegie Mellon University",
+      "license": "CMUdict BSD-style License",
+      "sourceUrl": "https://github.com/cmusphinx/cmudict",
+      "localEvidence": "docs/licenses/cmudict-LICENSE.txt",
+      "localEvidenceSha256": "f44d2ded77781dc1e5529fd2a3d62d9767eff9ca0c50ea913634526a646163c8"
+    },
+    "inputMaterials": [
+      "project-owned stable wordId and senseId values",
+      "anonymized issue categories used only as problem signals, without copying feedback text",
+      "WordNet 3.0 semantic identity evidence under the recorded license"
+    ],
+    "residualRisk": "The service does not disclose the exact model snapshot and AI output may not be unique. Human review and field-level hashes mitigate reproducibility and similarity risk; this is not global commercial clearance for historical content. The exact model deployment snapshot remains undisclosed; the reviewed source package and field hashes preserve this batch's evidence.",
+    "sourcePackage": "data/content-change-sets/op-fb-2026-08-13-c-source.json",
+    "sourcePackageSha256": "75a716f29fa02c88d555e3c4595e4005c56f2101d2b940007536fe78733d3e0f"
+  },
+  "counts": {
+    "approvedCandidateFields": 7,
+    "derivedImplementationFields": 1,
+    "identityFields": 2,
+    "items": 2
+  },
+  "items": [
+    {
+      "itemId": "F-01",
+      "wordId": "volunteer",
+      "senseId": "n-3",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 94,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "志愿者，义务工作者",
+        "definition": "a person who freely offers to do work, usually without being paid",
+        "definitionZh": "自愿参加工作或服务、通常不领取报酬的人。",
+        "example": "Every Saturday, the volunteer sorts donated books at the community library without receiving payment.",
+        "exampleZh": "每周六，这名志愿者都会在社区图书馆整理捐赠的图书，而且不领取报酬。",
+        "definitionSentence": "a person who freely offers to do work, usually without being paid",
+        "pos": "n.",
+        "synsetId": "omw-en-10759151-n"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "0ec8f7a5360ffac113bf97b9b5100519186d0d74ad38586a7c5faeab47d4e135",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE-2026-08-13",
+            "E-IDENTITY-LOCK-2026-08-13",
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-GENERATION"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "0f5688ed350a2304310fd7814e4b7c2019ae7560ff6672d38065b35c67845762",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE-2026-08-13",
+            "E-IDENTITY-LOCK-2026-08-13",
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-GENERATION"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a647bf4bf3abdc0daa7027d76190d03b4dd5018ed42e857dc17e40f7c3bbdf0c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE-2026-08-13",
+            "E-IDENTITY-LOCK-2026-08-13",
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-GENERATION"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "5695efb4052220606f6b5ca16c9dcec110a6724b100149cfd816d392314ccfd3",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE-2026-08-13",
+            "E-IDENTITY-LOCK-2026-08-13",
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-GENERATION"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "33644f94a872a45ed7525b06475d7ec82dc24890124c2b122124f97b62140d5c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE-2026-08-13",
+            "E-IDENTITY-LOCK-2026-08-13",
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-GENERATION"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "0f5688ed350a2304310fd7814e4b7c2019ae7560ff6672d38065b35c67845762",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "volunteer:n-3:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fd015ca8e8a88222543c451795ff0646833ce032e87a2bc186c4d3e42d2d8248",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "ccd4b80de9e221ef7b183fc554f3d69581f90ab771c60bb44bd79483eb43dde2",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-02",
+      "wordId": "visual",
+      "senseId": "adj-1",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "example": "The runway remained visual throughout the final approach despite the light rain.",
+        "exampleZh": "尽管下着小雨，在最后进近过程中始终都能看见跑道。"
+      },
+      "expectedOldValueSha256": {
+        "example": "551673e209650715fa16a8cdb9bf78bfe75fcc30b15e5628180551b390dc6259",
+        "exampleZh": "95686d55bad453216d6489182b0ccabd26d421861f12ace3c3966e5719b0c1ad"
+      },
+      "fieldEvidence": {
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "19827aa90a6bcdb9f7f494414caeef1440f347f65a47936c5e6318481c6284d2",
+          "oldValueSha256": "551673e209650715fa16a8cdb9bf78bfe75fcc30b15e5628180551b390dc6259",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE-2026-08-13",
+            "E-IDENTITY-LOCK-2026-08-13",
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-GENERATION"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "95d91335400ba3ba3fbcbd08bbc7ad176c52ccf6123b980cfa8c54b033dd5719",
+          "oldValueSha256": "95686d55bad453216d6489182b0ccabd26d421861f12ace3c3966e5719b0c1ad",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE-2026-08-13",
+            "E-IDENTITY-LOCK-2026-08-13",
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0",
+            "E-ANONYMIZED-SEMANTIC-LOCATOR",
+            "E-CODEX-GENERATION"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    }
+  ],
+  "noChangeItems": []
+}
