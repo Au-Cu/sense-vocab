@@ -1182,6 +1182,10 @@ test("reload hides guest progress and restores the account cache before cloud co
   expect(duringBootstrap.studyPanelInert).toBe(true);
   expect(duringBootstrap.homeBusy).toBe("true");
   expect(duringBootstrap.documentWidth).toBeLessThanOrEqual(duringBootstrap.viewportWidth);
+  await expect(page.locator("#bootScreen .boot-brand")).toHaveAttribute(
+    "src",
+    "./assets/app-icon-zoomed.png",
+  );
   await page.screenshot({ path: "test-results/boot-screen-mobile.png", fullPage: true });
 
   await waitForAccount(page);
