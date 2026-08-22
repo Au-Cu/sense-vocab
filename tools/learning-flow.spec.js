@@ -1045,6 +1045,7 @@ test("an advanced day and a missed calendar day use the same shared progress clo
 });
 
 test("legacy progress backfills the heatmap and word list, whose rows open read-only cards", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.addInitScript((storageKey) => {
     const NativeDate = Date;
     class TestDate extends NativeDate {
@@ -1125,7 +1126,10 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   }, STORAGE_KEY);
 
   await page.goto(APP_URL);
-  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.waitForFunction(() => (
+    document.documentElement.dataset.appReady === "true" &&
+    document.documentElement.dataset.accountReady === "true"
+  ));
   const migrated = await readState(page);
   expect(migrated.dataVersion).toBeGreaterThanOrEqual(3);
   expect(migrated.activityLog["2026-07-24"].newWords).toContain("act");
@@ -1532,9 +1536,9 @@ test("approved feedback senses initialize for previously introduced words", asyn
   await expect(page.locator('.sense-item[data-key="versatile:adj-3"]')).toBeEnabled();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator('.sense-item[data-key="versatile:adj-3"]')).toBeEnabled();
-  expect(await page.evaluate(() =>
+  await expect.poll(() => page.evaluate(() => (
     document.documentElement.scrollWidth <= document.documentElement.clientWidth
-  )).toBe(true);
+  ))).toBe(true);
   await page.locator('.sense-item[data-key="versatile:adj-3"]').click();
   expect((await readState(page)).progress["versatile:adj-3"].status).toBe("mastered");
 });

@@ -549,6 +549,9 @@
                 <strong>合并两边记录</strong>
                 <span>推荐，不遗漏任一侧已有进度</span>
               </button>
+              <button class="secondary-button" id="exportConflictLocalButton" type="button">
+                先导出本机记录
+              </button>
             </div>
             <details class="sync-conflict-advanced">
               <summary>高级选项：只保留其中一份</summary>
@@ -699,6 +702,9 @@
           <div class="account-data-actions" id="accountDataActions">
             <button class="plain-button" id="exportDataButton" type="button">导出学习数据</button>
             <button class="plain-button" id="importDataButton" type="button">导入学习数据</button>
+            <button class="plain-button" id="recoverGuestDataButton" type="button" hidden>
+              查看本机保留记录
+            </button>
             <input id="importDataInput" type="file" accept="application/json,.json" hidden />
           </div>
           <button class="plain-button" id="closeAccountButton" type="button">关闭</button>
@@ -763,8 +769,8 @@
     <script src="./cloud-config.js?v=20260728-2"></script>
     <script src="./legal-config.js?v=20260809-1"></script>
     <script src="./cloud-client.js?v=20260809-1"></script>
-    <script src="./sync-state.js?v=20260728-3"></script>
-    <script src="./app.js?v=20260814-1"></script>
-    <script src="./account.js?v=20260813-2"></script>
+    <script src="./sync-state.js?v=20260822-1"></script>
+    <script src="./app.js?v=20260822-1"></script>
+    <script src="./account.js?v=20260822-1"></script>
   </body>
 </html>

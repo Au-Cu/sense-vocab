@@ -49,6 +49,9 @@
   const cancelDeleteAccountButton = document.querySelector("#cancelDeleteAccountButton");
   const deleteAccountConfirmation = document.querySelector("#deleteAccountConfirmation");
   const mergeStateButton = document.querySelector("#mergeStateButton");
+  const exportConflictLocalButton = document.querySelector(
+    "#exportConflictLocalButton",
+  );
   const useCloudStateButton = document.querySelector("#useCloudStateButton");
   const useLocalStateButton = document.querySelector("#useLocalStateButton");
   const cloudRecordLatest = document.querySelector("#cloudRecordLatest");
@@ -62,6 +65,7 @@
   );
   const exportDataButton = document.querySelector("#exportDataButton");
   const importDataButton = document.querySelector("#importDataButton");
+  const recoverGuestDataButton = document.querySelector("#recoverGuestDataButton");
   const importDataInput = document.querySelector("#importDataInput");
   const feedbackContext = document.querySelector("#feedbackContext");
   const feedbackContextWord = document.querySelector("#feedbackContextWord");
@@ -110,6 +114,11 @@
   const MAX_SYNC_RETRIES = 5;
   const MISSING_SENSE_ISSUE = "missing-sense";
   const OTHER_FEEDBACK_ISSUE = "other";
+  const ACCOUNT_BOOTSTRAP_TIMEOUT_MS = Number.isFinite(
+    window.__SENSE_VOCAB_ACCOUNT_BOOTSTRAP_TIMEOUT_MS__,
+  )
+    ? Math.max(0, window.__SENSE_VOCAB_ACCOUNT_BOOTSTRAP_TIMEOUT_MS__)
+    : 8000;
   const REFRESH_INTERVAL_MS = Number.isFinite(
     window.__SENSE_VOCAB_REFRESH_INTERVAL_MS__,
   )
@@ -211,6 +220,17 @@
     const remembered = volatileGuestDecisions.get(userId) ??
       localStorage.getItem(migrationKey(userId));
     return remembered !== app.stateSignature(guestState);
+  }
+
+  function isGuestConflictSource(source) {
+    return source === "guest" || source === "guest-recovery";
+  }
+
+  function hasRecoverableGuestState() {
+    if (!currentUser || pendingConsentSession) return false;
+    const guestState = app.getGuestState();
+    return app.hasLearningData(guestState) &&
+      app.stateSignature(guestState) !== app.stateSignature(app.getState());
   }
 
   function setMessage(message = "", type = "") {
@@ -388,7 +408,12 @@
 
   function setConflictBusy(busy) {
     conflictBusy = busy;
-    [mergeStateButton, useCloudStateButton, useLocalStateButton].forEach((button) => {
+    [
+      mergeStateButton,
+      exportConflictLocalButton,
+      useCloudStateButton,
+      useLocalStateButton,
+    ].forEach((button) => {
       button.disabled = busy;
     });
   }
@@ -1167,6 +1192,7 @@
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = true;
     accountDataActions.hidden = needsConsent || hasConflict;
+    recoverGuestDataButton.hidden = !hasRecoverableGuestState();
     if (!deleting) resetDeleteConfirmation();
     if (hasConflict) renderConflictComparison();
     if (!hasConflict && conflictBusy) setConflictBusy(false);
@@ -1951,11 +1977,15 @@
     setConflictBusy(true);
     setMessage("正在合并两边的学习记录……");
     try {
-      const safeLocalState = localSource === "guest"
-        ? withoutDeletionTombstones(localState)
+      const safeLocalState = isGuestConflictSource(localSource)
+        ? app.prepareIndependentMergeState(
+          withoutDeletionTombstones(localState),
+        )
         : localState;
       const merged = app.mergeStates(safeLocalState, remote.state);
-      if (localSource === "guest") rememberGuestDecision(currentUser.id);
+      if (isGuestConflictSource(localSource)) {
+        rememberGuestDecision(currentUser.id);
+      }
       const persisted = activateAccountState(
         currentUser,
         merged,
@@ -1980,6 +2010,41 @@
     }
   }
 
+  async function openGuestRecovery() {
+    if (!cloud || !currentUser || conflictBusy || pendingConsentSession) return;
+    const guestState = app.getGuestState();
+    if (
+      !app.hasLearningData(guestState) ||
+      app.stateSignature(guestState) === app.stateSignature(app.getState())
+    ) {
+      setMessage("本机没有不同于当前账户的保留记录。");
+      showPrimaryAccountView();
+      return;
+    }
+
+    recoverGuestDataButton.disabled = true;
+    setMessage("正在只读核对本机保留记录与云端记录……");
+    try {
+      const remote = normalizedRemote(await cloud.loadState());
+      if (!remote.found || !app.hasLearningData(remote.state)) {
+        throw new Error("暂时无法读取云端学习记录，未执行恢复或覆盖。");
+      }
+      cloudRevision = remote.revision;
+      pendingConflict = {
+        remote,
+        localState: guestState,
+        localSource: "guest-recovery",
+      };
+      setMessage();
+      showPrimaryAccountView();
+    } catch (error) {
+      setMessage(error?.message ?? "核对失败，未执行恢复或覆盖。", "error");
+      showPrimaryAccountView();
+    } finally {
+      recoverGuestDataButton.disabled = false;
+    }
+  }
+
   async function useCloudState() {
     if (!pendingConflict || !currentUser || conflictBusy) return;
     const { remote, remoteNeedsUpload, localSource } = pendingConflict;
@@ -1993,7 +2058,7 @@
         Boolean(remoteNeedsUpload),
       );
       if (remoteNeedsUpload) await syncNow();
-      setMessage(localSource === "guest"
+      setMessage(isGuestConflictSource(localSource)
         ? "已只使用云端学习记录。本机游客记录仍保留在当前浏览器。"
         : "已只使用云端学习记录。");
       resumePendingFeedback();
@@ -2020,7 +2085,9 @@
     }
     setConflictBusy(true);
     try {
-      if (localSource === "guest") rememberGuestDecision(currentUser.id);
+      if (isGuestConflictSource(localSource)) {
+        rememberGuestDecision(currentUser.id);
+      }
       activateAccountState(currentUser, localState, remote.revision, true);
       setMessage("正在将本机学习记录上传到云端……");
       await syncNow({ replace: true });
@@ -2133,13 +2200,13 @@
     }
   }
 
-  function exportData() {
+  function downloadStateBackup(state, options = {}) {
     const payload = {
       format: "sense-vocab-backup",
       version: 1,
       exportedAt: new Date().toISOString(),
-      account: currentUser?.email ?? null,
-      state: app.getState(),
+      account: options.account ?? null,
+      state,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {
       type: "application/json",
@@ -2148,10 +2215,27 @@
     const link = document.createElement("a");
     const date = new Date().toISOString().slice(0, 10);
     link.href = url;
-    link.download = `sense-vocab-backup-${date}.json`;
+    link.download = `sense-vocab-${options.label ?? "backup"}-${date}.json`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportData() {
+    downloadStateBackup(app.getState(), {
+      account: currentUser?.email ?? null,
+    });
     setMessage("学习数据已导出。");
+  }
+
+  function exportConflictLocalData() {
+    if (!pendingConflict?.localState) return;
+    downloadStateBackup(pendingConflict.localState, {
+      account: isGuestConflictSource(pendingConflict.localSource)
+        ? null
+        : currentUser?.email ?? null,
+      label: "local-recovery",
+    });
+    setMessage("本机原始记录已导出，尚未执行合并或覆盖。");
   }
 
   async function importData(file) {
@@ -2208,8 +2292,38 @@
     });
 
     try {
-      const session = await cloud.getSession();
-      if (session) await establishAccountSession(session);
+      const pendingSession = Promise.resolve().then(() => cloud.getSession());
+      let timeoutId = null;
+      const initial = await Promise.race([
+        pendingSession.then((session) => ({ session })),
+        new Promise((resolve) => {
+          timeoutId = window.setTimeout(
+            () => resolve({ timedOut: true }),
+            ACCOUNT_BOOTSTRAP_TIMEOUT_MS,
+          );
+        }),
+      ]);
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+
+      if (initial.timedOut) {
+        setMessage("账户服务响应较慢，已安全进入本机模式；恢复连接后会重新核对记录。");
+        pendingSession.then(async (session) => {
+          if (!session || currentUser) return;
+          try {
+            await establishAccountSession(session);
+            if (!pendingConflict && !pendingConsentSession) {
+              announceAccountScope(currentUser);
+            }
+            refreshNotifications({ silent: true });
+          } catch (error) {
+            setMessage(error?.message ?? "账户服务暂不可用。", "error");
+          }
+        }).catch((error) => {
+          setMessage(error?.message ?? "账户服务暂不可用。", "error");
+        });
+      } else if (initial.session) {
+        await establishAccountSession(initial.session);
+      }
     } catch (error) {
       setMessage(error?.message ?? "账户服务暂不可用。", "error");
     }
@@ -2266,10 +2380,12 @@
   });
   confirmDeleteAccountButton.addEventListener("click", deleteAccount);
   mergeStateButton.addEventListener("click", mergeConflictStates);
+  exportConflictLocalButton.addEventListener("click", exportConflictLocalData);
   useCloudStateButton.addEventListener("click", useCloudState);
   useLocalStateButton.addEventListener("click", useLocalState);
   exportDataButton.addEventListener("click", exportData);
   importDataButton.addEventListener("click", () => importDataInput.click());
+  recoverGuestDataButton.addEventListener("click", openGuestRecovery);
   importDataInput.addEventListener("change", () => importData(importDataInput.files[0]));
   notificationsButton.addEventListener("click", openNotificationsDialog);
   closeNotificationsButton.addEventListener("click", closeNotificationsDialog);

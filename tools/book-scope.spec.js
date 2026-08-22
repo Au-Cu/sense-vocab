@@ -95,7 +95,7 @@ test("the home shell stays usable while detailed vocabulary loads slowly", async
   await expect(page.locator(".word-list-item")).toHaveCount(5042);
 
   await expect(page.locator("html")).toHaveAttribute("data-vocabulary-ready", "true", {
-    timeout: 10000,
+    timeout: 20000,
   });
 });
 

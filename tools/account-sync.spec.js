@@ -800,6 +800,142 @@ test("recommended conflict merge persists the converged state locally and remote
   }
 });
 
+test("retained guest recovery survives same-device cloud vectors", async ({ page }) => {
+  await installFakeCloud(page);
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.evaluate(({ guestKey, migrationKey }) => {
+    const sync = window.SenseVocabSync;
+    const empty = {
+      view: "home",
+      plan: null,
+      session: null,
+      introducedWords: [],
+      progress: {},
+      activityLog: {},
+      studyWindows: [],
+      confusionLinks: {},
+      learningDayCounter: 0,
+      wordListSort: "mastery",
+      wordBrowse: null,
+      dataVersion: 8,
+    };
+    const remote = structuredClone(empty);
+    remote.session = {
+      date: "2026-08-21",
+      activePlanDate: "2026-08-21",
+      activeLearningDay: 42,
+      queue: Array.from({ length: 214 }, (_, index) => ({ id: index })),
+      currentIndex: 214,
+      baseCompleted: true,
+    };
+    remote.progress["act:v-1"] = {
+      status: "review",
+      lastLearningDay: 42,
+      lastSeenActual: "2026-08-21",
+      updatedAt: "2026-08-21T12:00:00.000Z",
+    };
+    sync.stampChanges(remote, empty, "same-device");
+    remote._sync.counters["same-device"] = 100;
+    Object.values(remote._sync.records).forEach((recordOrMap) => {
+      if (!recordOrMap || typeof recordOrMap !== "object") return;
+      if (Object.prototype.hasOwnProperty.call(recordOrMap, "vector")) {
+        recordOrMap.vector = { "same-device": 100 };
+        return;
+      }
+      Object.values(recordOrMap).forEach((record) => {
+        record.vector = { "same-device": 100 };
+      });
+    });
+
+    const guest = structuredClone(empty);
+    guest.session = {
+      date: "2026-08-22",
+      activePlanDate: "2026-08-22",
+      activeLearningDay: 43,
+      queue: Array.from({ length: 128 }, (_, index) => ({ id: index })),
+      currentIndex: 120,
+      baseCompleted: false,
+    };
+    guest.introducedWords = ["act"];
+    guest.progress["act:v-1"] = {
+      status: "mastered",
+      lastLearningDay: 43,
+      lastSeenActual: "2026-08-22",
+      masteredOnActual: "2026-08-22",
+      updatedAt: "2026-08-22T05:20:00.000Z",
+    };
+    guest.activityLog["2026-08-22"] = {
+      newWords: ["act"],
+      reviewWords: [],
+      newCount: 1,
+      reviewCount: 0,
+      learningDays: [43],
+    };
+    sync.stampChanges(guest, empty, "same-device");
+
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-device-v1", "same-device");
+    localStorage.setItem(guestKey, JSON.stringify(guest));
+    window.__fakeCloud.remote = {
+      found: true,
+      revision: 7,
+      state: remote,
+      updatedAt: "2026-08-22T05:21:00.000Z",
+    };
+    window.SenseVocabApp.activateGuest();
+    localStorage.setItem(
+      migrationKey,
+      window.SenseVocabApp.stateSignature(
+        window.SenseVocabApp.getGuestState(),
+      ),
+    );
+  }, {
+    guestKey: STORAGE_KEY,
+    migrationKey: "sense-vocab-guest-migration-v1:user-1",
+  });
+  await login(page);
+  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect(page.locator("#recoverGuestDataButton")).toBeVisible();
+
+  await page.locator("#recoverGuestDataButton").click();
+  await expect(page.locator("#accountConflictView")).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.locator("#exportConflictLocalButton").click();
+  expect((await download).suggestedFilename()).toContain("local-recovery");
+  await page.locator("#mergeStateButton").click();
+  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect.poll(async () => {
+    return page.evaluate(() => window.__fakeCloud.remote.revision);
+  }).toBe(8);
+
+  const result = await page.evaluate(() => {
+    const active = window.SenseVocabApp.getState();
+    const remote = window.__fakeCloud.remote.state;
+    const guest = window.SenseVocabApp.getGuestState();
+    const scope = (state) => state.session
+      ? state
+      : state.bookStates?.[state.activeBookId ?? "kaoyan"] ?? {};
+    const activeScope = scope(active);
+    const remoteScope = scope(remote);
+    const guestScope = scope(guest);
+    return {
+      activeDate: activeScope.session?.date,
+      remoteDate: remoteScope.session?.date,
+      activeStatus: activeScope.progress?.["act:v-1"]?.status,
+      remoteStatus: remoteScope.progress?.["act:v-1"]?.status,
+      todayNewWords: remoteScope.activityLog?.["2026-08-22"]?.newWords,
+      guestDate: guestScope.session?.date,
+    };
+  });
+  expect(result.activeDate).toBe("2026-08-22");
+  expect(result.remoteDate).toBe("2026-08-22");
+  expect(result.activeStatus).toBe("mastered");
+  expect(result.remoteStatus).toBe("mastered");
+  expect(result.todayNewWords).toEqual(["act"]);
+  expect(result.guestDate).toBe("2026-08-22");
+});
+
 test("reload hides guest progress and restores the account cache before cloud convergence", async ({ page }) => {
   const guestState = makeState(10);
   guestState.introducedWords = ["abandon"];
@@ -835,6 +971,8 @@ test("reload hides guest progress and restores the account cache before cloud co
     homeSummaryDisplay: getComputedStyle(document.querySelector(".home-summary")).display,
     homeCardDisplay: getComputedStyle(document.querySelector(".home-card")).display,
     planButtonDisplay: getComputedStyle(document.querySelector("#planButton")).display,
+    planButtonDisabled: document.querySelector("#planButton").disabled,
+    studyPanelInert: document.querySelector("#studyPanel").inert,
     homeBusy: document.querySelector("#homePanel").getAttribute("aria-busy"),
   }));
   expect(duringBootstrap.accountReady).toBeNull();
@@ -842,12 +980,16 @@ test("reload hides guest progress and restores the account cache before cloud co
   expect(duringBootstrap.homeSummaryDisplay).not.toBe("none");
   expect(duringBootstrap.homeCardDisplay).toBe("none");
   expect(duringBootstrap.planButtonDisplay).not.toBe("none");
+  expect(duringBootstrap.planButtonDisabled).toBe(true);
+  expect(duringBootstrap.studyPanelInert).toBe(true);
   expect(duringBootstrap.homeBusy).toBe("true");
 
   await waitForAccount(page);
   await expect(page.locator(".home-summary")).toBeVisible();
   await expect(page.locator("#homeCompletedWords")).toHaveText("2");
   await expect(page.locator("#homePanel")).toHaveAttribute("aria-busy", "false");
+  await expect(page.locator("#planButton")).toBeEnabled();
+  await expect(page.locator("#studyPanel")).not.toHaveAttribute("inert", "");
   const persisted = await page.evaluate((accountKey) => {
     return JSON.parse(localStorage.getItem(accountKey)).introducedWords;
   }, ACCOUNT_KEY);

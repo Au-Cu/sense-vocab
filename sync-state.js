@@ -538,6 +538,34 @@
       (value.reinforcementAdded ? 1 : 0);
   }
 
+  function sessionDate(value) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(value?.date ?? ""))) {
+      return value.date;
+    }
+    return /^\d{4}-\d{2}-\d{2}$/.test(String(value?.activePlanDate ?? ""))
+      ? value.activePlanDate
+      : "";
+  }
+
+  function compareSessionRecency(left, right) {
+    const leftDate = sessionDate(left);
+    const rightDate = sessionDate(right);
+    if (leftDate !== rightDate) return leftDate > rightDate ? 1 : -1;
+
+    const leftLearningDay = Math.max(
+      Number(left?.activeLearningDay) || 0,
+      Number(left?.baseLearningDay) || 0,
+    );
+    const rightLearningDay = Math.max(
+      Number(right?.activeLearningDay) || 0,
+      Number(right?.baseLearningDay) || 0,
+    );
+    if (leftLearningDay !== rightLearningDay) {
+      return leftLearningDay > rightLearningDay ? 1 : -1;
+    }
+    return 0;
+  }
+
   function concurrentValue(domain, left, right) {
     if (domain === "progress") return mergeProgress(left, right);
     if (domain === "activityLog") return mergeActivity(left, right);
@@ -546,6 +574,8 @@
       return Math.max(Number(left) || 0, Number(right) || 0);
     }
     if (domain === "session") {
+      const recency = compareSessionRecency(left, right);
+      if (recency !== 0) return recency > 0 ? left : right;
       const leftScore = sessionScore(left);
       const rightScore = sessionScore(right);
       if (leftScore !== rightScore) return leftScore > rightScore ? left : right;
@@ -890,11 +920,27 @@
     };
   }
 
+  function prepareIndependentMergeState(value, writer = null) {
+    const independentWriter = writer ||
+      `${deviceId()}-independent-${randomToken()}`;
+    if (!isRootState(value)) {
+      const state = clone(value && typeof value === "object" ? value : {});
+      return stampScopeChanges(state, {}, independentWriter);
+    }
+
+    const state = asRootState(value);
+    Object.values(state.bookStates).forEach((bookState) => {
+      stampScopeChanges(bookState, {}, independentWriter);
+    });
+    return state;
+  }
+
   window.SenseVocabSync = Object.freeze({
     deviceId,
     ensureMetadata,
     stampChanges,
     mergeStates,
+    prepareIndependentMergeState,
     compareVectors,
   });
 })();

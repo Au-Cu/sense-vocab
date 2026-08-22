@@ -1560,6 +1560,10 @@ window.SenseVocabApp = {
     if (!window.SenseVocabSync) return cloneSerializable(remoteState);
     return window.SenseVocabSync.mergeStates(localState, remoteState);
   },
+  prepareIndependentMergeState: (candidate) => {
+    if (!window.SenseVocabSync) return cloneSerializable(candidate);
+    return window.SenseVocabSync.prepareIndependentMergeState(candidate);
+  },
   getCurrentWordContext: () => currentFeedbackContext(),
   activateGuest: () => applyStateToStorage(STORAGE_KEY),
   activateAccount: (userId, nextState = null) => {
@@ -2311,8 +2315,26 @@ function render() {
   renderStudy();
   if (state.view === "word-list") renderWordList();
   if (state.view === "confusion") renderConfusionPanel();
+  applyAccountBootstrapGate();
   renderedStudyCardKey = studyCardKey;
   if (studyCardChanged) resetStudyScrollPosition();
+}
+
+function applyAccountBootstrapGate() {
+  const pending = document.documentElement.dataset.accountReady !== "true";
+  [studyPanel, wordListPanel, confusionPanel].forEach((panel) => {
+    panel.inert = pending;
+  });
+  if (!pending) {
+    const persistenceSafe = isPersistenceSafe();
+    planButton.disabled = !persistenceSafe;
+    wordListButton.disabled = !persistenceSafe;
+    return;
+  }
+  planButton.disabled = true;
+  wordListButton.disabled = true;
+  startStudyButton.disabled = true;
+  advanceStudyButton.disabled = true;
 }
 
 function resetStudyScrollPosition() {
@@ -5189,6 +5211,7 @@ async function initializeApp() {
     advanceStudyButton.disabled = true;
   }
   moreButton.disabled = false;
+  applyAccountBootstrapGate();
   document.documentElement.dataset.appReady = "true";
   window.dispatchEvent(new CustomEvent("sensevocab:app-ready"));
   maybeStartAutomaticTutorial();
@@ -5361,7 +5384,10 @@ window.visualViewport?.addEventListener("scroll", () => {
 window.addEventListener("orientationchange", updateAppViewportHeight);
 finishTutorialButton.addEventListener("click", finishTutorial);
 window.addEventListener("sensevocab:app-ready", maybeStartAutomaticTutorial);
-window.addEventListener("sensevocab:account-ready", maybeStartAutomaticTutorial);
+window.addEventListener("sensevocab:account-ready", () => {
+  render();
+  maybeStartAutomaticTutorial();
+});
 window.addEventListener("sensevocab:account-scope", maybeStartAutomaticTutorial);
 window.addEventListener("pageshow", maybeStartAutomaticTutorial);
 document.addEventListener("visibilitychange", () => {

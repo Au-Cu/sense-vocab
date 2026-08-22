@@ -138,11 +138,12 @@ test("the first-run tutorial retries after a transient account conflict", async 
   await expectSpotlightContains(page, "#planButton");
 });
 
-test("the first-run tutorial survives stalled account startup and early home interaction", async ({ page }) => {
+test("stalled account startup safely falls back before enabling home interaction", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.clear();
     window.__SENSE_VOCAB_ALLOW_AUTOMATIC_TUTORIAL__ = true;
     window.__SENSE_VOCAB_TUTORIAL_ACCOUNT_READY_GRACE_MS__ = 2000;
+    window.__SENSE_VOCAB_ACCOUNT_BOOTSTRAP_TIMEOUT_MS__ = 250;
     window.__SENSE_VOCAB_CLOUD_FACTORY__ = () => ({
       onAuthStateChange() {},
       getSession() {
@@ -155,15 +156,18 @@ test("the first-run tutorial survives stalled account startup and early home int
   await page.waitForFunction(() => (
     document.documentElement.dataset.appReady === "true"
   ));
-  await page.locator("#planButton").click();
-  await page.locator("#savePlanButton").click();
+  await expect(page.locator("#planButton")).toBeDisabled();
+  await page.waitForFunction(() => (
+    document.documentElement.dataset.accountReady === "true"
+  ));
+  await expect(page.locator("#planButton")).toBeEnabled();
 
   await expect(page.locator("#tutorialOverlay")).toBeVisible({
     timeout: 5_000,
   });
   await expectHint(page, "点击这里选择词书和每日计划");
   await expectSpotlightContains(page, "#planButton");
-  await expect(page.locator("html")).not.toHaveAttribute("data-account-ready", "true");
+  await expect(page.locator("html")).toHaveAttribute("data-account-ready", "true");
 });
 
 test("tutorial plan cancellation stays covered and cannot strand the overlay", async ({ page }) => {

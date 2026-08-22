@@ -143,6 +143,92 @@ test("concurrent progress keeps the state with the latest learning evidence", as
   expect(merged.progress["act:v-1"].dueLearningDay).toBeNull();
 });
 
+test("an independent guest branch keeps today's learning on the same device", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((empty) => {
+    const sync = window.SenseVocabSync;
+    const remote = structuredClone(empty);
+    remote.session = {
+      date: "2026-08-21",
+      activePlanDate: "2026-08-21",
+      activeLearningDay: 42,
+      queue: Array.from({ length: 214 }, (_, index) => ({ id: index })),
+      currentIndex: 214,
+      baseCompleted: true,
+    };
+    remote.progress["act:v-1"] = {
+      status: "review",
+      lastLearningDay: 42,
+      lastSeenActual: "2026-08-21",
+      updatedAt: "2026-08-21T12:00:00.000Z",
+    };
+    remote.activityLog["2026-08-21"] = {
+      newWords: [],
+      reviewWords: ["act"],
+      newCount: 0,
+      reviewCount: 1,
+      learningDays: [42],
+    };
+    sync.stampChanges(remote, empty, "same-device");
+    remote._sync.counters["same-device"] = 100;
+    Object.values(remote._sync.records).forEach((recordOrMap) => {
+      if (!recordOrMap || typeof recordOrMap !== "object") return;
+      if (Object.prototype.hasOwnProperty.call(recordOrMap, "vector")) {
+        recordOrMap.vector = { "same-device": 100 };
+        return;
+      }
+      Object.values(recordOrMap).forEach((record) => {
+        record.vector = { "same-device": 100 };
+      });
+    });
+
+    const guest = structuredClone(empty);
+    guest.session = {
+      date: "2026-08-22",
+      activePlanDate: "2026-08-22",
+      activeLearningDay: 43,
+      queue: Array.from({ length: 128 }, (_, index) => ({ id: index })),
+      currentIndex: 120,
+      baseCompleted: false,
+    };
+    guest.progress["act:v-1"] = {
+      status: "mastered",
+      lastLearningDay: 43,
+      lastSeenActual: "2026-08-22",
+      masteredOnActual: "2026-08-22",
+      updatedAt: "2026-08-22T05:20:00.000Z",
+    };
+    guest.activityLog["2026-08-22"] = {
+      newWords: ["act"],
+      reviewWords: [],
+      newCount: 1,
+      reviewCount: 0,
+      learningDays: [43],
+    };
+    sync.stampChanges(guest, empty, "same-device");
+
+    const incorrectlyMerged = sync.mergeStates(guest, remote);
+    const independent = sync.prepareIndependentMergeState(
+      guest,
+      "guest-migration",
+    );
+    const merged = sync.mergeStates(independent, remote);
+    return {
+      rawDate: incorrectlyMerged.session.date,
+      mergedDate: merged.session.date,
+      status: merged.progress["act:v-1"].status,
+      todayActivity: merged.activityLog["2026-08-22"],
+      yesterdayActivity: merged.activityLog["2026-08-21"],
+    };
+  }, baseState());
+
+  expect(result.rawDate).toBe("2026-08-21");
+  expect(result.mergedDate).toBe("2026-08-22");
+  expect(result.status).toBe("mastered");
+  expect(result.todayActivity.newWords).toEqual(["act"]);
+  expect(result.yesterdayActivity.reviewWords).toEqual(["act"]);
+});
+
 test("a concurrent explicit reset is not revived by stale progress", async ({ page }) => {
   await loadSyncEngine(page);
   const result = await page.evaluate((empty) => {
