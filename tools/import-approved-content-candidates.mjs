@@ -85,8 +85,13 @@ if (sha256(bundleBytes) !== candidateBaseline?.runtimeBundleSha256) {
   throw new Error("Runtime vocabulary bundle no longer matches the reviewed candidate baseline.");
 }
 const evidenceComplete = modernCandidate
-  ? candidate.counts?.generationBlockers === 0 &&
-    candidate.fields?.every((field) => field.status === "待用户审核" && field.evidenceRefs?.length)
+  ? candidate.counts?.generationBlockers === candidate.counts?.evidencePendingItems &&
+    candidate.items?.filter((item) => item.decision === "evidence_pending").length ===
+      candidate.counts?.evidencePendingItems &&
+    candidate.fields?.every((field) =>
+      field.userReviewStatus === "待用户审核" &&
+      field.rightsStatus === "evidence_pending_user_review_not_cleared" &&
+      field.evidenceRefs?.length)
   : candidate.validation?.requiredEvidenceComplete &&
     candidate.validation?.d019CandidateBlockers === 0;
 if (!evidenceComplete) {
@@ -97,7 +102,7 @@ const words = new Map(bundle.words.map((word) => [word.id, word]));
 const candidateFieldsByItem = new Map();
 for (const field of candidate.fields ?? []) {
   if (sha256(String(field.candidateValue)) !== field.candidateSha256Utf8) {
-    throw new Error(`Candidate value hash mismatch: ${field.contentId}`);
+    throw new Error(`Candidate value hash mismatch: ${field.candidateId}`);
   }
   const expectedOldHash = modernCandidate
     ? field.oldValueSha256JsonUtf8
@@ -105,32 +110,39 @@ for (const field of candidate.fields ?? []) {
   const actualOldHash = modernCandidate
     ? fieldSha256(field.oldValue)
     : sourceValueSha256(field.oldValue);
-  if (actualOldHash !== expectedOldHash) {
-    throw new Error(`Candidate old-value hash mismatch: ${field.contentId}`);
+  if (!(modernCandidate && field.oldValueDisclosed === false) && actualOldHash !== expectedOldHash) {
+    throw new Error(`Candidate old-value hash mismatch: ${field.candidateId}`);
   }
-  const fields = candidateFieldsByItem.get(field.batchItemId) ?? [];
+  const itemKey = field.itemId ?? field.batchItemId;
+  const fields = candidateFieldsByItem.get(itemKey) ?? [];
   fields.push(field);
-  candidateFieldsByItem.set(field.batchItemId, fields);
+  candidateFieldsByItem.set(itemKey, fields);
 }
 
-const items = candidate.items.map((candidateItem) => {
+const items = candidate.items
+  .filter((candidateItem) => candidateItem.decision !== "evidence_pending")
+  .map((candidateItem) => {
   const word = words.get(candidateItem.wordId);
   if (!word) throw new Error(`Unknown wordId: ${candidateItem.wordId}`);
-  const existingSense = word.senses.find((sense) => sense.id === candidateItem.senseId);
+  const itemKey = candidateItem.itemId ?? candidateItem.batchItemId;
+  const itemFields = candidateFieldsByItem.get(itemKey) ?? [];
+  const senseId = candidateItem.senseId ?? candidateItem.proposedSenseId ?? itemFields[0]?.senseId;
+  if (!senseId) throw new Error(`Missing stable sense ID: ${itemKey}`);
+  const existingSense = word.senses.find((sense) => sense.id === senseId);
   const action = modernCandidate
-    ? candidateItem.action === "propose_append_sense" ? "add" : "update"
+    ? candidateItem.type === "new_sense_candidate" ? "add" : "update"
     : candidateItem.action === "replace" ? "update" : candidateItem.action;
   if (action === "add" && existingSense) {
-    throw new Error(`Proposed sense already exists: ${candidateItem.wordId}:${candidateItem.senseId}`);
+    throw new Error(`Proposed sense already exists: ${candidateItem.wordId}:${senseId}`);
   }
   if (action === "update" && !existingSense) {
-    throw new Error(`Update target is missing: ${candidateItem.wordId}:${candidateItem.senseId}`);
+    throw new Error(`Update target is missing: ${candidateItem.wordId}:${senseId}`);
   }
 
   const fields = {};
   const expectedOldValueSha256 = {};
   const fieldEvidence = {};
-  for (const candidateField of candidateFieldsByItem.get(candidateItem.batchItemId) ?? []) {
+  for (const candidateField of itemFields) {
     const runtimeValue = existingSense?.[candidateField.field] ?? null;
     const expectedOldHash = modernCandidate
       ? candidateField.oldValueSha256JsonUtf8
@@ -139,7 +151,7 @@ const items = candidate.items.map((candidateItem) => {
       ? fieldSha256(runtimeValue)
       : sourceValueSha256(runtimeValue);
     if (actualOldHash !== expectedOldHash) {
-      throw new Error(`Runtime old value changed: ${candidateField.contentId}`);
+      throw new Error(`Runtime old value changed: ${candidateField.candidateId}`);
     }
     fields[candidateField.field] = candidateField.candidateValue;
     expectedOldValueSha256[candidateField.field] = fieldSha256(runtimeValue);
@@ -165,14 +177,14 @@ const items = candidate.items.map((candidateItem) => {
       origin: "derived_from_approved_definition_without_new_expression",
       candidateSha256Utf8: sha256(fields.definition),
       oldValueSha256: fieldSha256(null),
-      sourceIds: [`${candidateItem.wordId}:${candidateItem.senseId}:definition`],
+      sourceIds: [`${candidateItem.wordId}:${senseId}:definition`],
       license: "Same approved text and rights basis as definition",
     };
   }
 
   if (action === "add") {
     fields.pos = candidateItem.pos;
-    fields.synsetId = candidateItem.synsetId;
+    fields.synsetId = candidateItem.selectedSynsetId;
     const wordNetEvidenceIds = modernCandidate
       ? [
           candidateItem.pos?.startsWith("n")
@@ -183,19 +195,19 @@ const items = candidate.items.map((candidateItem) => {
       : ["E-WORDNET-3.0"];
     for (const [field, value] of Object.entries({
       pos: candidateItem.pos,
-      synsetId: candidateItem.synsetId,
+      synsetId: candidateItem.selectedSynsetId,
     })) {
       expectedOldValueSha256[field] = fieldSha256(null);
       fieldEvidence[field] = {
-        origin: candidateItem.synsetId
+        origin: candidateItem.selectedSynsetId
           ? "wordnet_3_0_semantic_identity"
           : "approved_project_semantic_identity",
         candidateSha256Utf8: sha256(String(value ?? "null")),
         oldValueSha256: fieldSha256(null),
-        sourceIds: candidateItem.synsetId
+        sourceIds: candidateItem.selectedSynsetId
           ? wordNetEvidenceIds
           : ["E-ANONYMIZED-SEMANTIC-LOCATOR", "E-CODEX-OP-FB-2026-08-13-B"],
-        license: candidateItem.synsetId
+        license: candidateItem.selectedSynsetId
           ? "WordNet Release 3.0 License"
           : "Project-owned semantic identity decision",
       };
@@ -203,14 +215,12 @@ const items = candidate.items.map((candidateItem) => {
   }
 
   return {
-    itemId: candidateItem.batchItemId,
+    itemId: itemKey,
     wordId: candidateItem.wordId,
-    senseId: candidateItem.senseId,
+    senseId,
     action,
     bookIds: modernCandidate
-      ? action === "add"
-        ? approvedBookIds
-        : candidateItem.currentBookReferences.map((entry) => entry.bookId)
+      ? candidateItem.currentBookReferences?.map((entry) => entry.bookId) ?? []
       : candidateItem.candidateBookScope,
     importance: action === "add" ? Math.max(1, 100 - word.senses.length * 3) : undefined,
     identityEvidenceStatus: candidateItem.identityEvidenceStatus ??
@@ -219,20 +229,20 @@ const items = candidate.items.map((candidateItem) => {
     expectedOldValueSha256,
     fieldEvidence,
   };
-});
+  });
 
 const sourceRelativePath = path.relative(rootDir, sourcePath).replaceAll(path.sep, "/");
 if (modernCandidate && !approvedBatchId) {
   throw new Error("Modern candidate packages require --batch-id.");
 }
-if (modernCandidate && items.some((item) => item.action === "add") && !approvedBookIds.length) {
-  throw new Error("Modern candidate packages with added senses require --book-ids.");
+if (modernCandidate && items.some((item) => item.action === "add" && !item.bookIds?.length)) {
+  throw new Error("Every added sense must retain at least one recorded book reference.");
 }
 const generationEvidence = modernCandidate
   ? evidenceCatalog["E-CODEX-GENERATION"]
   : evidenceCatalog["E-CODEX-OP-FB-2026-08-13-B"];
 const wordNetLicenseEvidence = modernCandidate
-  ? evidenceCatalog["E-WORDNET-LICENSE-3.0"]
+  ? evidenceCatalog["E-WORDNET-LICENSE"] ?? evidenceCatalog["E-WORDNET-LICENSE-3.0"]
   : evidenceCatalog["E-WORDNET-3.0"];
 const manifest = {
   schemaVersion: 2,
@@ -250,7 +260,7 @@ const manifest = {
     reviewerRole: "product owner",
     reviewedAt,
     scope: modernCandidate
-      ? "all candidate fields, stable identities, both approved book references, and one display field that exactly reuses the approved definition text"
+      ? "all approved candidate fields, stable identities, and each candidate item's recorded book references"
       : "all candidate fields, proposed stable sense IDs, and candidate book scopes",
   },
   compatibility: {
@@ -288,6 +298,14 @@ const manifest = {
     derivedImplementationFields: modernCandidate ? 1 : 0,
     identityFields: items.filter((item) => item.action === "add").length * 2,
     items: items.length,
+    pendingItems: candidate.items
+      .filter((item) => item.decision === "evidence_pending")
+      .map((item) => ({
+        itemId: item.itemId,
+        wordId: item.wordId,
+        proposedSenseId: item.proposedSenseId,
+        reason: "evidence_pending; excluded from implementation",
+      })),
   },
   items,
   noChangeItems: [],

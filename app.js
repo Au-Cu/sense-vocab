@@ -2665,7 +2665,6 @@ function renderWordList() {
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  wordList.replaceChildren();
   const fragment = document.createDocumentFragment();
   const items = sortedWordsForList();
   wordListEmpty.hidden = items.length > 0;
@@ -2697,7 +2696,7 @@ function renderWordList() {
     button.append(name, meta);
     fragment.append(button);
   });
-  wordList.append(fragment);
+  wordList.replaceChildren(fragment);
 }
 
 function wordBrowseListItems() {

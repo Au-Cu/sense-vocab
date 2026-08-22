@@ -48,7 +48,7 @@ test("the shared pool preserves the reviewed Kaoyan book and adds IELTS", async 
   );
   expect(index.words).toHaveLength(bundle.words.length);
   expect(index.words.reduce((total, word) => total + word.senses.length, 0))
-    .toBe(10245);
+    .toBe(10257);
 });
 
 test("reviewed heteronyms have distinct sourced recordings without changing stable IDs", () => {

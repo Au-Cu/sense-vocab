@@ -7,20 +7,20 @@
       "id": "kaoyan",
       "name": "考研词汇",
       "entryCount": 5042,
-      "senseReferenceCount": 7928,
-      "identitySha256": "bcf83e60534d129f964a6da6d525ba44381f99e473427d2b832c6b1b8566b1a7"
+      "senseReferenceCount": 7940,
+      "identitySha256": "db23764560e8d04eb2c5d36ec16d81c5a76c751c65fa6d59dea48f96a5fab808"
     },
     {
       "id": "ielts",
       "name": "雅思词汇",
       "entryCount": 4827,
-      "senseReferenceCount": 7559,
-      "identitySha256": "2e865bdc504a3144cd18422f9453b63e0887e827238bf66ac63094726ddc6a7d"
+      "senseReferenceCount": 7570,
+      "identitySha256": "8754342c40a32ef15209f125b825d466a265e805cb9693ea8a901c1b199f96c1"
     }
   ],
   "wordPool": {
     "wordCount": 6607,
-    "senseCount": 10245,
-    "identitySha256": "b9096e9f8ccfc13ca920001144a31a0b951a6cb30c5e06ce05156ff2abd47d59"
+    "senseCount": 10257,
+    "identitySha256": "f9030548985396c697cab96ea6f13fb4fb0ef1dc433a54dfd86207fd7f25cbfe"
   }
 }

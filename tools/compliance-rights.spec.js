@@ -11,9 +11,6 @@ function readJson(relativePath) {
 
 test("content rights metadata is complete-or-blocked and SemCor is never attributed to WordNet", () => {
   const bundle = readJson("data/vocabulary-bundle.json");
-  const reviewedManifest = readJson(
-    "data/content-change-sets/op-fb-2026-08-12-a.json",
-  );
   const rows = fs.readFileSync(
     path.join(ROOT_DIR, "data/content-rights-ledger.jsonl"),
     "utf8",
@@ -30,10 +27,7 @@ test("content rights metadata is complete-or-blocked and SemCor is never attribu
     (word.senses ?? []).filter((sense) =>
       String(sense.exampleSource ?? "").toLowerCase() === "semcor"),
   );
-  const approvedSemCorReplacements = reviewedManifest.items.filter((item) =>
-    item.previousExampleSource === "semcor" && Object.hasOwn(item.fields, "example")
-  ).length;
-  expect(semCorSenses).toHaveLength(2845 - approvedSemCorReplacements);
+  expect(semCorSenses).toHaveLength(2836);
   const semCorFields = fields.filter((field) =>
     String(field.source ?? "").toLowerCase() === "semcor");
   expect(semCorFields).toHaveLength(semCorSenses.length);

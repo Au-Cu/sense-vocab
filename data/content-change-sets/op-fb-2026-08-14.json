@@ -1,0 +1,2182 @@
+{
+  "schemaVersion": 2,
+  "batchId": "op-feedback-2026-08-14",
+  "purpose": "Apply the user-approved CD feedback batch without changing existing stable identities or deleting user data.",
+  "sourcePackage": {
+    "path": "data/content-change-sets/op-fb-2026-08-14-source.json",
+    "sha256": "db30d9b930890e6e7787693437197796bca7c1363c404fb267fadc9e3a008a07",
+    "inputManifestSha256": "24b004ec43812a03ee4b0a909b022b2a9e224a17738119742f2c9d21c58332ff",
+    "outputManifestSha256": "ac6f1906f86aa83de7da15e15660b29227835653fad4df396bf5c35bb3f3a85a"
+  },
+  "baseline": {
+    "commit": "3a207bb3b2552dd4d7bfe196e652fc94d047b951",
+    "runtimeBundleSha256": "6d67eeb7abd838e25410b7f47a862bd559c7619784a08060c207595c2826bda2",
+    "identityLockSha256": "abb476e25fefc9c73d1846400182f905893656e720a99812f64fadcbaba5c1fe",
+    "wordCount": 6607,
+    "senseCount": 10245
+  },
+  "review": {
+    "status": "approved",
+    "reviewerRole": "product owner",
+    "reviewedAt": "2026-08-22",
+    "scope": "all approved candidate fields, stable identities, and each candidate item's recorded book references"
+  },
+  "compatibility": {
+    "strategy": "explicit-new-sense-initialization",
+    "addedSenseKeys": [
+      "visa:n-2",
+      "divide:v-3",
+      "review:v-4",
+      "view:n-4",
+      "void:adj-4",
+      "advocate:v-3",
+      "stress:v-4",
+      "power:n-3",
+      "group:v-3",
+      "service:v-2",
+      "risk:v-2",
+      "practice:v-4"
+    ],
+    "behavior": "Existing introduced words initialize approved added senses as selectable new senses and retain every prior sense state."
+  },
+  "generation": {
+    "supplier": "OpenAI",
+    "model": "Codex, GPT-5-based",
+    "visibleVersion": "Exact deployment snapshot is not exposed in this runtime",
+    "weightsSource": "OpenAI-hosted proprietary model; weights are not available to this task",
+    "generationSession": "op-feedback-2026-08-14",
+    "prompt": "Generate the candidate-only batch op-feedback-2026-08-14. Lock each item to its word, proposed or existing sense locator, POS, selected WordNet 3.0 synset and target meaning. Use local WordNet lines only as licensed semantic anchors, the current runtime and identity lock only for identity and adjacent-sense exclusion, and only field-level CLEARED runtime fields as text inputs. Do not use feedback text, user identity, attachments, search results, dictionary pages, paid content, SemCor, historical external translation, or any source of unknown rights. Independently write only justified candidate fields, while adding a related field when a requested translation cannot legally or semantically stand without replacing its source field. Every English definition, example and Chinese field must remain strictly bound to the target sense; examples must use the target word in the target POS and exclude adjacent senses. Chinese must be concise and natural without meta-language shells. Apply D-019: no unrelated sexual content and no China-related political or ideological content. If the requested synset is not a direct lexical identity for the intended sense, return evidence_pending instead of inventing an identity. Record per-field hashes, evidence references, model details, target binding, adjacent-sense exclusion, bilingual alignment and residual risk. Key identity decisions: review uses 00696852-v for refreshing memory rather than the broader requested 00696189-v; advocate uses 00827730-v; stress cause-strain uses 01798452-v; power 11453016-n means physical power/rate, not energy; service maintenance uses 00456937-v; British exam-study revise has no direct WordNet 3.0 revise identity and must remain evidence_pending.",
+    "promptSha256Utf8": "72ff12c59a2ffd05a0294baea8fd8d4f7c523cb9a504cc7ceb06040e24b9bd6f"
+  },
+  "rights": {
+    "outputAuthor": "Sense Vocab product owner as output rightsholder; draft generated with OpenAI Codex and human-reviewed",
+    "outputRightsBasis": "OpenAI Terms of Use, Content section, or OpenAI Services Agreement sections 4.1-4.4, as applicable",
+    "outputRightsUrl": "https://openai.com/policies/row-terms-of-use/",
+    "alternativeBusinessTermsUrl": "https://openai.com/policies/services-agreement/",
+    "alternativeBusinessTermsEffectiveAt": "2026-01-01",
+    "outputRightsEffectiveAt": "2026-01-01",
+    "outputRightsAccessedAt": "2026-08-12",
+    "outputRightsEvidenceSummary": "OpenAI Terms of Use (accessed 2026-08-12), Content: the user retains rights in Input; as between the user and OpenAI, the user owns Output and OpenAI assigns its rights in Output; Output may not be unique and must be evaluated for accuracy and appropriateness before use or sharing.",
+    "outputRightsEvidenceSha256Utf8": "e49e27f7882fa78bc4aa3b1b389c9eb1b07f836a3a9bdbd7d6491b2a9c6ee84a",
+    "permittedUses": [
+      "commercial use",
+      "modification",
+      "local caching",
+      "public display",
+      "redistribution as part of Sense Vocab"
+    ],
+    "obligations": [
+      "retain this generation and review record",
+      "do not represent AI output as exclusively human-generated",
+      "evaluate accuracy and appropriateness before publication"
+    ],
+    "wordnet": {
+      "author": "Princeton University",
+      "license": "WordNet Release 3.0 License",
+      "sourceUrl": "https://wordnet.princeton.edu/license-and-commercial-use",
+      "localEvidence": "docs/licenses/wordnet-3.0-LICENSE.txt",
+      "localEvidenceSha256": "ff9698aef1589e32099a19a7bcaeb2f6284020ed13d9a3e47584258737d0bd46"
+    },
+    "cmudict": {
+      "author": "Carnegie Mellon University",
+      "license": "CMUdict BSD-style License",
+      "sourceUrl": "https://github.com/cmusphinx/cmudict",
+      "localEvidence": "docs/licenses/cmudict-LICENSE.txt",
+      "localEvidenceSha256": "f44d2ded77781dc1e5529fd2a3d62d9767eff9ca0c50ea913634526a646163c8"
+    },
+    "inputMaterials": [
+      "project-owned stable wordId and senseId values",
+      "anonymized issue categories used only as problem signals, without copying feedback text",
+      "WordNet 3.0 semantic identity evidence under the recorded license"
+    ],
+    "residualRisk": "The service does not disclose the exact model snapshot and AI output may not be unique. Human review and field-level hashes mitigate reproducibility and similarity risk; this is not global commercial clearance for historical content. The exact model deployment snapshot remains undisclosed; the reviewed source package and field hashes preserve this batch's evidence.",
+    "sourcePackage": "data/content-change-sets/op-fb-2026-08-14-source.json",
+    "sourcePackageSha256": "db30d9b930890e6e7787693437197796bca7c1363c404fb267fadc9e3a008a07"
+  },
+  "counts": {
+    "approvedCandidateFields": 84,
+    "derivedImplementationFields": 1,
+    "identityFields": 24,
+    "items": 22,
+    "pendingItems": [
+      {
+        "itemId": "F-06",
+        "wordId": "revise",
+        "proposedSenseId": "v-2",
+        "reason": "evidence_pending; excluded from implementation"
+      }
+    ]
+  },
+  "items": [
+    {
+      "itemId": "F-01",
+      "wordId": "visa",
+      "senseId": "n-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "签证",
+        "definition": "an official authorization placed in a passport that allows its holder to enter a country",
+        "definitionZh": "加注在护照上的官方许可，允许持有人进入签发国。",
+        "example": "Before boarding the international flight, Lena checked that the visa in her passport was still valid.",
+        "exampleZh": "登上国际航班前，莉娜确认了护照中的签证仍然有效。",
+        "definitionSentence": "an official authorization placed in a passport that allows its holder to enter a country",
+        "pos": "n.",
+        "synsetId": "omw-en-06687883-n"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a049a6815ed8881378a49058c9ee699fa5366dab0cac285ed1fd7608297bb483",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-01"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "9b2895912484c176fdc62ea8d0b33aa4cd3376f6802c5ebacd32ffee3f149ca1",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-01"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "afe84d8aa985306db6f7d50194ead80617f809ccc817c994cdcdedccf082d909",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-01"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "354257be838977315587a80bbef80641f63bc2dba6908d965da948bf79a31175",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-01"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "1b49cf6f02730bb2f9b11c0a606554591bcacd95c60e32845dc3433be247c4d1",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-01"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "9b2895912484c176fdc62ea8d0b33aa4cd3376f6802c5ebacd32ffee3f149ca1",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "visa:n-2:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fd015ca8e8a88222543c451795ff0646833ce032e87a2bc186c4d3e42d2d8248",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "f460038bc276eb5147fa658103e4e208605f02581d4ddc603f7396d6141abc94",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-02",
+      "wordId": "divide",
+      "senseId": "v-3",
+      "action": "add",
+      "bookIds": [
+        "kaoyan"
+      ],
+      "importance": 94,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "除，以……除",
+        "definition": "calculate how many times one number is contained in another",
+        "definitionZh": "计算一个数中包含另一个数多少次。",
+        "example": "If you divide eighty-four by seven, the answer is twelve.",
+        "exampleZh": "八十四除以七，结果是十二。",
+        "definitionSentence": "calculate how many times one number is contained in another",
+        "pos": "v.",
+        "synsetId": "omw-en-00642098-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "95dbdd286f3d28ae8c191804595a31ee4464a81c1b2d1838c25d32b9bf76911e",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-02"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "34e0ed7498a543bc697347294a4f27621f83c82ea8a70eac9b219c008661a5f7",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-02"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8f169aca970dccfceeed660f549df28b83bffca50410c65aac91aeeb1b8734b3",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-02"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "773dc8799b45481a407fafd1212fe9af68d88cf6cc960de46dbb5934a435d566",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-02"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "b9db57e1e13d27d167b446e30f17c704c6e39f9391e5db4db79d01f1ef84ef5d",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-02"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "34e0ed7498a543bc697347294a4f27621f83c82ea8a70eac9b219c008661a5f7",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "divide:v-3:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fe58d6761c1181ad446955f72bd64db701785a64cba518d7166fac78e828b820",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-03",
+      "wordId": "review",
+      "senseId": "v-4",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 91,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "复习，温习",
+        "definition": "study material again in order to refresh one's memory",
+        "definitionZh": "再次学习材料，以唤起并巩固记忆。",
+        "example": "Nora reviewed the key formulas before the mathematics test.",
+        "exampleZh": "数学考试前，诺拉复习了重点公式。",
+        "definitionSentence": "study material again in order to refresh one's memory",
+        "pos": "v.",
+        "synsetId": "omw-en-00696852-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "5cf5c24ed6adb286e3fb6c52a45d2bada948c3e4e84f48bed44961aa1b6dc811",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-03"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "684fa333933d626de1560da6b3c42811133b034f905906816c712f2b273250e4",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-03"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "27ac445bb15281b3e4e02e6048d7a7261efddd2ef2ded61f109059644936c82c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-03"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "0db244e3a7c5ab315bc832e0fa1a171bf6ef2c56349fb475b290b7dabb499318",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-03"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "95cce8b425976829162725b82ebe3d885515150517c64a850d1a7c6aef316fd1",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-03"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "684fa333933d626de1560da6b3c42811133b034f905906816c712f2b273250e4",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "review:v-4:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "9e7b3dbbeffa1eeb8794f8b4ecdaf20719f606a06b82d282062aeea2ec0cdc7d",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-04",
+      "wordId": "view",
+      "senseId": "n-4",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 91,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "景色，风景",
+        "definition": "the scene or landscape visible from a particular place",
+        "definitionZh": "从某个位置能够看到的景色或风景。",
+        "example": "From the cabin window, we had a clear view of the lake and the snow-covered hills.",
+        "exampleZh": "从小屋的窗户望出去，我们可以清楚地看到湖泊和覆雪的山丘。",
+        "definitionSentence": "the scene or landscape visible from a particular place",
+        "pos": "n.",
+        "synsetId": "omw-en-05933246-n"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "6024e46f9312fc4d1c2bba692f64fc178104ac0832daa05ec62234554a78394d",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-04"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "67b1c105d23d09520a7686e550a8a2e1d5aed9a9c5aa194a9de263e1103a53f8",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-04"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c63c2d52c1dd11b59f8ae9f4d83eb6522a3e10a87f4ee822ea45d0b3c16f895f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-04"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "ff0ef59fbb418f9b65f3e48983c11a71535dd1ab1823086c0112abd019e30c2a",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-04"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "4e3025e964b753f8cd6968fffab88b90d164ea223aba71d8a70de04e94c18745",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-04"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "67b1c105d23d09520a7686e550a8a2e1d5aed9a9c5aa194a9de263e1103a53f8",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "view:n-4:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fd015ca8e8a88222543c451795ff0646833ce032e87a2bc186c4d3e42d2d8248",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "8de976d174f9667bcb119759a8b74fab0592275178617c35f68a5e854e5aea2a",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-05",
+      "wordId": "void",
+      "senseId": "adj-4",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 91,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "空的，空无一物的",
+        "definition": "containing nothing; completely empty",
+        "definitionZh": "里面没有任何东西，完全空着。",
+        "example": "After the tank was drained, it was completely void of liquid.",
+        "exampleZh": "水箱排空后，里面完全没有液体。",
+        "definitionSentence": "containing nothing; completely empty",
+        "pos": "adj.",
+        "synsetId": "omw-en-01088351-s"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "f275568c0cda0c27ac338026ea8772dfd4720c20fc787c9988bbce4376b706bc",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-05"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c64d0f6ba7906cb9edc1e3aa7e663674debd9de5b4696a25a3605be959ec9309",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-05"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a388d95efd45264e0a74825a137bf0acfe0e5258d08e2d225a816c66ef66525f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-05"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "d859037c315322901444f15f81bcc92870c739ae64e7baa9af0c405bda04a54c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-05"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "52e6608d3d7fdbc57294b466bab3f04727c3822a9a93844be5305d450a75f784",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-05"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "c64d0f6ba7906cb9edc1e3aa7e663674debd9de5b4696a25a3605be959ec9309",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "void:adj-4:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "e51169608e8e7c43e00e5f519296618a4139d94e22140105667ffa273692e3dc",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "a55aed9c6e9b607cf62d4e904e7513012491dfbcb808196c2cf1d0412627db55",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-07",
+      "wordId": "advocate",
+      "senseId": "v-3",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 94,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "拥护，提倡，主张",
+        "definition": "publicly argue in favor of a cause, idea, or course of action",
+        "definitionZh": "公开表示支持，并为某项事业、主张或做法辩护。",
+        "example": "Many health experts advocate regular walking as a simple way to improve fitness.",
+        "exampleZh": "许多健康专家提倡经常步行，认为这是改善体能的简单方法。",
+        "definitionSentence": "publicly argue in favor of a cause, idea, or course of action",
+        "pos": "v.",
+        "synsetId": "omw-en-00827730-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "af0fad8639e4d9791cc1ba69eb767711824cf2a2c69e9444f700cb7760584b26",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-07"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "5bfd04a1c7d4689cfb8699980b085680fa7214c68504897681eab09e39f3257b",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-07"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "f378b0c532ee78a0c6604e6624fd2312078693dfaceb5cc04f1d2d52ebc25dca",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-07"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "9d8986883e6714802a33689fa0b3d89c3c7f2fa6ba747a259440d9162f50de6f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-07"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "45095d56cf68b16cbac90dcb61a78ef187a052f229918f6b056c5aae6afc1b50",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-07"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "5bfd04a1c7d4689cfb8699980b085680fa7214c68504897681eab09e39f3257b",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "advocate:v-3:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "dd002a1f75285248c20a599c08df5a2a6dc5d4a398a226f6c55a7cacece35bc0",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-08",
+      "wordId": "stress",
+      "senseId": "v-4",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 91,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "使紧张，使承受压力",
+        "definition": "put someone or something under severe strain or pressure",
+        "definitionZh": "使某人或某物承受很大的紧张或压力。",
+        "example": "Months of constantly changing deadlines stressed the small design team and weakened their concentration.",
+        "exampleZh": "连续几个月不断变化的截止日期让这个小型设计团队压力很大，也削弱了他们的专注力。",
+        "definitionSentence": "put someone or something under severe strain or pressure",
+        "pos": "v.",
+        "synsetId": "omw-en-01798452-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "7f5fa9b392ed66e9950ddd7559d393570b46ea42644963c0bca2585914797240",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-08"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "f6d9823458db69ed8224282d60e11ce02f27dc2adae05f141c7a368ec54d26ff",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-08"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "649036e1a9624bebd0ea8a1b6dbe243833efc7cd2f728d1577fcba923cc9a0e4",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-08"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "610f7aba5a81d294a65474006538b3a87d6996c7bf55319e6bfb75b1bdccd940",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-08"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "51b32c3185d220edd860e71e4100b66089026f74842b0d752aa8f65e80b8f017",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-08"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "f6d9823458db69ed8224282d60e11ce02f27dc2adae05f141c7a368ec54d26ff",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "stress:v-4:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "2ba2de65bc667dbafa8968f473a7818d2d0f9392c62e1b14fe7db84cab3cba9f",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-09",
+      "wordId": "power",
+      "senseId": "n-3",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 94,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "功率",
+        "definition": "the rate at which work is done or energy is transferred",
+        "definitionZh": "做功或传递能量的速率，通常以瓦特计量。",
+        "example": "The motor has a power output of two thousand watts, enough to lift the loaded platform steadily.",
+        "exampleZh": "这台电动机的功率为两千瓦，足以稳定地提升载重平台。",
+        "definitionSentence": "the rate at which work is done or energy is transferred",
+        "pos": "n.",
+        "synsetId": "omw-en-11453016-n"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "3993e09bcbbe9b06987241ddc21467a874cd4a7f7731fce8431a0446185041d9",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-09"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "0bb71d5528d4578cb221b5af1bd24229192a8bfc1e73210967d49b83808793ff",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-09"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "62fc97962848b5bab2241d610b6678503a3f8bf5999341f7c6c7ecae86c51883",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-09"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "b0522fc3140367ed3ea39eeb325d865ed55a437f287b5da07e7ae84e73a90482",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-09"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "dffbeb6871a44647cc4e0da53cb8bf2bb2d7c85b8d0c9ddb2c578987139b1a94",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-09"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "0bb71d5528d4578cb221b5af1bd24229192a8bfc1e73210967d49b83808793ff",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "power:n-3:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "fd015ca8e8a88222543c451795ff0646833ce032e87a2bc186c4d3e42d2d8248",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "aa3015e4075dece9a41a59dfa0396097fb4e60129625f70afeee21bab7397b40",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-NOUN-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-10",
+      "wordId": "group",
+      "senseId": "v-3",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 94,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "把……分组，归类",
+        "definition": "arrange people or things into one or more groups",
+        "definitionZh": "把人或事物安排成一个或多个组。",
+        "example": "The researcher grouped the samples by temperature range before comparing the results.",
+        "exampleZh": "研究人员先按温度范围将样本分组，然后比较结果。",
+        "definitionSentence": "arrange people or things into one or more groups",
+        "pos": "v.",
+        "synsetId": "omw-en-00656576-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8b64b1bafcc77b08b34eccf30dc9f012c89643b6d7b71ff78758d1ff1796ab43",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-10"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "4c614db5f1aa6aa429b6b7cb9a91919bfaa7fa6cc104897091c30a2efa2f83d9",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-10"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "f4e7bd1e64686aee737f897da446d6fb436f13e83d6d5364c45d322505913fcf",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-10"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "99ce35ec56e0b2d9b9a80800d24c7864116802166e5a65670c0377a50024eced",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-10"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "45fdd6c08e3522b25b2abdfb23a652e65fae5d4a8d804535da44e7ad8e85cc75",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-10"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "4c614db5f1aa6aa429b6b7cb9a91919bfaa7fa6cc104897091c30a2efa2f83d9",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "group:v-3:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "7d77c326809d5956a8fa8551a09421c852d85e889bd191c540852d901c407c9c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-11",
+      "wordId": "service",
+      "senseId": "v-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "检修，保养（设备）",
+        "definition": "inspect and maintain equipment so that it remains fit for use",
+        "definitionZh": "检查并维护设备，使其保持可正常使用的状态。",
+        "example": "A technician services the lift every six months, checking the cables and replacing worn parts.",
+        "exampleZh": "技术人员每六个月检修一次电梯，检查缆绳并更换磨损部件。",
+        "definitionSentence": "inspect and maintain equipment so that it remains fit for use",
+        "pos": "v.",
+        "synsetId": "omw-en-00456937-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "7decf95e944926e0cd076481d58513e11e427f20a07c598bb33b2eb833272420",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-11"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "b31400d35076266c7321bb22d6f1c9fd86d9e8c8fbd9a3da95f5f5effbab5fd1",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-11"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "695990f438a80bf83300fa32acbe5ce1dd183e3c3973ce191b50d596f010ee20",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-11"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "866eead2a7a275105126a1a8dc36129f955b4b5108836e8ea25bf3eff4ef724c",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-11"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "0ed3b7999d4e2636ffc374dbcb91d74cef5b7fd896df62ab5243c4b4bacb73d1",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-11"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "b31400d35076266c7321bb22d6f1c9fd86d9e8c8fbd9a3da95f5f5effbab5fd1",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "service:v-2:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "254bf944cbbb2c90e5585650fb226aecc6f7c135e9de6775fe4f72ada10e5d07",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-12",
+      "wordId": "risk",
+      "senseId": "v-2",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 97,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "使面临风险；冒着损失或损害的风险",
+        "definition": "expose someone or something to the possibility of loss or damage",
+        "definitionZh": "使某人或某物面临损失或损害的可能。",
+        "example": "The technician refused to risk damaging the sensor by using the wrong voltage.",
+        "exampleZh": "技术人员不愿冒着损坏传感器的风险使用错误电压。",
+        "definitionSentence": "expose someone or something to the possibility of loss or damage",
+        "pos": "v.",
+        "synsetId": "omw-en-02545578-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8dbd1ab49a212c97cd2cd5b754da1f01f5a3aee343c0473d35c687005e99f353",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-12"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "055a0cbf7c362dab42e2164c9dc7d4302ec027c25825d4dbf71fac778fc0789a",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-12"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8b4d243800fc67a031c12f0d90777914ce5b660bbb7419ebb2d3e89c488ddc06",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-12"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8b77c7d33bb6074329f33fe2ce3e537fd64aaad4266852fe1f86b88ba0b01be9",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-12"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a9b8c837299502b670e833fdb1a10d71373c1d9dcdecabd58003d9c08e04d7d4",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-12"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "055a0cbf7c362dab42e2164c9dc7d4302ec027c25825d4dbf71fac778fc0789a",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "risk:v-2:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "514f3c404f9abfbc6344c6894e3ffde4d97b1379fc99cc14dd0cf7607569990e",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-13",
+      "wordId": "practice",
+      "senseId": "v-4",
+      "action": "add",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "importance": 91,
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "练习，反复训练",
+        "definition": "repeat an activity regularly in order to improve skill",
+        "definitionZh": "反复进行某项活动，以提高熟练程度。",
+        "example": "The pianist practiced the difficult passage every morning until she could play it without mistakes.",
+        "exampleZh": "钢琴家每天早晨练习那段高难度乐段，直到能够无误地演奏。",
+        "definitionSentence": "repeat an activity regularly in order to improve skill",
+        "pos": "v.",
+        "synsetId": "omw-en-00606093-v"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definition": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "example": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "exampleZh": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "definitionSentence": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "pos": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+        "synsetId": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8c43dc0742d8953f9a25a5ca947ec296cfff3a93def0bb9af90fbeb503eb1a65",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-13"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "270b80d46334f03b45de0337fe9fdaa4bc7490b842adfffcd8e3508d77fadd74",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-13"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "14416ca95cfb8d009db728ccba1b3295cf68e6ec6d802b0e7fde0de1e32d6b88",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-13"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "0ee57e83c209447690751f4501ebc0ca678a5e5c783665369c63c28431ae7e53",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-13"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "4c09f33a64d74eeadf6aee05841cb135d29450cf1b2715cf9d46bce89df79309",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-13"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionSentence": {
+          "origin": "derived_from_approved_definition_without_new_expression",
+          "candidateSha256Utf8": "270b80d46334f03b45de0337fe9fdaa4bc7490b842adfffcd8e3508d77fadd74",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "practice:v-4:definition"
+          ],
+          "license": "Same approved text and rights basis as definition"
+        },
+        "pos": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "bc09700ddc3536f13538608f0f97393cec61e13874eeb16524d6cd5993431d70",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        },
+        "synsetId": {
+          "origin": "wordnet_3_0_semantic_identity",
+          "candidateSha256Utf8": "c3141ecbd2c9f9973b61356015495160360545972c857385f05f7279dcc374c2",
+          "oldValueSha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+          "sourceIds": [
+            "E-WORDNET-ADJ-3.0",
+            "E-WORDNET-LICENSE-3.0"
+          ],
+          "license": "WordNet Release 3.0 License"
+        }
+      }
+    },
+    {
+      "itemId": "F-14",
+      "wordId": "vivid",
+      "senseId": "adj-1",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "清晰鲜明的",
+        "definitionZh": "具有如同亲身经历般的清晰感和鲜明感。",
+        "example": "Years later, his memory of the rescue remained vivid, with every sound and movement still sharply clear.",
+        "exampleZh": "多年以后，他对那次救援的记忆仍然清晰鲜明，每一个声音和动作都历历分明。"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "1916b298929e29a68d0d0ad6cdd327fa71cb6d5f70ecd28ed35189adafaae7e7",
+        "definitionZh": "52e0fe66d57c5c6913d2c06fc8de94a0f694e021133742f3063db355b6381c63",
+        "example": "6119c85b23483992871800976c420d53bd8b4b0b6e85a587bead9b6348266dd9",
+        "exampleZh": "48f3c6bfb5a737b8ac32b4177860182fcc5d5a04294bcf54600b85f75496ff11"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "590051311fa40dfa60a105ad35908dbb908a1bcaa68107a12ea89527e20af62a",
+          "oldValueSha256": "1916b298929e29a68d0d0ad6cdd327fa71cb6d5f70ecd28ed35189adafaae7e7",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-14"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a6e9957bd59d8729e43b7a1a59963dc81b04f3e0ee5daa5fb17ce74d03ba82ff",
+          "oldValueSha256": "52e0fe66d57c5c6913d2c06fc8de94a0f694e021133742f3063db355b6381c63",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-14",
+            "E-CLEARED-vivid-adj-1-definition"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c1514e2a9df777119fd16f727a072127d4258a9fa536ecf54193376e30dbe1b5",
+          "oldValueSha256": "6119c85b23483992871800976c420d53bd8b4b0b6e85a587bead9b6348266dd9",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-14"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "57b2de93fa933176534d44555a41eb068d7af9a5143d2c20df879debe2db558b",
+          "oldValueSha256": "48f3c6bfb5a737b8ac32b4177860182fcc5d5a04294bcf54600b85f75496ff11",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-14"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-15",
+      "wordId": "century",
+      "senseId": "n-2",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "definitionZh": "十个十，即一百。",
+        "example": "The batter completed his century with a four, bringing his score to exactly one hundred runs.",
+        "exampleZh": "这名击球手击出一记四分球，完成个人百分，得分正好达到一百分。"
+      },
+      "expectedOldValueSha256": {
+        "definitionZh": "20acac65d2f8ec20b20965344f9f129fa9e688c13a940d97b9500b8f71e35335",
+        "example": "2a71db944d7e32e110189733f7f4d8df703d70c8a2629e1b0c03793b43e04efa",
+        "exampleZh": "0711ea49d33185cd016d38eaa5654279fc0aa81973ebfbd4d33e0d9d236df283"
+      },
+      "fieldEvidence": {
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "d6dc1917f8ffa8174a8c2bac7ac1ea4e2b5cb90159546bc17983f0b2f0425a43",
+          "oldValueSha256": "20acac65d2f8ec20b20965344f9f129fa9e688c13a940d97b9500b8f71e35335",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-15",
+            "E-CLEARED-century-n-2-definition"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "819f54e3a2dd0fa5024d9ecb33f38df9c88a4baafe747cf4f73fba7b961750ff",
+          "oldValueSha256": "2a71db944d7e32e110189733f7f4d8df703d70c8a2629e1b0c03793b43e04efa",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-15"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "69315622b2e3d5ae704a5e67047a262e2bee9416d936a49e8da2d750c3b5cd85",
+          "oldValueSha256": "0711ea49d33185cd016d38eaa5654279fc0aa81973ebfbd4d33e0d9d236df283",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-15"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-16",
+      "wordId": "stress",
+      "senseId": "v-2",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "definition": "emphasize something by presenting it as especially important",
+        "definitionZh": "把某事作为特别重要的内容加以强调。"
+      },
+      "expectedOldValueSha256": {
+        "definition": "1d690c4466bee618888c718939dc320a421f2172dc7e8afec6b119a95f6f809f",
+        "definitionZh": "c68171da97d0cff865ddeb3120d8f4f8cc0086c80e960b5e47f09b7b1d0511a2"
+      },
+      "fieldEvidence": {
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "42e48a434a57dd7a95b6b0f1188e75bb7ce328b30a6a200b9f9382b188f99ef7",
+          "oldValueSha256": "1d690c4466bee618888c718939dc320a421f2172dc7e8afec6b119a95f6f809f",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-16"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "c65bdeca5bf3a0841c4a6178c9a93d2d8c72e5732c404e06c51402e0e41d8879",
+          "oldValueSha256": "c68171da97d0cff865ddeb3120d8f4f8cc0086c80e960b5e47f09b7b1d0511a2",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-16"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-17",
+      "wordId": "stress",
+      "senseId": "n-3",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "exampleZh": "重点更多放在准确性而不是速度上。"
+      },
+      "expectedOldValueSha256": {
+        "exampleZh": "dd3371aa26b9c135032172c7a43284468babcca15421deff7505a2129eaf6f7b"
+      },
+      "fieldEvidence": {
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "4290165b02b80340591dbe65825edf9a9912e4d78388d06ca9a3c9b11a970ae8",
+          "oldValueSha256": "dd3371aa26b9c135032172c7a43284468babcca15421deff7505a2129eaf6f7b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-17",
+            "E-CLEARED-stress-n-3-example"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-18",
+      "wordId": "national",
+      "senseId": "adj-2",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "example": "The author presents hospitality as a national trait shared by the people of the fictional island.",
+        "exampleZh": "作者把热情好客描写成这个虚构岛国人民共有的民族特征。"
+      },
+      "expectedOldValueSha256": {
+        "example": "326020630044738f603b303322a8d92ac2542735cd645cd52e805c74fee537a9",
+        "exampleZh": "d05900f5f4c3dc700a696c066a329be5fb26a3a9fcc1837b3734baa8906e2870"
+      },
+      "fieldEvidence": {
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "f980752ac7b247153154e55d4ef73b3a3718774fe199cb1e31351a7f5886433e",
+          "oldValueSha256": "326020630044738f603b303322a8d92ac2542735cd645cd52e805c74fee537a9",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-18"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "1deca10f1fb3493fefebcf51fcce54841ad3d71d62ffc2edfeed775e98c1f3c9",
+          "oldValueSha256": "d05900f5f4c3dc700a696c066a329be5fb26a3a9fcc1837b3734baa8906e2870",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-18"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-19",
+      "wordId": "require",
+      "senseId": "v-2",
+      "action": "update",
+      "bookIds": [
+        "kaoyan"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "example": "The laboratory supervisor required every visitor to wear protective glasses before entering.",
+        "exampleZh": "实验室主管要求每位访客在进入前佩戴护目镜。"
+      },
+      "expectedOldValueSha256": {
+        "example": "7a4c84607a8308ccc308342401b6e301ffc9ac25631a4e20651e56b9ce4f3142",
+        "exampleZh": "dc53857dc8f8e27e925c2e3c03c1128738bb415147bc2516b2e2a4dc47024782"
+      },
+      "fieldEvidence": {
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "999837b70beb27e8c0597a39a75aa2885c268aed03dd41f422c800d1200db1df",
+          "oldValueSha256": "7a4c84607a8308ccc308342401b6e301ffc9ac25631a4e20651e56b9ce4f3142",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-19"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "46bd70877b04b8c676b2a723d1e1a7c487cadf8fd21a72d41ae66a6ca4ca3458",
+          "oldValueSha256": "dc53857dc8f8e27e925c2e3c03c1128738bb415147bc2516b2e2a4dc47024782",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-19"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-20",
+      "wordId": "rise",
+      "senseId": "n-4",
+      "action": "update",
+      "bookIds": [
+        "kaoyan"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "exampleZh": "汽车没能爬上那段坡路。"
+      },
+      "expectedOldValueSha256": {
+        "exampleZh": "90c4b25e22d153083f19b3c6eb777e1410c71087acde70da8e5ac662c9edc11b"
+      },
+      "fieldEvidence": {
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "66385ccda5f30af5384639f39dcac057a1c0f632aa02c002f495cf591a13e7ab",
+          "oldValueSha256": "90c4b25e22d153083f19b3c6eb777e1410c71087acde70da8e5ac662c9edc11b",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-20",
+            "E-CLEARED-rise-n-4-example"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-21",
+      "wordId": "issue",
+      "senseId": "v-2",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "definition": "prepare something and make it publicly available for distribution or sale",
+        "definitionZh": "准备好某物并公开发行，以供分发或销售。"
+      },
+      "expectedOldValueSha256": {
+        "definition": "0f0b0fdec9c2e91588ce654ab1afbb693b63fadfe9675b6d621595d88d9451ef",
+        "definitionZh": "1d8157f7c00c075d2874fd00da7685a6e7dc304e24a18ab71b50b95a27627421"
+      },
+      "fieldEvidence": {
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "874ffe6f814e4913db41cfc4b1d372cdfe9cbef65e6a21570f0e3d0239e6d2c1",
+          "oldValueSha256": "0f0b0fdec9c2e91588ce654ab1afbb693b63fadfe9675b6d621595d88d9451ef",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-21"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "62606a80158fa579441167376b469f451efb17943fe283d08d5d679eb0a81bd5",
+          "oldValueSha256": "1d8157f7c00c075d2874fd00da7685a6e7dc304e24a18ab71b50b95a27627421",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-21"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-22",
+      "wordId": "practice",
+      "senseId": "v-3",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "meaning": "从事（职业），执业",
+        "definition": "work in a profession or carry out a professional activity",
+        "definitionZh": "从事某项职业或开展专业活动。",
+        "example": "After completing her training, she practiced law at a small firm for ten years.",
+        "exampleZh": "完成专业训练后，她在一家小型律师事务所执业了十年。"
+      },
+      "expectedOldValueSha256": {
+        "meaning": "c49889903fe1129ec87e3c8eb56e901366fcf5fce810c573c5cf8de15fb06f76",
+        "definition": "213afb7a8eb47b29660ba18bd441fd7513987fe30f949289987c1ab5da47a674",
+        "definitionZh": "f8a1265f32b728b0aa9464ae742078050406c76efacb8e37e96972b66896391f",
+        "example": "2fd4151c959bceaf04fb35c6d693f3d4fd10e812096c417de45984d50a387ed2",
+        "exampleZh": "bb5a9d154edbe86251e8fc4a4d66175cd9ba4ebb1db118b3b7b731daa4fb0c25"
+      },
+      "fieldEvidence": {
+        "meaning": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "8d88b2511384e541e83ecdd6810ac6392ccf2ff579ff3def5f7d4b1f4aa918a2",
+          "oldValueSha256": "c49889903fe1129ec87e3c8eb56e901366fcf5fce810c573c5cf8de15fb06f76",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-22"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definition": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "dff8c34decda6d9bcc80c3ccce819835cbe593c12714a10b2f4aade54aec565b",
+          "oldValueSha256": "213afb7a8eb47b29660ba18bd441fd7513987fe30f949289987c1ab5da47a674",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-22"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "16d4758f971788066df9a98bc31cffb19275face068f2dfcb995256edcc48322",
+          "oldValueSha256": "f8a1265f32b728b0aa9464ae742078050406c76efacb8e37e96972b66896391f",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-22"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "example": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "a10f4858c3264d40c170e24cacb00c98064729d89b52f13c231a4fd593add847",
+          "oldValueSha256": "2fd4151c959bceaf04fb35c6d693f3d4fd10e812096c417de45984d50a387ed2",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-22"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "3443e639eea00c00cad5a12c4b41949fede568bf7e78cc0b0976dd3d45197961",
+          "oldValueSha256": "bb5a9d154edbe86251e8fc4a4d66175cd9ba4ebb1db118b3b7b731daa4fb0c25",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-22"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    },
+    {
+      "itemId": "F-23",
+      "wordId": "function",
+      "senseId": "n-3",
+      "action": "update",
+      "bookIds": [
+        "kaoyan",
+        "ielts"
+      ],
+      "identityEvidenceStatus": "verified_target_locator_candidate_only",
+      "fields": {
+        "definitionZh": "泛指某种社交活动或聚会。",
+        "exampleZh": "一场接一场的社交活动，仿佛永无休止。"
+      },
+      "expectedOldValueSha256": {
+        "definitionZh": "c8445bb9e00f4d2f6ebc86759c05cc45f2aae77799012790f2b28cbfd982b23c",
+        "exampleZh": "813dbe08e0a9708b6f6836de2818857d1e0e78d8bda06dcb27816168f96a897a"
+      },
+      "fieldEvidence": {
+        "definitionZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "abbaa554c0e9e0fcb97142c08fd017e2cfbd75c3a137821b73410b4565642515",
+          "oldValueSha256": "c8445bb9e00f4d2f6ebc86759c05cc45f2aae77799012790f2b28cbfd982b23c",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-23",
+            "E-CLEARED-function-n-3-definition"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        },
+        "exampleZh": {
+          "origin": "independent_ai_assisted_candidate",
+          "candidateSha256Utf8": "d89a57653f3a4bb1735e8b4b7ab4345839dc602ce93a40012d0e8fb7f48de6e6",
+          "oldValueSha256": "813dbe08e0a9708b6f6836de2818857d1e0e78d8bda06dcb27816168f96a897a",
+          "sourceIds": [
+            "E-RUNTIME-BUNDLE",
+            "E-IDENTITY-LOCK",
+            "E-WORDNET-LICENSE",
+            "E-CODEX-GENERATION",
+            "E-WORDNET-F-23",
+            "E-CLEARED-function-n-3-example"
+          ],
+          "license": "OpenAI output under the recorded project terms"
+        }
+      }
+    }
+  ],
+  "noChangeItems": []
+}

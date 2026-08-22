@@ -9,7 +9,7 @@ const dataDir = path.join(rootDir, "data");
 const manifestArgument = process.argv.find((argument) => argument.endsWith(".json"));
 const manifestPath = manifestArgument
   ? path.resolve(rootDir, manifestArgument)
-  : path.join(dataDir, "content-change-sets", "op-fb-2026-08-12-a.json");
+  : path.join(dataDir, "content-change-sets", "op-fb-2026-08-14.json");
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 const ledger = JSON.parse(await readFile(
   manifestPath.replace(/\.json$/i, "-rights-ledger.json"),
