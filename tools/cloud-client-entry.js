@@ -397,6 +397,20 @@ window.SenseVocabCloud = {
         };
       },
 
+      async loadAdminFeedbackTriage(status = null, limit = 100, offset = 0) {
+        return assertResult(await client.rpc("admin_feedback_triage", {
+          p_status: status,
+          p_limit: limit,
+          p_offset: offset,
+        })) ?? { items: [], total: 0, counts: {} };
+      },
+
+      async loadAdminFeedbackDetail(anonymousId) {
+        return assertResult(await client.rpc("admin_feedback_detail", {
+          p_anonymous_id: String(anonymousId ?? "").trim(),
+        }));
+      },
+
       async updateFeedbackStatus(feedbackId, status) {
         const result = assertResult(await client.rpc("admin_update_feedback_status", {
           p_feedback_id: feedbackId,

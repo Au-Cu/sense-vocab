@@ -62,6 +62,42 @@ test("feedback quota expansion preserves the authenticated RPC boundary", async 
   expect(migration).not.toMatch(/\b(?:delete|update)\s+public\.feedback_reports\b/i);
 });
 
+test("feedback automation triage is minimal, read-only, and admin-gated", async () => {
+  const [migration, client, account] = await Promise.all([
+    read("supabase/migrations/20260822144248_admin_feedback_triage_readonly.sql"),
+    read("tools/cloud-client-entry.js"),
+    read("account.js"),
+  ]);
+  const triage = migration
+    .split("create or replace function public.admin_feedback_triage", 2)[1]
+    .split("create or replace function public.admin_feedback_detail", 1)[0];
+  expect(triage).toBeTruthy();
+  expect(triage).toContain("stable");
+  expect(triage).toContain("security definer");
+  expect(triage).toContain("set search_path = ''");
+  expect(triage).toContain("if not public.is_admin()");
+  expect(triage).toContain("'anonymousId'");
+  expect(triage).toContain("'contentId'");
+  expect(triage).not.toMatch(/\b(?:insert|update|delete|truncate)\b/i);
+  expect(triage).not.toMatch(/'email'|'message'|'imagePaths'|'userId'/);
+  expect(migration).toContain(
+    "revoke all on function public.admin_feedback_triage(text, integer, integer)",
+  );
+  expect(migration).toContain(
+    "grant execute on function public.admin_feedback_triage(text, integer, integer)",
+  );
+  const triageClient = client
+    .split("async loadAdminFeedbackTriage", 2)[1]
+    .split("async loadAdminFeedbackDetail", 1)[0];
+  expect(triageClient).toContain('client.rpc("admin_feedback_triage"');
+  expect(triageClient).not.toMatch(
+    /admin_expired_feedback|admin_delete_expired_feedback|\.remove\(/,
+  );
+  expect(account).toContain("const issueType = feedbackIssueSelect.value || null");
+  expect(account).toContain("issueType !== MISSING_SENSE_ISSUE");
+  expect(account).toContain("issueType !== OTHER_FEEDBACK_ISSUE");
+});
+
 test("account snapshots block undeclared record loss and keep recovery copies private", async () => {
   const migration = await read(
     "supabase/migrations/202607310001_state_recovery_guard.sql",
