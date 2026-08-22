@@ -42,12 +42,170 @@ button {
   font: inherit;
 }
 
+.boot-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  padding:
+    max(28px, env(safe-area-inset-top))
+    max(22px, env(safe-area-inset-right))
+    max(28px, env(safe-area-inset-bottom))
+    max(22px, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 15% 18%, rgba(15, 118, 110, 0.16), transparent 31%),
+    radial-gradient(circle at 87% 82%, rgba(199, 125, 45, 0.16), transparent 33%),
+    linear-gradient(145deg, #f8f6f0 0%, #f2f5f1 54%, #f7f1e8 100%);
+}
+
+.boot-atmosphere,
+.boot-atmosphere span {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.boot-atmosphere span {
+  width: clamp(160px, 30vw, 360px);
+  height: clamp(160px, 30vw, 360px);
+  border: 1px solid rgba(15, 118, 110, 0.13);
+  border-radius: 38% 62% 58% 42%;
+  animation: boot-drift 9s ease-in-out infinite alternate;
+}
+
+.boot-atmosphere span:nth-child(1) {
+  inset: -7% auto auto -4%;
+  transform: rotate(18deg);
+}
+
+.boot-atmosphere span:nth-child(2) {
+  inset: auto -7% -8% auto;
+  border-color: rgba(199, 125, 45, 0.16);
+  animation-delay: -3s;
+}
+
+.boot-atmosphere span:nth-child(3) {
+  inset: 50% auto auto 52%;
+  width: clamp(80px, 13vw, 150px);
+  height: clamp(80px, 13vw, 150px);
+  border-color: rgba(15, 118, 110, 0.09);
+  animation-delay: -6s;
+}
+
+.boot-card {
+  position: relative;
+  width: min(420px, 100%);
+  padding: clamp(32px, 7vw, 54px);
+  border: 1px solid rgba(217, 215, 206, 0.82);
+  border-radius: 28px 8px 28px 8px;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 28px 80px rgba(34, 52, 49, 0.13);
+  backdrop-filter: blur(18px);
+  text-align: center;
+}
+
+.boot-brand {
+  width: 82px;
+  height: 82px;
+  display: grid;
+  grid-template-columns: 1fr 10px 1fr;
+  place-items: center;
+  margin: 0 auto 28px;
+  border: 1px solid rgba(15, 118, 110, 0.24);
+  border-radius: 24px 7px 24px 7px;
+  color: var(--accent-strong);
+  background: #fbfaf7;
+  box-shadow: 0 12px 30px rgba(15, 118, 110, 0.09);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.boot-brand i {
+  width: 1px;
+  height: 32px;
+  display: block;
+  background: linear-gradient(transparent, var(--warm), transparent);
+  transform: rotate(18deg);
+}
+
+.boot-kicker {
+  margin: 0 0 12px;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+}
+
+.boot-card h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: Georgia, "Songti SC", "STSong", serif;
+  font-size: clamp(1.55rem, 5vw, 2.15rem);
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+}
+
+.boot-copy {
+  margin: 14px 0 28px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+}
+
+.boot-progress {
+  width: min(220px, 78%);
+  height: 3px;
+  overflow: hidden;
+  margin: 0 auto;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+}
+
+.boot-progress span {
+  width: 42%;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--warm));
+  animation: boot-progress 1.55s ease-in-out infinite;
+}
+
+@keyframes boot-progress {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(345%); }
+}
+
+@keyframes boot-drift {
+  from { translate: -8px -6px; rotate: -2deg; }
+  to { translate: 8px 9px; rotate: 5deg; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-atmosphere span,
+  .boot-progress span {
+    animation: none;
+  }
+
+  .boot-progress span {
+    width: 68%;
+  }
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 32px 18px;
+}
+
+.app-shell[hidden] {
+  display: none !important;
 }
 
 .study-panel {
@@ -172,24 +330,6 @@ button {
   flex: 1 1 auto;
   flex-direction: column;
   gap: 16px;
-}
-
-.account-bootstrap-status {
-  flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  margin: 4px 0;
-  color: var(--muted);
-  font-weight: 680;
-  text-align: center;
-}
-
-html[data-account-ready="true"] .account-bootstrap-status {
-  display: none;
-}
-
-html:not([data-account-ready="true"]) #homePanel .home-card {
-  display: none;
 }
 
 .home-card {

@@ -210,6 +210,7 @@ test("an independent guest branch keeps today's learning on the same device", as
     const incorrectlyMerged = sync.mergeStates(guest, remote);
     const independent = sync.prepareIndependentMergeState(
       guest,
+      remote,
       "guest-migration",
     );
     const merged = sync.mergeStates(independent, remote);
@@ -227,6 +228,154 @@ test("an independent guest branch keeps today's learning on the same device", as
   expect(result.status).toBe("mastered");
   expect(result.todayActivity.newWords).toEqual(["act"]);
   expect(result.yesterdayActivity.reviewWords).toEqual(["act"]);
+});
+
+test("an empty current-day guest shell is not treated as recoverable progress", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((empty) => {
+    const sync = window.SenseVocabSync;
+    const remote = structuredClone(empty);
+    remote.session = {
+      date: "2026-08-21",
+      activeLearningDay: 42,
+      queue: [{ wordId: "act" }],
+      currentIndex: 1,
+      baseCompleted: true,
+    };
+    remote.introducedWords = ["act", "ability"];
+    remote.progress["act:v-1"] = {
+      status: "mastered",
+      lastLearningDay: 42,
+      lastSeenActual: "2026-08-21",
+      updatedAt: "2026-08-21T12:00:00.000Z",
+    };
+    remote.activityLog["2026-08-21"] = {
+      newWords: ["ability"],
+      reviewWords: ["act"],
+      newCount: 1,
+      reviewCount: 1,
+      learningDays: [42],
+    };
+
+    const staleGuest = structuredClone(empty);
+    staleGuest.session = {
+      date: "2026-08-22",
+      activeLearningDay: 43,
+      queue: [],
+      currentIndex: 0,
+      baseCompleted: false,
+    };
+    staleGuest.introducedWords = ["act"];
+    staleGuest.progress["act:v-1"] = {
+      status: "review",
+      lastLearningDay: 35,
+      lastSeenActual: "2026-08-13",
+      updatedAt: "2026-08-13T12:00:00.000Z",
+    };
+    staleGuest.activityLog["2026-08-13"] = {
+      newWords: [],
+      reviewWords: ["act"],
+      newCount: 0,
+      reviewCount: 1,
+      learningDays: [35],
+    };
+
+    const prepared = sync.prepareIndependentMergeState(staleGuest, remote);
+    return {
+      recoverable: sync.hasIndependentChanges(staleGuest, remote),
+      preparedSession: prepared.session,
+      preparedStatus: prepared.progress["act:v-1"].status,
+      preparedDates: Object.keys(prepared.activityLog),
+    };
+  }, baseState());
+
+  expect(result.recoverable).toBe(false);
+  expect(result.preparedSession.date).toBe("2026-08-21");
+  expect(result.preparedStatus).toBe("mastered");
+  expect(result.preparedDates).toEqual(["2026-08-21"]);
+});
+
+test("independent recovery promotes only newer guest evidence", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((empty) => {
+    const sync = window.SenseVocabSync;
+    const remote = structuredClone(empty);
+    remote.session = {
+      date: "2026-08-21",
+      activeLearningDay: 42,
+      queue: [{ wordId: "act" }],
+      currentIndex: 1,
+      baseCompleted: true,
+    };
+    remote.introducedWords = ["ability"];
+    remote.progress["ability:n-1"] = {
+      status: "mastered",
+      lastLearningDay: 42,
+      lastSeenActual: "2026-08-21",
+      updatedAt: "2026-08-21T12:00:00.000Z",
+    };
+    remote.activityLog["2026-08-21"] = {
+      newWords: ["ability"],
+      reviewWords: [],
+      newCount: 1,
+      reviewCount: 0,
+      learningDays: [42],
+    };
+
+    const guest = structuredClone(empty);
+    guest.session = {
+      date: "2026-08-22",
+      activeLearningDay: 43,
+      queue: [{ wordId: "act" }, { wordId: "ability" }],
+      currentIndex: 1,
+      baseCompleted: false,
+    };
+    guest.introducedWords = ["act", "ability"];
+    guest.progress["act:v-1"] = {
+      status: "mastered",
+      lastLearningDay: 43,
+      lastSeenActual: "2026-08-22",
+      updatedAt: "2026-08-22T05:20:00.000Z",
+    };
+    guest.progress["ability:n-1"] = {
+      status: "reinforce",
+      lastLearningDay: 35,
+      lastSeenActual: "2026-08-13",
+      updatedAt: "2026-08-13T12:00:00.000Z",
+    };
+    guest.activityLog["2026-08-13"] = {
+      newWords: [],
+      reviewWords: ["ability"],
+      newCount: 0,
+      reviewCount: 1,
+      learningDays: [35],
+    };
+    guest.activityLog["2026-08-22"] = {
+      newWords: ["act"],
+      reviewWords: [],
+      newCount: 1,
+      reviewCount: 0,
+      learningDays: [43],
+    };
+
+    const prepared = sync.prepareIndependentMergeState(guest, remote);
+    const merged = sync.mergeStates(prepared, remote);
+    return {
+      recoverable: sync.hasIndependentChanges(guest, remote),
+      date: merged.session.date,
+      words: merged.introducedWords,
+      actStatus: merged.progress["act:v-1"].status,
+      abilityStatus: merged.progress["ability:n-1"].status,
+      activityDates: Object.keys(merged.activityLog).sort(),
+    };
+  }, baseState());
+
+  expect(result.recoverable).toBe(true);
+  expect(result.date).toBe("2026-08-22");
+  expect(result.words.sort()).toEqual(["ability", "act"]);
+  expect(result.actStatus).toBe("mastered");
+  expect(result.abilityStatus).toBe("mastered");
+  expect(result.activityDates).toEqual(["2026-08-21", "2026-08-22"]);
 });
 
 test("a concurrent explicit reset is not revived by stale progress", async ({ page }) => {

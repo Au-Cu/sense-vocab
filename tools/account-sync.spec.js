@@ -659,7 +659,7 @@ test("existing cloud history is never overwritten silently by guest history", as
   await expect(page.locator("#localRecordSummary")).toContainText("1");
   await expect(page.locator("#localRecordPlan")).toContainText("每天 23 词");
   await expect(page.locator("#accountConflictDifference")).toHaveText(
-    /本机独有 1 个已学单词，云端独有 1 个/,
+    /历史游客记录独有 1 个已学单词，账号记录独有 1 个/,
   );
   await page.screenshot({
     path: "test-results/account-conflict-desktop.png",
@@ -692,6 +692,7 @@ test("existing cloud history is never overwritten silently by guest history", as
     guest: JSON.parse(localStorage.getItem(guestKey)),
     account: JSON.parse(localStorage.getItem(accountKey)),
     saves: window.__fakeCloud.saves.length,
+    remoteWords: window.__fakeCloud.remote.state.introducedWords,
   }), { guestKey: STORAGE_KEY, accountKey: ACCOUNT_KEY });
 
   expect(result.activeKey).toBe(ACCOUNT_KEY);
@@ -699,7 +700,8 @@ test("existing cloud history is never overwritten silently by guest history", as
   expect(result.account.plan.dailyTarget).toBe(55);
   expect(result.guest.introducedWords).toContain("abandon");
   expect(result.account.introducedWords).toContain("act");
-  expect(result.saves).toBe(0);
+  expect(result.saves).toBe(1);
+  expect(result.remoteWords).toEqual(["act"]);
 });
 
 test("recommended conflict merge persists the converged state locally and remotely", async ({ page, browser }) => {
@@ -886,7 +888,7 @@ test("retained guest recovery survives same-device cloud vectors", async ({ page
     window.SenseVocabApp.activateGuest();
     localStorage.setItem(
       migrationKey,
-      window.SenseVocabApp.stateSignature(
+      window.SenseVocabApp.recoveryStateSignature(
         window.SenseVocabApp.getGuestState(),
       ),
     );
@@ -936,7 +938,195 @@ test("retained guest recovery survives same-device cloud vectors", async ({ page
   expect(result.guestDate).toBe("2026-08-22");
 });
 
+test("a stale guest archive does not interrupt account bootstrap", async ({ page }) => {
+  const remoteState = makeState(40);
+  remoteState.session = {
+    date: "2026-08-21",
+    activeLearningDay: 42,
+    queue: [{ wordId: "act", type: "review", senseKeys: ["act:v-1"] }],
+    currentIndex: 1,
+    baseCompleted: true,
+  };
+  remoteState.introducedWords = ["act", "ability"];
+  remoteState.progress["act:v-1"] = {
+    status: "mastered",
+    lastLearningDay: 42,
+    lastSeenActual: "2026-08-21",
+    updatedAt: "2026-08-21T12:00:00.000Z",
+  };
+  remoteState.activityLog["2026-08-21"] = {
+    newWords: ["ability"],
+    reviewWords: ["act"],
+    newCount: 1,
+    reviewCount: 1,
+    learningDays: [42],
+  };
+  const staleGuest = makeState(30);
+  staleGuest.session = {
+    date: "2026-08-22",
+    activeLearningDay: 43,
+    queue: [],
+    currentIndex: 0,
+    baseCompleted: false,
+  };
+  staleGuest.introducedWords = ["act"];
+  staleGuest.progress["act:v-1"] = {
+    status: "review",
+    lastLearningDay: 35,
+    lastSeenActual: "2026-08-13",
+    updatedAt: "2026-08-13T12:00:00.000Z",
+  };
+  staleGuest.activityLog["2026-08-13"] = {
+    newWords: [],
+    reviewWords: ["act"],
+    newCount: 0,
+    reviewCount: 1,
+    learningDays: [35],
+  };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 7,
+    state: remoteState,
+    updatedAt: "2026-08-22T05:21:00.000Z",
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(({ key, state }) => {
+    localStorage.clear();
+    localStorage.setItem(key, JSON.stringify(state));
+  }, { key: STORAGE_KEY, state: staleGuest });
+  await page.reload();
+  await waitForAccount(page);
+
+  await login(page);
+  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect(page.locator("#accountConflictView")).toBeHidden();
+  await expect(page.locator("#recoverGuestDataButton")).toBeHidden();
+  expect(await page.evaluate(() => ({
+    words: window.SenseVocabApp.getState().introducedWords,
+    saves: window.__fakeCloud.saves.length,
+  }))).toEqual({
+    words: ["act", "ability"],
+    saves: 0,
+  });
+});
+
+test("guest conflict merge preserves account learning completed after the prompt", async ({ page }) => {
+  const remoteState = makeState(40);
+  remoteState.session = {
+    date: "2026-08-21",
+    activeLearningDay: 42,
+    queue: [{ wordId: "act", type: "review", senseKeys: ["act:v-1"] }],
+    currentIndex: 1,
+    baseCompleted: true,
+  };
+  remoteState.introducedWords = ["act"];
+  remoteState.progress["act:v-1"] = {
+    status: "review",
+    lastLearningDay: 42,
+    lastSeenActual: "2026-08-21",
+    updatedAt: "2026-08-21T12:00:00.000Z",
+  };
+  remoteState.activityLog["2026-08-21"] = {
+    newWords: [],
+    reviewWords: ["act"],
+    newCount: 0,
+    reviewCount: 1,
+    learningDays: [42],
+  };
+  const guestState = makeState(30);
+  guestState.session = {
+    date: "2026-08-22",
+    activeLearningDay: 43,
+    queue: [{ wordId: "abandon", type: "new", senseKeys: ["abandon:v-1"] }],
+    currentIndex: 1,
+    baseCompleted: false,
+  };
+  guestState.introducedWords = ["abandon"];
+  guestState.progress["abandon:v-1"] = {
+    status: "mastered",
+    lastLearningDay: 43,
+    lastSeenActual: "2026-08-22",
+    updatedAt: "2026-08-22T05:00:00.000Z",
+  };
+  guestState.activityLog["2026-08-22"] = {
+    newWords: ["abandon"],
+    reviewWords: [],
+    newCount: 1,
+    reviewCount: 0,
+    learningDays: [43],
+  };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 7,
+    state: remoteState,
+    updatedAt: "2026-08-22T05:21:00.000Z",
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(({ guestKey, accountKey, guest, account }) => {
+    localStorage.clear();
+    localStorage.setItem(guestKey, JSON.stringify(guest));
+    localStorage.setItem(accountKey, JSON.stringify(account));
+  }, {
+    guestKey: STORAGE_KEY,
+    accountKey: ACCOUNT_KEY,
+    guest: guestState,
+    account: remoteState,
+  });
+  await page.reload();
+  await waitForAccount(page);
+
+  await login(page);
+  await expect(page.locator("#accountConflictView")).toBeVisible();
+  await expect(page.locator("#localRecordHeading")).toHaveText("本机历史游客记录");
+  await page.locator("#closeAccountButton").click();
+  await page.evaluate(() => {
+    const next = window.SenseVocabApp.getState();
+    next.introducedWords = [...new Set([...next.introducedWords, "ability"])];
+    next.progress["ability:n-1"] = {
+      status: "mastered",
+      lastLearningDay: 43,
+      lastSeenActual: "2026-08-22",
+      updatedAt: "2026-08-22T06:00:00.000Z",
+    };
+    next.activityLog["2026-08-22"] = {
+      newWords: ["ability"],
+      reviewWords: [],
+      newCount: 1,
+      reviewCount: 0,
+      learningDays: [43],
+    };
+    next.bookStates[next.activeBookId] = {
+      ...next.bookStates[next.activeBookId],
+      introducedWords: next.introducedWords,
+      progress: next.progress,
+      activityLog: next.activityLog,
+    };
+    window.SenseVocabApp.replaceActiveState(next);
+  });
+  await openAccount(page);
+  await page.locator("#mergeStateButton").click();
+  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect.poll(async () => page.evaluate(() => {
+    return window.__fakeCloud.remote.state.introducedWords.slice().sort();
+  })).toEqual(["abandon", "ability", "act"]);
+
+  const result = await page.evaluate(({ accountKey }) => ({
+    activeWords: window.SenseVocabApp.getState().introducedWords.slice().sort(),
+    accountWords: JSON.parse(localStorage.getItem(accountKey))
+      .introducedWords.slice().sort(),
+    remoteWords: window.__fakeCloud.remote.state.introducedWords.slice().sort(),
+    abilityStatus: window.__fakeCloud.remote.state.progress["ability:n-1"]?.status,
+    abandonStatus: window.__fakeCloud.remote.state.progress["abandon:v-1"]?.status,
+  }), { accountKey: ACCOUNT_KEY });
+  expect(result.activeWords).toEqual(["abandon", "ability", "act"]);
+  expect(result.accountWords).toEqual(result.activeWords);
+  expect(result.remoteWords).toEqual(result.activeWords);
+  expect(result.abilityStatus).toBe("mastered");
+  expect(result.abandonStatus).toBe("mastered");
+});
+
 test("reload hides guest progress and restores the account cache before cloud convergence", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const guestState = makeState(10);
   guestState.introducedWords = ["abandon"];
   const accountState = makeState(40);
@@ -968,23 +1158,38 @@ test("reload hides guest progress and restores the account cache before cloud co
   const duringBootstrap = await page.evaluate(() => ({
     accountReady: document.documentElement.dataset.accountReady ?? null,
     activeWords: window.SenseVocabApp.getState().introducedWords,
-    homeSummaryDisplay: getComputedStyle(document.querySelector(".home-summary")).display,
-    homeCardDisplay: getComputedStyle(document.querySelector(".home-card")).display,
-    planButtonDisplay: getComputedStyle(document.querySelector("#planButton")).display,
+    bootDisplay: getComputedStyle(document.querySelector("#bootScreen")).display,
+    appShellDisplay: getComputedStyle(document.querySelector("#appShell")).display,
+    planButtonExposed: document.querySelector("#planButton").getClientRects().length > 0,
     planButtonDisabled: document.querySelector("#planButton").disabled,
+    appShellHidden: document.querySelector("#appShell").hidden,
+    appShellInert: document.querySelector("#appShell").inert,
+    appShellAriaHidden: document.querySelector("#appShell").getAttribute("aria-hidden"),
     studyPanelInert: document.querySelector("#studyPanel").inert,
     homeBusy: document.querySelector("#homePanel").getAttribute("aria-busy"),
+    viewportWidth: document.documentElement.clientWidth,
+    documentWidth: document.documentElement.scrollWidth,
   }));
   expect(duringBootstrap.accountReady).toBeNull();
   expect(duringBootstrap.activeWords.sort()).toEqual(["ability", "act"]);
-  expect(duringBootstrap.homeSummaryDisplay).not.toBe("none");
-  expect(duringBootstrap.homeCardDisplay).toBe("none");
-  expect(duringBootstrap.planButtonDisplay).not.toBe("none");
+  expect(duringBootstrap.bootDisplay).not.toBe("none");
+  expect(duringBootstrap.appShellDisplay).toBe("none");
+  expect(duringBootstrap.planButtonExposed).toBe(false);
   expect(duringBootstrap.planButtonDisabled).toBe(true);
+  expect(duringBootstrap.appShellHidden).toBe(true);
+  expect(duringBootstrap.appShellInert).toBe(true);
+  expect(duringBootstrap.appShellAriaHidden).toBe("true");
   expect(duringBootstrap.studyPanelInert).toBe(true);
   expect(duringBootstrap.homeBusy).toBe("true");
+  expect(duringBootstrap.documentWidth).toBeLessThanOrEqual(duringBootstrap.viewportWidth);
+  await page.screenshot({ path: "test-results/boot-screen-mobile.png", fullPage: true });
 
   await waitForAccount(page);
+  await expect(page.locator("#bootScreen")).toBeHidden();
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect(page.locator("#appShell")).not.toHaveAttribute("hidden", "");
+  await expect(page.locator("#appShell")).not.toHaveAttribute("inert", "");
+  await expect(page.locator("#appShell")).not.toHaveAttribute("aria-hidden", "true");
   await expect(page.locator(".home-summary")).toBeVisible();
   await expect(page.locator("#homeCompletedWords")).toHaveText("2");
   await expect(page.locator("#homePanel")).toHaveAttribute("aria-busy", "false");

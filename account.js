@@ -57,6 +57,7 @@
   const cloudRecordLatest = document.querySelector("#cloudRecordLatest");
   const cloudRecordSummary = document.querySelector("#cloudRecordSummary");
   const cloudRecordPlan = document.querySelector("#cloudRecordPlan");
+  const localRecordHeading = document.querySelector("#localRecordHeading");
   const localRecordLatest = document.querySelector("#localRecordLatest");
   const localRecordSummary = document.querySelector("#localRecordSummary");
   const localRecordPlan = document.querySelector("#localRecordPlan");
@@ -205,7 +206,7 @@
 
   function rememberGuestDecision(userId) {
     const guestState = app.getGuestState();
-    const signature = app.stateSignature(guestState);
+    const signature = app.recoveryStateSignature(guestState);
     try {
       localStorage.setItem(migrationKey(userId), signature);
       volatileGuestDecisions.delete(userId);
@@ -215,22 +216,29 @@
     }
   }
 
-  function hasUnconsideredGuestState(userId, guestState) {
+  function hasUnconsideredGuestState(userId, guestState, baselineState) {
     if (!app.hasLearningData(guestState)) return false;
     const remembered = volatileGuestDecisions.get(userId) ??
       localStorage.getItem(migrationKey(userId));
-    return remembered !== app.stateSignature(guestState);
+    return remembered !== app.recoveryStateSignature(guestState) &&
+      app.hasIndependentChanges(guestState, baselineState);
   }
 
   function isGuestConflictSource(source) {
     return source === "guest" || source === "guest-recovery";
   }
 
+  function hasBlockingConflict() {
+    return Boolean(pendingConflict && !isGuestConflictSource(
+      pendingConflict.localSource,
+    ));
+  }
+
   function hasRecoverableGuestState() {
     if (!currentUser || pendingConsentSession) return false;
     const guestState = app.getGuestState();
     return app.hasLearningData(guestState) &&
-      app.stateSignature(guestState) !== app.stateSignature(app.getState());
+      app.hasIndependentChanges(guestState, app.getState());
   }
 
   function setMessage(message = "", type = "") {
@@ -366,11 +374,22 @@
 
   function renderConflictComparison() {
     if (!pendingConflict) return;
+    const guestConflict = isGuestConflictSource(pendingConflict.localSource);
     const cloudSummary = stateSummary(
       pendingConflict.remote?.state,
       pendingConflict.remote?.updatedAt,
     );
     const localSummary = stateSummary(pendingConflict.localState);
+    localRecordHeading.textContent = guestConflict
+      ? "本机历史游客记录"
+      : "本机账户记录";
+    exportConflictLocalButton.textContent = guestConflict
+      ? "先导出历史游客记录"
+      : "先导出本机账户记录";
+    useCloudStateButton.textContent = guestConflict
+      ? "忽略游客记录，保留账号记录"
+      : "只使用云端记录";
+    useLocalStateButton.hidden = guestConflict;
     renderStateSummary(cloudRecordSummary, cloudSummary);
     renderStateSummary(localRecordSummary, localSummary);
     cloudRecordPlan.textContent = cloudSummary.planCopy;
@@ -394,8 +413,8 @@
     );
     if (localOnly || cloudOnly) {
       accountConflictDifference.textContent =
-        `本机独有 ${localOnly} 个已学单词，云端独有 ${cloudOnly} 个；` +
-        "建议合并，避免遗漏任一侧。";
+        `${guestConflict ? "历史游客记录" : "本机账户记录"}独有 ${localOnly} 个已学单词，` +
+        `账号记录独有 ${cloudOnly} 个；建议合并经时间证据确认的新进度。`;
     } else if (statusDifferences) {
       accountConflictDifference.textContent =
         `两边已学单词范围相同，但有 ${statusDifferences} 个义项状态不同；` +
@@ -693,6 +712,12 @@
   }
 
   function announceAccountReady() {
+    const appShell = document.querySelector("#appShell");
+    appShell?.removeAttribute("hidden");
+    appShell?.removeAttribute("inert");
+    appShell?.removeAttribute("aria-hidden");
+    document.querySelector("#bootScreen")?.setAttribute("hidden", "");
+    document.body.removeAttribute("aria-busy");
     document.documentElement.dataset.accountReady = "true";
     document.querySelector("#homePanel")?.setAttribute("aria-busy", "false");
     window.dispatchEvent(new CustomEvent("sensevocab:account-ready"));
@@ -1330,7 +1355,6 @@
       const guestState = app.getGuestState();
       const accountHasUnsyncedData = Boolean(syncMeta.dirty) &&
         app.hasLearningData(accountCache);
-      const guestNeedsDecision = hasUnconsideredGuestState(user.id, guestState);
 
       if (remote.found) {
         const accountState = accountHasUnsyncedData
@@ -1338,8 +1362,18 @@
           : remote.state;
         const accountNeedsUpload = app.stateSignature(accountState) !==
           app.stateSignature(remote.state);
+        const guestNeedsDecision = hasUnconsideredGuestState(
+          user.id,
+          guestState,
+          accountState,
+        );
         if (guestNeedsDecision) {
           cloudRevision = remote.revision;
+          app.activateAccount(user.id, accountState);
+          saveSyncMeta(user.id, {
+            revision: remote.revision,
+            dirty: accountNeedsUpload,
+          });
           pendingConflict = {
             remote: {
               ...remote,
@@ -1391,7 +1425,7 @@
   }
 
   function scheduleSync() {
-    if (!currentUser || pendingConflict || pendingConsentSession) return;
+    if (!currentUser || hasBlockingConflict() || pendingConsentSession) return;
     clearTimeout(syncTimer);
     syncTimer = setTimeout(() => {
       syncNow();
@@ -1409,7 +1443,7 @@
   }
 
   async function syncNow(options = {}) {
-    if (!cloud || !currentUser || pendingConflict || pendingConsentSession) {
+    if (!cloud || !currentUser || hasBlockingConflict() || pendingConsentSession) {
       return null;
     }
     if (typeof app.isPersistenceSafe === "function" && !app.isPersistenceSafe()) {
@@ -1594,6 +1628,15 @@
           }
 
           cloudRevision = Number(result?.revision) || cloudRevision || 1;
+          if (pendingConflict && isGuestConflictSource(pendingConflict.localSource)) {
+            pendingConflict.remote = {
+              found: true,
+              revision: cloudRevision,
+              state: snapshot,
+              updatedAt: result?.updatedAt ?? new Date().toISOString(),
+            };
+            if (!accountDialog.hidden) renderConflictComparison();
+          }
           if (options.verifyPersistence) {
             const verifiedRemote = normalizedRemote(await cloud.loadState());
             if (!verifiedRemote.found || verifiedRemote.revision < cloudRevision) {
@@ -1664,7 +1707,7 @@
   }
 
   async function refreshFromCloud(options = {}) {
-    if (!cloud || !currentUser || pendingConflict || pendingConsentSession) {
+    if (!cloud || !currentUser || hasBlockingConflict() || pendingConsentSession) {
       return null;
     }
     if (refreshPromise) return refreshPromise;
@@ -1675,7 +1718,7 @@
         if (syncPromise) await syncPromise;
         if (
           currentUser?.id !== refreshUserId ||
-          pendingConflict ||
+          hasBlockingConflict() ||
           pendingConsentSession
         ) return null;
         const remote = normalizedRemote(await cloud.loadState());
@@ -1700,6 +1743,10 @@
           throw new Error("合并结果未能写入本机存储。");
         }
         cloudRevision = remote.revision;
+        if (pendingConflict && isGuestConflictSource(pendingConflict.localSource)) {
+          pendingConflict.remote = remote;
+          if (!accountDialog.hidden) renderConflictComparison();
+        }
         saveSyncMeta(refreshUserId, {
           revision: remote.revision,
           dirty: needsUpload,
@@ -1973,27 +2020,42 @@
 
   async function mergeConflictStates() {
     if (!pendingConflict || !currentUser || conflictBusy) return;
-    const { localState, localSource, remote } = pendingConflict;
+    const originalConflict = pendingConflict;
+    const { localState, localSource } = originalConflict;
     setConflictBusy(true);
     setMessage("正在合并两边的学习记录……");
     try {
+      if (syncPromise) await syncPromise;
+      const latestRemote = normalizedRemote(await cloud.loadState());
+      if (!latestRemote.found || !app.hasLearningData(latestRemote.state)) {
+        throw new Error("无法重新读取最新云端记录，未执行合并或覆盖。");
+      }
+      const liveAccountState = app.getState();
+      const accountBaseline = app.mergeStates(
+        liveAccountState,
+        latestRemote.state,
+      );
       const safeLocalState = isGuestConflictSource(localSource)
         ? app.prepareIndependentMergeState(
           withoutDeletionTombstones(localState),
+          accountBaseline,
         )
-        : localState;
-      const merged = app.mergeStates(safeLocalState, remote.state);
+        : app.mergeStates(localState, liveAccountState);
+      const merged = app.mergeStates(safeLocalState, accountBaseline);
       if (isGuestConflictSource(localSource)) {
         rememberGuestDecision(currentUser.id);
       }
       const persisted = activateAccountState(
         currentUser,
         merged,
-        remote.revision,
+        latestRemote.revision,
         true,
       );
       if (persisted === false) {
-        pendingConflict = { localState, localSource, remote };
+        pendingConflict = {
+          ...originalConflict,
+          remote: latestRemote,
+        };
         throw new Error("合并结果未能写入本机存储，云端记录尚未更改。");
       }
       const result = await syncNow({ verifyPersistence: true });
@@ -2015,9 +2077,9 @@
     const guestState = app.getGuestState();
     if (
       !app.hasLearningData(guestState) ||
-      app.stateSignature(guestState) === app.stateSignature(app.getState())
+      !app.hasIndependentChanges(guestState, app.getState())
     ) {
-      setMessage("本机没有不同于当前账户的保留记录。");
+      setMessage("本机只有较旧的游客记录，没有可恢复到当前账号的新进度。");
       showPrimaryAccountView();
       return;
     }
@@ -2025,13 +2087,24 @@
     recoverGuestDataButton.disabled = true;
     setMessage("正在只读核对本机保留记录与云端记录……");
     try {
+      if (syncPromise) await syncPromise;
       const remote = normalizedRemote(await cloud.loadState());
       if (!remote.found || !app.hasLearningData(remote.state)) {
         throw new Error("暂时无法读取云端学习记录，未执行恢复或覆盖。");
       }
+      const accountBaseline = app.mergeStates(app.getState(), remote.state);
+      if (!app.hasIndependentChanges(guestState, accountBaseline)) {
+        rememberGuestDecision(currentUser.id);
+        setMessage("本机游客记录早于当前账号记录，无需合并。");
+        showPrimaryAccountView();
+        return;
+      }
       cloudRevision = remote.revision;
       pendingConflict = {
-        remote,
+        remote: {
+          ...remote,
+          state: accountBaseline,
+        },
         localState: guestState,
         localSource: "guest-recovery",
       };
@@ -2047,19 +2120,31 @@
 
   async function useCloudState() {
     if (!pendingConflict || !currentUser || conflictBusy) return;
-    const { remote, remoteNeedsUpload, localSource } = pendingConflict;
+    const { remoteNeedsUpload, localSource } = pendingConflict;
     setConflictBusy(true);
     try {
-      rememberGuestDecision(currentUser.id);
+      if (syncPromise) await syncPromise;
+      const latestRemote = normalizedRemote(await cloud.loadState());
+      if (!latestRemote.found || !app.hasLearningData(latestRemote.state)) {
+        throw new Error("无法重新读取最新云端记录，未执行覆盖。");
+      }
+      if (isGuestConflictSource(localSource)) {
+        rememberGuestDecision(currentUser.id);
+      }
+      const nextState = isGuestConflictSource(localSource)
+        ? app.mergeStates(app.getState(), latestRemote.state)
+        : latestRemote.state;
+      const needsUpload = Boolean(remoteNeedsUpload) ||
+        app.stateSignature(nextState) !== app.stateSignature(latestRemote.state);
       activateAccountState(
         currentUser,
-        remote.state,
-        remote.revision,
-        Boolean(remoteNeedsUpload),
+        nextState,
+        latestRemote.revision,
+        needsUpload,
       );
-      if (remoteNeedsUpload) await syncNow();
+      if (needsUpload) await syncNow({ verifyPersistence: true });
       setMessage(isGuestConflictSource(localSource)
-        ? "已只使用云端学习记录。本机游客记录仍保留在当前浏览器。"
+        ? "已忽略历史游客记录；当前账号的本机与云端进度均已保留。"
         : "已只使用云端学习记录。");
       resumePendingFeedback();
     } catch (error) {
@@ -2073,6 +2158,10 @@
   async function useLocalState() {
     if (!pendingConflict || !currentUser || conflictBusy) return;
     const { localState, localSource, remote } = pendingConflict;
+    if (isGuestConflictSource(localSource)) {
+      await mergeConflictStates();
+      return;
+    }
     if (
       app.hasLearningData(remote?.state) &&
       !app.hasLearningData(localState)

@@ -1477,6 +1477,32 @@ function stateSignature(candidate) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+function recoveryStateSignature(candidate) {
+  const normalized = normalizeRootState(cloneSerializable(candidate ?? {}));
+  const recoveryState = {
+    schemaVersion: normalized.schemaVersion,
+    bookStates: Object.fromEntries(
+      Object.entries(normalized.bookStates).map(([bookId, bookState]) => {
+        return [bookId, {
+          plan: bookState.plan,
+          introducedWords: bookState.introducedWords,
+          progress: bookState.progress,
+          activityLog: bookState.activityLog,
+          studyWindows: bookState.studyWindows,
+          confusionLinks: bookState.confusionLinks,
+        }];
+      }),
+    ),
+  };
+  const value = stableStateStringify(recoveryState);
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 function applyStateToStorage(storageKey, nextState = null) {
   if (tutorialRuntime?.active) {
     tutorialRuntime.realStorageKey = storageKey;
@@ -1556,13 +1582,18 @@ window.SenseVocabApp = {
   hasLearningData: stateHasLearningData,
   isPersistenceSafe,
   stateSignature,
+  recoveryStateSignature,
   mergeStates: (localState, remoteState) => {
     if (!window.SenseVocabSync) return cloneSerializable(remoteState);
     return window.SenseVocabSync.mergeStates(localState, remoteState);
   },
-  prepareIndependentMergeState: (candidate) => {
+  prepareIndependentMergeState: (candidate, baseline = null) => {
     if (!window.SenseVocabSync) return cloneSerializable(candidate);
-    return window.SenseVocabSync.prepareIndependentMergeState(candidate);
+    return window.SenseVocabSync.prepareIndependentMergeState(candidate, baseline);
+  },
+  hasIndependentChanges: (candidate, baseline) => {
+    if (!window.SenseVocabSync) return false;
+    return window.SenseVocabSync.hasIndependentChanges(candidate, baseline);
   },
   getCurrentWordContext: () => currentFeedbackContext(),
   activateGuest: () => applyStateToStorage(STORAGE_KEY),

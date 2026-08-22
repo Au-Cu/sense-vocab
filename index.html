@@ -5,12 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260813-2" />
+    <link rel="stylesheet" href="./styles.css?v=20260822-2" />
   </head>
-  <body>
-    <main class="app-shell">
+  <body aria-busy="true">
+    <div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-atomic="true">
+      <div class="boot-atmosphere" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <section class="boot-card" aria-labelledby="bootTitle">
+        <div class="boot-brand" aria-hidden="true">
+          <span>S</span>
+          <i></i>
+          <span>V</span>
+        </div>
+        <p class="boot-kicker">SENSE VOCAB</p>
+        <h1 id="bootTitle">正在整理你的学习空间</h1>
+        <p class="boot-copy">载入词库，并核对本机与云端记录</p>
+        <div class="boot-progress" aria-hidden="true"><span></span></div>
+      </section>
+    </div>
+
+    <main class="app-shell" id="appShell" hidden inert aria-hidden="true">
       <section class="study-panel" id="homePanel" aria-live="polite" aria-busy="true">
-        <p class="account-bootstrap-status" role="status">正在确认本机账户记录……</p>
         <div class="home-summary">
           <section class="home-card" aria-labelledby="todayPlanHeading">
             <p class="home-card-title" id="todayPlanHeading">今日计划</p>
@@ -533,7 +551,7 @@
               </article>
               <article class="sync-record-card">
                 <div class="sync-record-heading">
-                  <strong>本机记录</strong>
+                  <strong id="localRecordHeading">本机账户记录</strong>
                   <span id="localRecordLatest">最近学习 —</span>
                 </div>
                 <div class="sync-record-stats" id="localRecordSummary"></div>
@@ -703,7 +721,7 @@
             <button class="plain-button" id="exportDataButton" type="button">导出学习数据</button>
             <button class="plain-button" id="importDataButton" type="button">导入学习数据</button>
             <button class="plain-button" id="recoverGuestDataButton" type="button" hidden>
-              查看本机保留记录
+              检查本机历史游客记录
             </button>
             <input id="importDataInput" type="file" accept="application/json,.json" hidden />
           </div>
@@ -769,8 +787,8 @@
     <script src="./cloud-config.js?v=20260728-2"></script>
     <script src="./legal-config.js?v=20260809-1"></script>
     <script src="./cloud-client.js?v=20260809-1"></script>
-    <script src="./sync-state.js?v=20260822-1"></script>
-    <script src="./app.js?v=20260822-1"></script>
-    <script src="./account.js?v=20260822-1"></script>
+    <script src="./sync-state.js?v=20260822-3"></script>
+    <script src="./app.js?v=20260822-3"></script>
+    <script src="./account.js?v=20260822-4"></script>
   </body>
 </html>

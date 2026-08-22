@@ -812,23 +812,24 @@
     );
   }
 
+  const MIRRORED_SCOPE_KEYS = Object.freeze([
+    "view",
+    "plan",
+    "session",
+    "introducedWords",
+    "progress",
+    "activityLog",
+    "studyWindows",
+    "confusionLinks",
+    "learningDayCounter",
+    "wordListSort",
+    "wordBrowse",
+    "dataVersion",
+    "_sync",
+  ]);
+
   function mirroredScope(value) {
-    const keys = [
-      "view",
-      "plan",
-      "session",
-      "introducedWords",
-      "progress",
-      "activityLog",
-      "studyWindows",
-      "confusionLinks",
-      "learningDayCounter",
-      "wordListSort",
-      "wordBrowse",
-      "dataVersion",
-      "_sync",
-    ];
-    const entries = keys
+    const entries = MIRRORED_SCOPE_KEYS
       .filter((key) => hasOwn(value, key))
       .map((key) => [key, clone(value[key])]);
     return entries.length ? Object.fromEntries(entries) : null;
@@ -847,6 +848,7 @@
           ...mirror,
         };
       }
+      MIRRORED_SCOPE_KEYS.forEach((key) => delete root[key]);
       return root;
     }
     return {
@@ -920,19 +922,279 @@
     };
   }
 
-  function prepareIndependentMergeState(value, writer = null) {
-    const independentWriter = writer ||
-      `${deviceId()}-independent-${randomToken()}`;
-    if (!isRootState(value)) {
-      const state = clone(value && typeof value === "object" ? value : {});
-      return stampScopeChanges(state, {}, independentWriter);
+  function dateKey(value) {
+    const match = String(value ?? "").match(/^(\d{4}-\d{2}-\d{2})/);
+    return match?.[1] ?? "";
+  }
+
+  function meaningfulActivity(value) {
+    return Boolean(
+      (Array.isArray(value?.newWords) && value.newWords.length) ||
+      (Array.isArray(value?.reviewWords) && value.reviewWords.length) ||
+      Number(value?.newCount) > 0 ||
+      Number(value?.reviewCount) > 0,
+    );
+  }
+
+  function progressEvidenceDate(value) {
+    return maximumDate(
+      dateKey(value?.updatedAt),
+      dateKey(value?.lastSeenActual),
+      dateKey(value?.lastSeen),
+      dateKey(value?.firstSeenActual),
+      dateKey(value?.firstSeen),
+    ) ?? "";
+  }
+
+  function activityHasCorroboration(date, activity, candidate) {
+    const normalizedDate = dateKey(date);
+    if (!normalizedDate) return false;
+    if ((Array.isArray(activity?.learningDays) ? activity.learningDays : []).length) {
+      return true;
+    }
+    const activityWords = uniqueStrings(activity?.newWords, activity?.reviewWords);
+    if (activityWords.some((wordId) => {
+      return Object.entries(candidate?.progress ?? {}).some(([key, progress]) => {
+        return (key === wordId || key.startsWith(`${wordId}:`)) &&
+          progressEvidenceDate(progress) >= normalizedDate;
+      });
+    })) return true;
+    if (sessionDate(candidate?.session) === normalizedDate &&
+      Number(candidate?.session?.currentIndex) > 0) return true;
+    return (Array.isArray(candidate?.studyWindows) ? candidate.studyWindows : [])
+      .some((studyWindow) => dateKey(studyWindow?.activityDate) === normalizedDate);
+  }
+
+  function latestScopeEvidenceDate(value) {
+    const dates = [];
+    Object.entries(value?.activityLog ?? {}).forEach(([date, activity]) => {
+      if (meaningfulActivity(activity)) dates.push(dateKey(date));
+    });
+    Object.values(value?.progress ?? {}).forEach((progress) => {
+      dates.push(progressEvidenceDate(progress));
+    });
+    (Array.isArray(value?.studyWindows) ? value.studyWindows : [])
+      .forEach((studyWindow) => dates.push(dateKey(studyWindow?.activityDate)));
+    return maximumDate(...dates) ?? "";
+  }
+
+  function wordForProgressKey(key, introducedWords) {
+    return introducedWords.find((wordId) => {
+      return key === wordId || key.startsWith(`${wordId}:`);
+    }) ?? null;
+  }
+
+  function scopeHasLearningEvidence(value) {
+    if (Object.values(value?.progress ?? {}).some((progress) => {
+      return progress?.status && progress.status !== "new" &&
+        Boolean(progressEvidenceDate(progress));
+    })) return true;
+    if (Object.values(value?.activityLog ?? {}).some(meaningfulActivity)) return true;
+    if ((Array.isArray(value?.studyWindows) ? value.studyWindows : [])
+      .some((studyWindow) => Boolean(dateKey(studyWindow?.activityDate)))) return true;
+    if (Object.values(value?.confusionLinks ?? {})
+      .some((link) => Boolean(dateKey(link?.createdAt)))) return true;
+    return Number(value?.session?.currentIndex) > 0 &&
+      Boolean(sessionDate(value.session));
+  }
+
+  function buildIndependentScope(candidateState, baselineState) {
+    const candidate = clone(
+      candidateState && typeof candidateState === "object" ? candidateState : {},
+    );
+    const baseline = clone(
+      baselineState && typeof baselineState === "object" ? baselineState : {},
+    );
+    const result = clone(baseline);
+    const baselineDate = latestScopeEvidenceDate(baseline);
+    const candidateIntroduced = uniqueStrings(candidate.introducedWords);
+    const acceptedProgressKeys = new Set();
+    const acceptedActivityWords = new Set();
+    const acceptedDates = new Set();
+    let acceptedSession = false;
+    let acceptedStudyWindow = false;
+    let acceptedConfusionLink = false;
+
+    result.progress = { ...(baseline.progress ?? {}) };
+    Object.entries(candidate.progress ?? {}).forEach(([key, progress]) => {
+      const existing = baseline.progress?.[key];
+      const evidenceDate = progressEvidenceDate(progress);
+      const newer = existing
+        ? compareProgressRecency(progress, existing) > 0
+        : progress?.status && progress.status !== "new" &&
+          Boolean(evidenceDate) && (!baselineDate || evidenceDate >= baselineDate);
+      if (!newer) return;
+      result.progress[key] = existing
+        ? mergeProgress(progress, existing)
+        : clone(progress);
+      acceptedProgressKeys.add(key);
+      if (evidenceDate) acceptedDates.add(evidenceDate);
+    });
+
+    result.activityLog = { ...(baseline.activityLog ?? {}) };
+    Object.entries(candidate.activityLog ?? {}).forEach(([date, activity]) => {
+      if (!meaningfulActivity(activity)) return;
+      const normalizedDate = dateKey(date);
+      const existing = baseline.activityLog?.[date];
+      const merged = existing ? mergeActivity(activity, existing) : clone(activity);
+      if (valuesEqual(merged, existing)) return;
+      if (!existing && !activityHasCorroboration(date, activity, candidate)) return;
+      if (baselineDate && normalizedDate < baselineDate && !acceptedDates.has(normalizedDate)) {
+        return;
+      }
+      result.activityLog[date] = merged;
+      acceptedDates.add(normalizedDate);
+      uniqueStrings(activity?.newWords, activity?.reviewWords)
+        .forEach((wordId) => acceptedActivityWords.add(wordId));
+    });
+
+    Object.entries(candidate.progress ?? {}).forEach(([key, progress]) => {
+      if (acceptedProgressKeys.has(key) || baseline.progress?.[key]) return;
+      const wordId = wordForProgressKey(key, [...acceptedActivityWords]);
+      if (!wordId || !progress?.status || progress.status === "new") return;
+      result.progress[key] = clone(progress);
+      acceptedProgressKeys.add(key);
+    });
+
+    const introduced = new Set(baseline.introducedWords ?? []);
+    candidateIntroduced.forEach((wordId) => {
+      if (introduced.has(wordId)) return;
+      const hasAcceptedProgress = [...acceptedProgressKeys]
+        .some((key) => key === wordId || key.startsWith(`${wordId}:`));
+      if (hasAcceptedProgress || acceptedActivityWords.has(wordId)) {
+        introduced.add(wordId);
+      }
+    });
+    result.introducedWords = [...introduced];
+
+    const candidateSession = candidate.session;
+    const baselineSession = baseline.session;
+    const candidateSessionDate = sessionDate(candidateSession);
+    const sessionHasEvidence = Boolean(
+      Number(candidateSession?.currentIndex) > 0 ||
+      acceptedDates.has(candidateSessionDate),
+    );
+    const sessionRecency = compareSessionRecency(candidateSession, baselineSession);
+    if (
+      sessionHasEvidence &&
+      (
+        sessionRecency > 0 ||
+        (sessionRecency === 0 &&
+          sessionScore(candidateSession) > sessionScore(baselineSession))
+      )
+    ) {
+      result.session = clone(candidateSession);
+      acceptedSession = true;
     }
 
-    const state = asRootState(value);
-    Object.values(state.bookStates).forEach((bookState) => {
-      stampScopeChanges(bookState, {}, independentWriter);
+    const baselineWindows = windowsById(baseline.studyWindows);
+    const mergedWindows = { ...baselineWindows };
+    Object.entries(windowsById(candidate.studyWindows)).forEach(([id, studyWindow]) => {
+      if (baselineWindows[id]) {
+        const merged = mergeWindow(studyWindow, baselineWindows[id]);
+        if (!valuesEqual(merged, baselineWindows[id]) &&
+          (!baselineDate || dateKey(studyWindow.activityDate) >= baselineDate)) {
+          mergedWindows[id] = merged;
+          acceptedStudyWindow = true;
+        }
+        return;
+      }
+      if (!baselineDate || dateKey(studyWindow.activityDate) >= baselineDate) {
+        mergedWindows[id] = clone(studyWindow);
+        acceptedStudyWindow = true;
+      }
     });
+    result.studyWindows = Object.values(mergedWindows)
+      .sort((leftWindow, rightWindow) => {
+        return String(leftWindow.startedAt ?? "").localeCompare(
+          String(rightWindow.startedAt ?? ""),
+        ) || String(leftWindow.id).localeCompare(String(rightWindow.id));
+      })
+      .slice(-500);
+
+    result.confusionLinks = { ...(baseline.confusionLinks ?? {}) };
+    Object.entries(candidate.confusionLinks ?? {}).forEach(([key, link]) => {
+      if (result.confusionLinks[key]) return;
+      if (!baselineDate || dateKey(link?.createdAt) >= baselineDate) {
+        result.confusionLinks[key] = clone(link);
+        acceptedConfusionLink = true;
+      }
+    });
+
+    const acceptedLearningEvidence = acceptedProgressKeys.size > 0 ||
+      acceptedDates.size > 0 || acceptedSession || acceptedStudyWindow ||
+      acceptedConfusionLink;
+    if (acceptedLearningEvidence) {
+      if (!baseline.plan && candidate.plan) result.plan = clone(candidate.plan);
+      result.learningDayCounter = Math.max(
+        Number(baseline.learningDayCounter) || 0,
+        Number(candidate.learningDayCounter) || 0,
+      );
+    }
+    result.dataVersion = Number(baseline.dataVersion) || 0;
+    result.view = baseline.view ?? "home";
+    result.wordBrowse = baseline.wordBrowse ?? null;
+    return result;
+  }
+
+  function comparableState(value) {
+    const root = asRootState(value);
+    Object.values(root.bookStates).forEach((bookState) => {
+      delete bookState._sync;
+      bookState.view = "home";
+      bookState.wordBrowse = null;
+    });
+    return root;
+  }
+
+  function prepareIndependentMergeState(value, baseline = null, writer = null) {
+    if (typeof baseline === "string" && writer === null) {
+      writer = baseline;
+      baseline = null;
+    }
+    const independentWriter = writer ||
+      `${deviceId()}-independent-${randomToken()}`;
+    if (!baseline || typeof baseline !== "object") {
+      if (!isRootState(value)) {
+        const state = clone(value && typeof value === "object" ? value : {});
+        return stampScopeChanges(state, {}, independentWriter);
+      }
+
+      const state = asRootState(value);
+      Object.values(state.bookStates).forEach((bookState) => {
+        stampScopeChanges(bookState, {}, independentWriter);
+      });
+      return state;
+    }
+
+    if (!isRootState(value)) {
+      const state = buildIndependentScope(value, baseline);
+      return stampScopeChanges(state, baseline, independentWriter);
+    }
+
+    const candidate = asRootState(value);
+    const base = asRootState(baseline);
+    const state = clone(base);
+    Object.entries(candidate.bookStates).forEach(([bookId, bookState]) => {
+      const baselineBook = base.bookStates[bookId];
+      if (!baselineBook && !scopeHasLearningEvidence(bookState)) return;
+      state.bookStates[bookId] = buildIndependentScope(
+        bookState,
+        baselineBook ?? {},
+      );
+    });
+    stampChanges(state, base, independentWriter);
     return state;
+  }
+
+  function hasIndependentChanges(value, baseline) {
+    if (!baseline || typeof baseline !== "object") return true;
+    const prepared = prepareIndependentMergeState(
+      value,
+      baseline,
+      `${deviceId()}-independent-preview`,
+    );
+    return !valuesEqual(comparableState(prepared), comparableState(baseline));
   }
 
   window.SenseVocabSync = Object.freeze({
@@ -941,6 +1203,7 @@
     stampChanges,
     mergeStates,
     prepareIndependentMergeState,
+    hasIndependentChanges,
     compareVectors,
   });
 })();
