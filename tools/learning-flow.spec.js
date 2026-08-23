@@ -106,7 +106,7 @@ async function readState(page) {
 }
 
 async function confirmEveryVisibleSense(page) {
-  const actionable = page.locator(".sense-item:not(:disabled):not(.is-collapsible)");
+  const actionable = page.locator(".sense-item:not(:disabled):not(.is-collapsible):visible");
   while (await actionable.count()) {
     await actionable.first().click();
     await page.waitForTimeout(450);
@@ -117,6 +117,120 @@ async function setStudyDate(page, date) {
   await page.evaluate((value) => localStorage.setItem("sense-vocab-test-date", value), date);
   await page.reload();
 }
+
+test("study progress separates stage words from combined sense progress", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    window.__vibrationCalls = [];
+    Object.defineProperty(Navigator.prototype, "vibrate", {
+      configurable: true,
+      value(pattern) {
+        window.__vibrationCalls.push(pattern);
+        return true;
+      },
+    });
+    class RejectedAudioContext {
+      constructor() {
+        throw new Error("audio blocked by test");
+      }
+    }
+    Object.defineProperty(window, "AudioContext", {
+      configurable: true,
+      value: RejectedAudioContext,
+    });
+    Object.defineProperty(window, "webkitAudioContext", {
+      configurable: true,
+      value: RejectedAudioContext,
+    });
+  });
+
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("1");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 1");
+  await expect(page.locator("#senseProgressLabel")).toHaveText("0 / 4");
+  await expect(page.locator("#senseProgressBar")).toHaveAttribute("aria-valuenow", "0");
+  await expect(page.locator("#senseProgressBar")).toHaveAttribute("aria-valuemax", "4");
+  expect(await page.locator("#studyCompletionFeedback").count()).toBe(0);
+
+  await reveal(page);
+  await confirmEveryVisibleSense(page);
+  await expect(page.locator("#nextButton")).toBeEnabled();
+  await page.locator("#nextButton").click();
+
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 1");
+  await expect(page.locator("#senseProgressLabel")).toHaveText("4 / 4");
+  await expect(page.locator("#senseProgressBar")).toHaveAttribute("aria-valuenow", "4");
+  await expect(page.locator("#senseProgressBar")).toHaveAttribute("aria-valuemax", "4");
+  const animationDuration = await page.locator(".word-card-wrap").evaluate(
+    (element) => getComputedStyle(element).animationDuration,
+  );
+  expect(animationDuration).toBe("0.42s");
+
+  await expect(page.locator("#nextButton")).toBeDisabled();
+  await page.locator("#nextButton").evaluate((button) => button.click());
+  expect(await page.evaluate(() => window.__vibrationCalls)).toEqual([15]);
+
+  await page.locator("#resetButton").click();
+  await page.locator("#resetMarkingButton").click();
+  expect(await page.locator("#studyCompletionFeedback").count()).toBe(0);
+  await page.locator("#exitStudyButton").click();
+  await page.locator("#returnHomeButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
+  expect(await page.evaluate(() => window.__vibrationCalls)).toEqual([15]);
+  expect(pageErrors).toEqual([]);
+});
+
+test("mobile completion feedback stays within the viewport without vibration support", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    try {
+      delete Navigator.prototype.vibrate;
+    } catch {
+      // Older browsers may expose a non-configurable property.
+    }
+  });
+
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("1");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await page.locator("#audioButton").click();
+
+  const layout = await page.evaluate(() => {
+    const progress = document.querySelector(".study-sense-progress").getBoundingClientRect();
+    const bar = document.querySelector("#senseProgressBar").getBoundingClientRect();
+    return {
+      progressRight: progress.right,
+      barRight: bar.right,
+      viewport: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    };
+  });
+  expect(layout.progressRight).toBeLessThanOrEqual(layout.viewport + 1);
+  expect(layout.barRight).toBeLessThanOrEqual(layout.viewport + 1);
+  expect(layout.scrollWidth).toBeLessThanOrEqual(layout.viewport + 1);
+
+  await reveal(page);
+  await confirmEveryVisibleSense(page);
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#senseProgressLabel")).toHaveText("4 / 4");
+  expect(pageErrors).toEqual([]);
+});
 
 test("sense states follow new, reinforcement, review, and double-check mastery", async ({ page }) => {
   await page.addInitScript(() => {
@@ -158,9 +272,9 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await completeAndAdvance(page);
   await expect(page.locator("#cardMode")).toHaveText("强化");
   await expect(page.locator("#wordText")).toHaveText("act");
-  await expect(page.locator("#queueProgress")).toHaveText("1 / 1");
   await expect(page.locator("#newCount")).toHaveText("4/4");
   await expect(page.locator("#learningCount")).toHaveText("0/3");
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 1");
 
   // One reinforcement confirmation becomes pending review; two misses stay pending reinforcement.
   await reveal(page);
@@ -800,10 +914,12 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
 
   const firstWord = await page.locator("#wordText").textContent();
   await completeAndAdvance(page);
+  await expect(page.locator("#wordText")).not.toHaveText(firstWord);
   const secondWord = await page.locator("#wordText").textContent();
   expect(secondWord).not.toBe(firstWord);
   await reveal(page);
   await completeAndAdvance(page);
+  await expect(page.locator("#wordText")).not.toHaveText(secondWord);
   const currentWord = await page.locator("#wordText").textContent();
   expect(currentWord).not.toBe(secondWord);
 
@@ -988,6 +1104,153 @@ test("a multi-pronunciation card keeps IPA in senses and sequentially plays ever
   await page.screenshot({ path: "test-results/multi-pronunciation-mobile.png", fullPage: true });
 });
 
+test("major study navigation uses directional transitions with safe fallbacks", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await page.addInitScript(() => {
+    window.__uiTransitionKinds = [];
+    window.__uiTransitionScopes = [];
+    window.__uiTransitionOrigins = [];
+    window.__uiTransitionCallbacks = [];
+    const nativeStart = document.startViewTransition?.bind(document);
+    if (nativeStart) {
+      Object.defineProperty(document, "startViewTransition", {
+        configurable: true,
+        value(callback) {
+          window.__uiTransitionKinds.push(document.documentElement.dataset.uiTransition || "");
+          window.__uiTransitionScopes.push(document.documentElement.dataset.uiTransitionScope || "");
+          window.__uiTransitionOrigins.push({
+            x: document.documentElement.style.getPropertyValue("--ui-transition-x"),
+            y: document.documentElement.style.getPropertyValue("--ui-transition-y"),
+            radius: document.documentElement.style.getPropertyValue("--ui-transition-radius"),
+          });
+          return nativeStart(async () => {
+            const visibleBefore = [...document.querySelectorAll("#homePanel, #studyPanel, #wordListPanel, #confusionPanel")]
+              .find((element) => !element.hidden)?.id ?? "";
+            const result = await callback();
+            const visibleAfter = [...document.querySelectorAll("#homePanel, #studyPanel, #wordListPanel, #confusionPanel")]
+              .find((element) => !element.hidden)?.id ?? "";
+            window.__uiTransitionCallbacks.push({ visibleBefore, visibleAfter });
+            return result;
+          });
+        },
+      });
+    }
+  });
+
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("2");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransitionScope || ""))
+    .toBe("");
+  const studyEnterOrigin = await page.evaluate(() => window.__uiTransitionOrigins.at(-1));
+  expect(studyEnterOrigin).toEqual(expect.objectContaining({ x: expect.any(String), y: expect.any(String) }));
+  expect(await page.evaluate(() => ({
+    app: getComputedStyle(document.querySelector("#appShell")).viewTransitionName,
+    card: getComputedStyle(document.querySelector(".word-card-wrap")).viewTransitionName,
+    details: getComputedStyle(document.querySelector("#senseArea")).viewTransitionName,
+  }))).toEqual({ app: "app-surface", card: "none", details: "none" });
+  await reveal(page);
+  await confirmEveryVisibleSense(page);
+  await completeAndAdvance(page);
+  await reveal(page);
+  await confirmEveryVisibleSense(page);
+  await completeAndAdvance(page);
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
+    .toBe("");
+
+  await page.locator("#exitStudyButton").click();
+  await page.locator("#previousWordButton").click();
+  await page.locator("#exitStudyButton").click();
+  await page.locator("#nextHistoryWordButton").click();
+  await page.locator("#exitStudyButton").click();
+  await page.locator("#returnHomeButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
+  expect(await page.evaluate(() => window.__uiTransitionOrigins.at(-1))).toEqual(studyEnterOrigin);
+  await page.locator("#wordListButton").click();
+  await expect(page.locator("#wordListPanel")).toBeVisible();
+  const wordListEnterOrigin = await page.evaluate(() => window.__uiTransitionOrigins.at(-1));
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
+    .toBe("");
+  await page.locator("#wordListBackButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
+  expect(await page.evaluate(() => window.__uiTransitionOrigins.at(-1))).toEqual(wordListEnterOrigin);
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
+    .toBe("");
+
+  const transitionKinds = await page.evaluate(() => window.__uiTransitionKinds);
+  expect(transitionKinds).toEqual(expect.arrayContaining(["forward", "reveal", "backward"]));
+  const transitionScopes = await page.evaluate(() => window.__uiTransitionScopes);
+  expect(transitionScopes).toEqual(expect.arrayContaining(["hierarchy", "reveal", "card"]));
+  const transitionOrigins = await page.evaluate(() => window.__uiTransitionOrigins);
+  expect(transitionOrigins.filter((origin) => origin.x && origin.y && origin.radius).length)
+    .toBeGreaterThanOrEqual(4);
+  const transitionCallbacks = await page.evaluate(() => window.__uiTransitionCallbacks);
+  expect(transitionCallbacks)
+    .toContainEqual({ visibleBefore: "homePanel", visibleAfter: "studyPanel" });
+  expect(transitionCallbacks)
+    .toContainEqual({ visibleBefore: "homePanel", visibleAfter: "wordListPanel" });
+  expect(transitionCallbacks)
+    .toContainEqual({ visibleBefore: "wordListPanel", visibleAfter: "homePanel" });
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
+    .toBe("");
+
+  await page.evaluate(() => {
+    delete document.startViewTransition;
+    try {
+      Object.defineProperty(Document.prototype, "startViewTransition", {
+        configurable: true,
+        value: undefined,
+      });
+    } catch {
+      // The fallback assertion remains valid when the browser exposes no native API.
+    }
+    window.__fallbackAnimations = 0;
+    window.__fallbackScopes = [];
+    window.__fallbackTargets = [];
+    const nativeAnimate = Element.prototype.animate;
+    Element.prototype.animate = function (...args) {
+      window.__fallbackAnimations += 1;
+      window.__fallbackScopes.push(document.documentElement.dataset.uiTransitionScope || "");
+      window.__fallbackTargets.push(typeof this.className === "string" ? this.className : "");
+      return nativeAnimate.apply(this, args);
+    };
+  });
+  await page.locator("#wordListButton").click();
+  await expect(page.locator("#wordListPanel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__fallbackAnimations)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__fallbackScopes)).toContain("hierarchy");
+  expect(await page.evaluate(() => window.__fallbackTargets))
+    .toContainEqual(expect.stringContaining("ui-transition-snapshot-new"));
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
+    .toBe("");
+
+  await page.locator("#wordListBackButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
+    .toBe("");
+  expect(await page.evaluate(() => window.__fallbackTargets))
+    .toContainEqual(expect.stringContaining("ui-transition-snapshot-old"));
+
+  await page.locator("#wordListButton").click();
+  await expect(page.locator("#wordListPanel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
+    .toBe("");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const fallbackCount = await page.evaluate(() => window.__fallbackAnimations);
+  await page.locator("#wordListBackButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
+  expect(await page.evaluate(() => window.__fallbackAnimations)).toBe(fallbackCount);
+  expect(pageErrors).toEqual([]);
+});
+
 test("partial new learning advances the sliding word window only by completed words", async ({ page }) => {
   await page.addInitScript(() => {
     const NativeDate = Date;
@@ -1025,6 +1288,8 @@ test("partial new learning advances the sliding word window only by completed wo
   await confirmEveryVisibleSense(page);
   await completeAndAdvance(page);
 
+  await expect.poll(async () => (await readState(page)).introducedWords)
+    .toEqual([firstWords[0]]);
   let saved = await readState(page);
   expect(saved.introducedWords).toEqual([firstWords[0]]);
   expect(saved.plan.advancedDays).toBe(-0.5);
@@ -1968,6 +2233,7 @@ test("a study window crossing midnight stays on its start date and requires retu
   expect(todayColor).toBe("#ecefeb");
 
   await page.locator("#startStudyButton").click();
+  await expect.poll(async () => (await readState(page)).studyWindows.length).toBe(1);
   let saved = await readState(page);
   expect(saved.studyWindows).toHaveLength(1);
   expect(saved.studyWindows[0].activityDate).toBe("2026-07-26");
@@ -1980,6 +2246,9 @@ test("a study window crossing midnight stays on its start date and requires retu
   await confirmEveryVisibleSense(page);
   await completeAndAdvance(page);
 
+  await expect.poll(async () => (
+    (await readState(page)).activityLog["2026-07-26"]?.newCount ?? 0
+  )).toBe(1);
   saved = await readState(page);
   expect(saved.session.date).toBe("2026-07-26");
   expect(saved.activityLog["2026-07-26"].newCount).toBe(1);
@@ -2048,11 +2317,13 @@ test("mastered senses collapse, expand on demand, and fully mastered words advan
   await page.locator("#startStudyButton").click();
   await page.locator("#exitStudyButton").click();
   await page.locator("#returnHomeButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
   currentDayColor = await page.locator('.heatmap-day[data-date="2026-07-26"]')
     .evaluate((element) => element.style.getPropertyValue("--heat-color"));
   expect(currentDayColor).toBe("#dc6a63");
 
   await page.locator("#startStudyButton").click();
+  await expect(page.locator("#studyPanel")).toBeVisible();
 
   const modeBox = await page.locator("#cardMode").boundingBox();
   const progressBox = await page.locator("#queueProgress").boundingBox();

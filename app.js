@@ -268,6 +268,8 @@ const reviewCount = document.querySelector("#reviewCount");
 const newCount = document.querySelector("#newCount");
 const learningCount = document.querySelector("#learningCount");
 const queueProgress = document.querySelector("#queueProgress");
+const senseProgressLabel = document.querySelector("#senseProgressLabel");
+const senseProgressBar = document.querySelector("#senseProgressBar");
 const cardMode = document.querySelector("#cardMode");
 
 const planDialog = document.querySelector("#planDialog");
@@ -342,6 +344,7 @@ let activeAudio = null;
 let audioPlaybackGeneration = 0;
 let lastAutoPlayedCardKey = null;
 let soundContext = null;
+let completionFeedbackTimer = null;
 let wordFitFrame = null;
 let renderedStudyCardKey = null;
 let studyScrollResetFrame = null;
@@ -364,6 +367,11 @@ let confusionGlobe = null;
 let confusionGlobeSignature = null;
 let confusionTransitioning = false;
 let confusionGlobeLoader = null;
+let activeUiTransition = null;
+let commitActiveUiTransition = null;
+let cleanupActiveUiTransition = null;
+let studyHierarchyOrigin = null;
+let wordListHierarchyOrigin = null;
 let membershipAccess = {
   loggedIn: false,
   active: true,
@@ -2388,6 +2396,16 @@ function currentStageWordProgress() {
   };
 }
 
+function currentSenseProgress(counts) {
+  return ["review", "new", "reinforcement"].reduce(
+    (progress, category) => ({
+      completed: progress.completed + counts[category].completed,
+      total: progress.total + counts[category].total,
+    }),
+    { completed: 0, total: 0 },
+  );
+}
+
 function studyButtonState() {
   if (!membershipAllowsStudy()) {
     return { label: "会员已到期", disabled: true };
@@ -2426,6 +2444,206 @@ function canStartAdvanceStudy() {
   return session.baseCompleted && !hasUnfinishedQueue();
 }
 
+function uiTransitionTarget(scope) {
+  if (scope === "reveal") return senseArea.hidden ? studyPanel : senseArea;
+  return appShell;
+}
+
+function getUiTransitionOrigin(target) {
+  if (!(target instanceof Element)) return null;
+  const rect = target.getBoundingClientRect();
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
+  const x = Math.min(viewportWidth, Math.max(0, rect.left + rect.width / 2));
+  const y = Math.min(viewportHeight, Math.max(0, rect.top + rect.height / 2));
+  const radius = Math.max(
+    Math.hypot(x, y),
+    Math.hypot(viewportWidth - x, y),
+    Math.hypot(x, viewportHeight - y),
+    Math.hypot(viewportWidth - x, viewportHeight - y),
+  ) + 2;
+  return {
+    x: `${x}px`,
+    y: `${y}px`,
+    radius: `${radius}px`,
+  };
+}
+
+function clearUiTransitionOrigin(root = document.documentElement) {
+  root.style.removeProperty("--ui-transition-x");
+  root.style.removeProperty("--ui-transition-y");
+  root.style.removeProperty("--ui-transition-radius");
+}
+
+function cloneUiTransitionSurface(surface) {
+  if (!(surface instanceof Element)) return null;
+  const clone = surface.cloneNode(true);
+  clone.removeAttribute("id");
+  clone.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+  clone.setAttribute("aria-hidden", "true");
+  clone.setAttribute("inert", "");
+  clone.classList.add("ui-transition-snapshot");
+  clone.style.viewTransitionName = "none";
+  return clone;
+}
+
+function uiTransitionFrames(kind, scope) {
+  if (scope === "hierarchy") {
+    const origin = "var(--ui-transition-x, 50%) var(--ui-transition-y, 50%)";
+    return [
+      { clipPath: `circle(0px at ${origin})` },
+      { clipPath: `circle(var(--ui-transition-radius, 150vmax) at ${origin})` },
+    ];
+  }
+  if (kind === "backward") {
+    return [
+      { opacity: 0, transform: "translate3d(-8px, 0, 0)" },
+      { opacity: 1, transform: "translate3d(0, 0, 0)" },
+    ];
+  }
+  if (kind === "reveal") {
+    return [
+      { opacity: 0, transform: "translate3d(0, 6px, 0)" },
+      { opacity: 1, transform: "translate3d(0, 0, 0)" },
+    ];
+  }
+  return [
+    { opacity: 0, transform: "translate3d(8px, 0, 0)" },
+    { opacity: 1, transform: "translate3d(0, 0, 0)" },
+  ];
+}
+
+function commitUiTransition(kind, update, {
+  after,
+  scope = "page",
+  origin = null,
+} = {}) {
+  const root = document.documentElement;
+  const hadActiveTransition = Boolean(activeUiTransition);
+  if (activeUiTransition?.skipTransition) {
+    try {
+      activeUiTransition.skipTransition();
+    } catch {
+      // A transition can already be settled when a user immediately clicks again.
+    }
+  } else if (activeUiTransition?.cancel) {
+    try {
+      activeUiTransition.cancel();
+    } catch {
+      // A fallback animation may already have completed between input events.
+    }
+  }
+  cleanupActiveUiTransition?.();
+  cleanupActiveUiTransition = null;
+  // If a second action lands before Chromium has captured the first transition's
+  // old frame, commit that pending state exactly once before handling the new one.
+  // This keeps rapid navigation ordered without moving the update outside the
+  // View Transition callback during normal interactions.
+  commitActiveUiTransition?.();
+  activeUiTransition = null;
+  commitActiveUiTransition = null;
+  delete root.dataset.uiTransition;
+  delete root.dataset.uiTransitionScope;
+  clearUiTransitionOrigin(root);
+
+  if (prefersReducedMotion()) {
+    update();
+    after?.();
+    return null;
+  }
+
+  root.dataset.uiTransition = kind;
+  root.dataset.uiTransitionScope = scope;
+  if (scope === "hierarchy" && origin) {
+    root.style.setProperty("--ui-transition-x", origin.x);
+    root.style.setProperty("--ui-transition-y", origin.y);
+    root.style.setProperty("--ui-transition-radius", origin.radius);
+  }
+  const finish = (transition) => {
+    if (activeUiTransition !== transition) return;
+    activeUiTransition = null;
+    commitActiveUiTransition = null;
+    delete root.dataset.uiTransition;
+    delete root.dataset.uiTransitionScope;
+    clearUiTransitionOrigin(root);
+    after?.();
+  };
+
+  if (!hadActiveTransition && typeof document.startViewTransition === "function") {
+    let transition;
+    let updateCommitted = false;
+    const commitUpdate = () => {
+      if (updateCommitted) return;
+      updateCommitted = true;
+      update();
+    };
+    try {
+      transition = document.startViewTransition(commitUpdate);
+    } catch {
+      transition = null;
+    }
+    if (transition) {
+      activeUiTransition = transition;
+      commitActiveUiTransition = commitUpdate;
+      Promise.resolve(transition.finished).then(
+        () => finish(transition),
+        () => finish(transition),
+      );
+      return transition;
+    }
+  }
+
+  const outgoingSurface = scope === "hierarchy" ? cloneUiTransitionSurface(appShell) : null;
+  update();
+  let target = uiTransitionTarget(scope);
+  let fallbackOverlay = null;
+  if (scope === "hierarchy" && outgoingSurface) {
+    const incomingSurface = cloneUiTransitionSurface(appShell);
+    if (incomingSurface) {
+      fallbackOverlay = document.createElement("div");
+      fallbackOverlay.className = `ui-transition-fallback-overlay${kind === "backward" ? " is-backward" : ""}`;
+      outgoingSurface.classList.add("ui-transition-snapshot-old");
+      incomingSurface.classList.add("ui-transition-snapshot-new");
+      fallbackOverlay.append(outgoingSurface, incomingSurface);
+      document.body.append(fallbackOverlay);
+      target = kind === "backward" ? outgoingSurface : incomingSurface;
+      const cleanup = () => {
+        fallbackOverlay?.remove();
+        fallbackOverlay = null;
+        if (cleanupActiveUiTransition === cleanup) cleanupActiveUiTransition = null;
+      };
+      cleanupActiveUiTransition = cleanup;
+      const transitionAfter = after;
+      after = () => {
+        cleanup();
+        transitionAfter?.();
+      };
+    }
+  }
+  let animation = null;
+  try {
+    animation = target?.animate?.(uiTransitionFrames(kind, scope), {
+      duration: scope === "hierarchy" ? 460 : scope === "reveal" ? 300 : 340,
+      easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+      fill: "both",
+    }) ?? null;
+  } catch {
+    animation = null;
+  }
+  if (!animation) {
+    delete root.dataset.uiTransition;
+    delete root.dataset.uiTransitionScope;
+    after?.();
+    return null;
+  }
+  activeUiTransition = animation;
+  Promise.resolve(animation.finished).then(
+    () => finish(animation),
+    () => finish(animation),
+  );
+  return animation;
+}
+
 function render() {
   if (!state) return;
 
@@ -2445,6 +2663,9 @@ function render() {
   confusionPanel.hidden = state.view !== "confusion";
   renderHome();
   renderStudy();
+  if (state.view !== "study") {
+    clearStudyCompletionAnimation();
+  }
   if (state.view === "word-list") renderWordList();
   if (state.view === "confusion") renderConfusionPanel();
   applyAccountBootstrapGate();
@@ -3044,6 +3265,11 @@ function renderStudy() {
     newCount.textContent = "0/0";
     learningCount.textContent = "0/0";
     queueProgress.textContent = browsing ? "单词卡片" : "正在准备";
+    senseProgressLabel.textContent = browsing ? "单词卡片" : "0 / 0";
+    senseProgressBar.hidden = browsing;
+    senseProgressBar.setAttribute("aria-valuemax", "0");
+    senseProgressBar.setAttribute("aria-valuenow", "0");
+    senseProgressBar.firstElementChild.style.width = "0%";
     senseList.replaceChildren();
     morphologyPanel.replaceChildren();
     senseArea.hidden = true;
@@ -3064,6 +3290,7 @@ function renderStudy() {
   }
   const word = currentWord();
   const counts = currentQueueCounts();
+  const senseProgress = currentSenseProgress(counts);
   const stageWordProgress = currentStageWordProgress();
   const finished = !card;
   const phase = historyViewing
@@ -3086,6 +3313,21 @@ function renderStudy() {
   queueProgress.textContent = browsing
     ? "单词卡片"
     : `${stageWordProgress.current} / ${stageWordProgress.total}`;
+  queueProgress.setAttribute(
+    "aria-label",
+    browsing
+      ? "单词卡片"
+      : `当前阶段已完成 ${stageWordProgress.current} / ${stageWordProgress.total} 个单词`,
+  );
+  senseProgressLabel.textContent = browsing
+    ? "单词卡片"
+    : `${senseProgress.completed} / ${senseProgress.total}`;
+  senseProgressBar.hidden = browsing;
+  senseProgressBar.setAttribute("aria-valuemax", String(senseProgress.total));
+  senseProgressBar.setAttribute("aria-valuenow", String(senseProgress.completed));
+  senseProgressBar.firstElementChild.style.width = senseProgress.total > 0
+    ? `${Math.round(senseProgress.completed / senseProgress.total * 100)}%`
+    : "0%";
 
   senseList.replaceChildren();
   morphologyPanel.replaceChildren();
@@ -3358,7 +3600,8 @@ function renderMorphology(word) {
   }
 }
 
-async function startStudy() {
+async function startStudy(event) {
+  const transitionOrigin = getUiTransitionOrigin(event?.currentTarget);
   const tutorialStart =
     tutorialRuntime?.active && tutorialRuntime.step === "start";
   if (!tutorialStart && (!membershipAllowsStudy() || !hasPlan())) return;
@@ -3408,12 +3651,16 @@ async function startStudy() {
     }
   }
 
-  state.view = "study";
-  saveState();
-  render();
+  studyHierarchyOrigin = transitionOrigin;
+  commitUiTransition("forward", () => {
+    state.view = "study";
+    saveState();
+    render();
+  }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
-async function startAdvanceStudy() {
+async function startAdvanceStudy(event) {
+  const transitionOrigin = getUiTransitionOrigin(event?.currentTarget);
   if (!canStartAdvanceStudy()) return;
   if (!await ensureVocabularyDetailsReady("advance")) return;
 
@@ -3437,9 +3684,12 @@ async function startAdvanceStudy() {
   session.reinforcedKeys = [];
   if (session.queue.length === 0) appendReinforcementStage();
 
-  state.view = "study";
-  saveState();
-  render();
+  studyHierarchyOrigin = transitionOrigin;
+  commitUiTransition("forward", () => {
+    state.view = "study";
+    saveState();
+    render();
+  }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
 function openMoreDialog() {
@@ -3450,20 +3700,34 @@ function closeMoreDialog() {
   moreDialog.hidden = true;
 }
 
-function openWordList() {
-  state.wordBrowse = null;
-  state.view = "word-list";
-  wordListQuery = "";
-  wordListFilter = "all";
-  saveState();
-  render();
+function openWordList(event) {
+  const transitionOrigin = getUiTransitionOrigin(event?.currentTarget);
+  wordListHierarchyOrigin = transitionOrigin;
+  commitUiTransition("forward", () => {
+    state.wordBrowse = null;
+    state.view = "word-list";
+    wordListQuery = "";
+    wordListFilter = "all";
+    saveState();
+    render();
+  }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
-function closeWordList() {
-  state.wordBrowse = null;
-  state.view = "home";
-  saveState();
-  render();
+function closeWordList(event) {
+  const transitionOrigin = getUiTransitionOrigin(event?.currentTarget);
+  const returnOrigin = wordListHierarchyOrigin ?? transitionOrigin;
+  commitUiTransition("backward", () => {
+    state.wordBrowse = null;
+    state.view = "home";
+    saveState();
+    render();
+  }, {
+    scope: "hierarchy",
+    origin: returnOrigin,
+    after: () => {
+      wordListHierarchyOrigin = null;
+    },
+  });
 }
 
 function confusionRelatedIds(rootWordId) {
@@ -3986,18 +4250,20 @@ async function closeConfusionGlobe(options = {}) {
 async function openWordCard(wordId, options = {}) {
   if (!wordById.has(wordId)) return;
   if (!await ensureVocabularyDetailsReady("word-card")) return;
-  state.wordBrowse = options.source === "word-list"
-    ? {
-      wordId,
-      source: "word-list",
-      query: wordListQuery,
-      filter: wordListFilter,
-      sort: state.wordListSort,
-    }
-    : { wordId };
-  state.view = "study";
-  saveState();
-  render();
+  commitUiTransition("forward", () => {
+    state.wordBrowse = options.source === "word-list"
+      ? {
+        wordId,
+        source: "word-list",
+        query: wordListQuery,
+        filter: wordListFilter,
+        sort: state.wordListSort,
+      }
+      : { wordId };
+    state.view = "study";
+    saveState();
+    render();
+  });
 }
 
 function navigateWordCard(direction) {
@@ -4006,41 +4272,54 @@ function navigateWordCard(direction) {
   const wordId = direction < 0 ? previousWordId : nextWordId;
   if (!wordId) return;
 
-  stopWordAudio();
-  state.wordBrowse.wordId = wordId;
-  saveState();
-  render();
+  commitUiTransition(direction < 0 ? "backward" : "forward", () => {
+    stopWordAudio();
+    state.wordBrowse.wordId = wordId;
+    saveState();
+    render();
+  }, { scope: "card" });
 }
 
 function closeWordCard() {
-  const deepLinked = Boolean(requestedWordId());
-  state.wordBrowse = null;
-  state.view = deepLinked
-    ? ["home", "study", "word-list"].includes(wordDeepLinkReturnView)
-      ? wordDeepLinkReturnView
-      : "home"
-    : "word-list";
-  clearWordDeepLink();
-  wordDeepLinkReturnView = null;
-  saveState();
-  render();
+  commitUiTransition("backward", () => {
+    const deepLinked = Boolean(requestedWordId());
+    state.wordBrowse = null;
+    state.view = deepLinked
+      ? ["home", "study", "word-list"].includes(wordDeepLinkReturnView)
+        ? wordDeepLinkReturnView
+        : "home"
+      : "word-list";
+    clearWordDeepLink();
+    wordDeepLinkReturnView = null;
+    saveState();
+    render();
+  });
 }
 
-function exitStudy() {
+function exitStudy(transitionOrigin = null) {
   if (!state) return;
   if (state.wordBrowse) {
     closeWordCard();
     return;
   }
 
-  finishStudyWindow("return-home");
-  const session = ensureTodaySession();
-  session.historyView = null;
-  session.revealed = false;
-  session.cardPhase = "hidden";
-  state.view = "home";
-  saveState();
-  render();
+  const returnOrigin = studyHierarchyOrigin ?? transitionOrigin;
+  commitUiTransition("backward", () => {
+    finishStudyWindow("return-home");
+    const session = ensureTodaySession();
+    session.historyView = null;
+    session.revealed = false;
+    session.cardPhase = "hidden";
+    state.view = "home";
+    saveState();
+    render();
+  }, {
+    scope: "hierarchy",
+    origin: returnOrigin,
+    after: () => {
+      studyHierarchyOrigin = null;
+    },
+  });
 }
 
 function openReturnDialog() {
@@ -4065,7 +4344,8 @@ function closeReturnDialog() {
   returnDialog.hidden = true;
 }
 
-function handleReturnHome() {
+function handleReturnHome(event) {
+  const transitionOrigin = getUiTransitionOrigin(event?.currentTarget);
   if (isCrossDayStudy() && !pendingCrossDayReturn) {
     pendingCrossDayReturn = true;
     returnTitle.textContent = "确认进入下一日学习？";
@@ -4078,7 +4358,7 @@ function handleReturnHome() {
   }
 
   closeReturnDialog();
-  exitStudy();
+  exitStudy(transitionOrigin);
 }
 
 function showPreviousWord() {
@@ -4092,12 +4372,15 @@ function showPreviousWord() {
       originPhase: session.cardPhase,
     };
   }
-  session.currentIndex -= 1;
-  session.revealed = true;
-  session.cardPhase = "examples";
-  closeReturnDialog();
-  saveState();
-  render();
+  commitUiTransition("backward", () => {
+    session.currentIndex -= 1;
+    session.revealed = true;
+    session.cardPhase = "examples";
+    clearStudyCompletionAnimation();
+    closeReturnDialog();
+    saveState();
+    render();
+  }, { scope: "card" });
 }
 
 function showNextHistoryWord() {
@@ -4105,19 +4388,22 @@ function showNextHistoryWord() {
   const history = session.historyView;
   if (!history || session.currentIndex >= history.originIndex) return;
 
-  session.currentIndex += 1;
-  if (session.currentIndex >= history.originIndex) {
-    session.currentIndex = Math.min(history.originIndex, session.queue.length);
-    session.revealed = Boolean(history.originRevealed);
-    session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
-    session.historyView = null;
-  } else {
-    session.revealed = true;
-    session.cardPhase = "examples";
-  }
-  closeReturnDialog();
-  saveState();
-  render();
+  commitUiTransition("forward", () => {
+    session.currentIndex += 1;
+    if (session.currentIndex >= history.originIndex) {
+      session.currentIndex = Math.min(history.originIndex, session.queue.length);
+      session.revealed = Boolean(history.originRevealed);
+      session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
+      session.historyView = null;
+    } else {
+      session.revealed = true;
+      session.cardPhase = "examples";
+    }
+    clearStudyCompletionAnimation();
+    closeReturnDialog();
+    saveState();
+    render();
+  }, { scope: "card" });
 }
 
 function returnToCurrentWord() {
@@ -4125,22 +4411,27 @@ function returnToCurrentWord() {
   const history = session.historyView;
   if (!history) return;
 
-  session.currentIndex = Math.min(history.originIndex, session.queue.length);
-  session.revealed = Boolean(history.originRevealed);
-  session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
-  session.historyView = null;
-  saveState();
-  render();
+  commitUiTransition("forward", () => {
+    session.currentIndex = Math.min(history.originIndex, session.queue.length);
+    session.revealed = Boolean(history.originRevealed);
+    session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
+    session.historyView = null;
+    clearStudyCompletionAnimation();
+    saveState();
+    render();
+  }, { scope: "card" });
 }
 
 function revealSenses() {
   if (!state || !currentCard()) return;
 
   const session = ensureTodaySession();
-  session.revealed = true;
-  session.cardPhase = "select";
-  saveState();
-  render();
+  commitUiTransition("reveal", () => {
+    session.revealed = true;
+    session.cardPhase = "select";
+    saveState();
+    render();
+  }, { scope: "reveal" });
 }
 
 function handleWordSurfaceClick() {
@@ -4279,32 +4570,80 @@ function speakCurrentWord() {
   playWordAudio(word);
 }
 
+function prefersReducedMotion() {
+  return typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 function playSenseTapSound() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContextClass) return;
+  if (!AudioContextClass) return false;
 
-  soundContext = soundContext ?? new AudioContextClass();
+  try {
+    soundContext = soundContext ?? new AudioContextClass();
+    if (!soundContext?.createOscillator || !soundContext?.createGain) return false;
 
-  if (soundContext.state === "suspended") {
-    soundContext.resume();
+    if (soundContext.state === "suspended" && typeof soundContext.resume === "function") {
+      Promise.resolve(soundContext.resume()).catch(() => {});
+    }
+
+    const start = soundContext.currentTime;
+    const oscillator = soundContext.createOscillator();
+    const gain = soundContext.createGain();
+
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(620, start);
+    oscillator.frequency.exponentialRampToValueAtTime(880, start + 0.08);
+
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.08, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
+
+    oscillator.connect(gain);
+    gain.connect(soundContext.destination);
+    oscillator.start(start);
+    oscillator.stop(start + 0.13);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function triggerStudyCompletionHaptic() {
+  if (prefersReducedMotion() || typeof navigator.vibrate !== "function") return;
+  try {
+    navigator.vibrate(15);
+  } catch {
+    // Unsupported or blocked vibration is an optional enhancement.
+  }
+}
+
+function clearStudyCompletionAnimation() {
+  if (completionFeedbackTimer !== null) {
+    window.clearTimeout(completionFeedbackTimer);
+    completionFeedbackTimer = null;
+  }
+  revealButton.closest(".word-card-wrap")?.classList.remove("is-card-completing");
+}
+
+function triggerStudyCompletionCue() {
+  const cardWrap = revealButton.closest(".word-card-wrap");
+  if (cardWrap) {
+    cardWrap.classList.remove("is-card-completing");
+    void cardWrap.offsetWidth;
+    cardWrap.classList.add("is-card-completing");
   }
 
-  const start = soundContext.currentTime;
-  const oscillator = soundContext.createOscillator();
-  const gain = soundContext.createGain();
+  if (completionFeedbackTimer !== null) {
+    window.clearTimeout(completionFeedbackTimer);
+  }
+  completionFeedbackTimer = window.setTimeout(() => {
+    completionFeedbackTimer = null;
+    cardWrap?.classList.remove("is-card-completing");
+  }, 500);
 
-  oscillator.type = "sine";
-  oscillator.frequency.setValueAtTime(620, start);
-  oscillator.frequency.exponentialRampToValueAtTime(880, start + 0.08);
-
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(0.08, start + 0.01);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.12);
-
-  oscillator.connect(gain);
-  gain.connect(soundContext.destination);
-  oscillator.start(start);
-  oscillator.stop(start + 0.13);
+  playSenseTapSound();
+  triggerStudyCompletionHaptic();
 }
 
 function setProgressMastered(progress, date, learningDay = activeLearningDay()) {
@@ -4505,10 +4844,12 @@ function completeCurrentSelection() {
   const card = currentCard();
   if (!session.revealed || !card) return;
 
-  card.expandedMasteredKeys = [];
-  session.cardPhase = "examples";
-  saveState();
-  render();
+  commitUiTransition("reveal", () => {
+    card.expandedMasteredKeys = [];
+    session.cardPhase = "examples";
+    saveState();
+    render();
+  }, { scope: "reveal" });
 }
 
 function scheduleUnknownSenses() {
@@ -4552,54 +4893,57 @@ function nextWord() {
   const session = ensureTodaySession();
   if (!session.revealed || session.cardPhase !== "examples" || !currentCard()) return;
 
-  const completedCard = currentCard();
-  scheduleUnknownSenses();
-  markCurrentWordIntroduced();
-  if (
-    completedCard.type === "extra" ||
-    completedCard.type === "advance" ||
-    session.activeBatchType === "extra" ||
-    session.activeBatchType === "advance"
-  ) {
-    activityForDate().overtime = true;
-  }
-  if (completedCard.type === "review" || completedCard.type === "reinforcement") {
-    addActivityWord("review", completedCard.wordId);
-  }
-  if (completedCard.type === "reinforcement") {
-    session.reinforcedKeys = [
-      ...new Set([...session.reinforcedKeys, ...activeSenseKeysForCard(completedCard)]),
-    ];
-  }
-  session.currentIndex += 1;
-  session.revealed = false;
-  session.cardPhase = "hidden";
+  commitUiTransition("forward", () => {
+    const completedCard = currentCard();
+    scheduleUnknownSenses();
+    markCurrentWordIntroduced();
+    if (
+      completedCard.type === "extra" ||
+      completedCard.type === "advance" ||
+      session.activeBatchType === "extra" ||
+      session.activeBatchType === "advance"
+    ) {
+      activityForDate().overtime = true;
+    }
+    if (completedCard.type === "review" || completedCard.type === "reinforcement") {
+      addActivityWord("review", completedCard.wordId);
+    }
+    if (completedCard.type === "reinforcement") {
+      session.reinforcedKeys = [
+        ...new Set([...session.reinforcedKeys, ...activeSenseKeysForCard(completedCard)]),
+      ];
+    }
+    session.currentIndex += 1;
+    session.revealed = false;
+    session.cardPhase = "hidden";
 
-  if (session.currentIndex >= session.queue.length) {
-    appendReinforcementStage();
-  }
+    if (session.currentIndex >= session.queue.length) {
+      appendReinforcementStage();
+    }
 
-  if (
-    session.currentIndex >= session.queue.length &&
-    session.activeBatchType === "planned"
-  ) {
-    session.baseCompleted = true;
-    activityForDate().baseCompleted = true;
-  }
-  if (
-    session.currentIndex >= session.queue.length &&
-    session.activeBatchType === "advance" &&
-    !session.advanceShiftCommitted
-  ) {
-    session.advanceShiftCommitted = true;
-    activityForDate().overtime = true;
-  }
-  if (session.currentIndex >= session.queue.length) {
-    finishStudyWindow("completed");
-  }
+    if (
+      session.currentIndex >= session.queue.length &&
+      session.activeBatchType === "planned"
+    ) {
+      session.baseCompleted = true;
+      activityForDate().baseCompleted = true;
+    }
+    if (
+      session.currentIndex >= session.queue.length &&
+      session.activeBatchType === "advance" &&
+      !session.advanceShiftCommitted
+    ) {
+      session.advanceShiftCommitted = true;
+      activityForDate().overtime = true;
+    }
+    if (session.currentIndex >= session.queue.length) {
+      finishStudyWindow("completed");
+    }
 
-  saveState();
-  render();
+    saveState();
+    render();
+    triggerStudyCompletionCue();
+  }, { scope: "card" });
 }
 
 function handleProgressButton() {
@@ -4838,6 +5182,7 @@ function resetCurrentMarking() {
   session.currentIndex = cardIndex;
   session.revealed = true;
   session.cardPhase = "select";
+  clearStudyCompletionAnimation();
   saveState();
   closeResetDialog();
   render();
@@ -4875,6 +5220,7 @@ function relearnCurrentWord() {
   );
   session.revealed = false;
   session.cardPhase = "hidden";
+  clearStudyCompletionAnimation();
   saveState();
   closeResetDialog();
   render();

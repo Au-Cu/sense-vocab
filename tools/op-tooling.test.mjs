@@ -8,7 +8,7 @@ import {
   rootDir,
 } from "./op-verification-lib.mjs";
 
-test("package version alone does not invalidate verification inputs", () => {
+test("package version changes invalidate verification inputs", () => {
   const left = normalizeManifestContent(
     "package.json",
     Buffer.from(JSON.stringify({ name: "sense", version: "1.0.0", scripts: { test: "x" } })),
@@ -17,7 +17,7 @@ test("package version alone does not invalidate verification inputs", () => {
     "package.json",
     Buffer.from(JSON.stringify({ name: "sense", version: "2.0.0", scripts: { test: "x" } })),
   );
-  assert.deepEqual(left, right);
+  assert.notDeepEqual(left, right);
 
   const lockLeft = normalizeManifestContent(
     "package-lock.json",
@@ -35,7 +35,7 @@ test("package version alone does not invalidate verification inputs", () => {
       packages: { "": { version: "2.0.0", dependencies: { x: "1.0.0" } } },
     })),
   );
-  assert.deepEqual(lockLeft, lockRight);
+  assert.notDeepEqual(lockLeft, lockRight);
 });
 
 test("risk classification preserves content, database, and release escalation", () => {

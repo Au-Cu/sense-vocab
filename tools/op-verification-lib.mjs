@@ -65,13 +65,10 @@ export function normalizeManifestContent(relativePath, content) {
   const normalizedPath = relativePath.replaceAll("\\", "/");
   if (normalizedPath === "package.json") {
     const parsed = JSON.parse(content);
-    delete parsed.version;
     return Buffer.from(stableJson(parsed));
   }
   if (normalizedPath === "package-lock.json") {
     const parsed = JSON.parse(content);
-    delete parsed.version;
-    if (parsed.packages?.[""]) delete parsed.packages[""].version;
     return Buffer.from(stableJson(parsed));
   }
   return Buffer.isBuffer(content) ? content : Buffer.from(content);

@@ -189,6 +189,7 @@ button {
   grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 32px 18px;
+  view-transition-name: app-surface;
 }
 
 .app-shell[hidden] {
@@ -221,6 +222,47 @@ button {
 
 .topbar {
   display: block;
+}
+
+.study-sense-progress {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf7;
+}
+
+.study-sense-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.study-sense-progress-head strong {
+  color: var(--accent-strong);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.study-sense-progress-bar {
+  width: 100%;
+  height: 8px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+}
+
+.study-sense-progress-bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 220ms ease;
 }
 
 .stats-grid {
@@ -280,6 +322,24 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.word-card-wrap.is-card-completing {
+  animation: studyCardComplete 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes studyCardComplete {
+  0% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.012);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }
 
 .icon-button {
@@ -1057,6 +1117,207 @@ button {
   width: 100%;
 }
 
+.ui-transition-fallback-overlay {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ui-transition-fallback-overlay .ui-transition-snapshot {
+  position: absolute;
+  inset: 0;
+  min-height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  view-transition-name: none;
+}
+
+.ui-transition-fallback-overlay .ui-transition-snapshot-old {
+  z-index: 1;
+}
+
+.ui-transition-fallback-overlay .ui-transition-snapshot-new {
+  z-index: 2;
+}
+
+.ui-transition-fallback-overlay.is-backward .ui-transition-snapshot-old {
+  z-index: 2;
+}
+
+.ui-transition-fallback-overlay.is-backward .ui-transition-snapshot-new {
+  z-index: 1;
+}
+
+html[data-ui-transition-scope="hierarchy"] .app-shell > .study-panel:not([hidden]) {
+  background: var(--surface);
+}
+
+@supports (view-transition-name: none) {
+  ::view-transition {
+    pointer-events: none;
+  }
+
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  ::view-transition-group(app-surface) {
+    animation: none;
+  }
+
+  html[data-ui-transition="forward"]::view-transition-old(app-surface) {
+    animation-name: ui-transition-out-forward;
+    animation-duration: 400ms;
+    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition="forward"]::view-transition-new(app-surface) {
+    animation-name: ui-transition-in-forward;
+    animation-duration: 400ms;
+    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition="backward"]::view-transition-old(app-surface) {
+    animation-name: ui-transition-out-backward;
+    animation-duration: 400ms;
+    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition="backward"]::view-transition-new(app-surface) {
+    animation-name: ui-transition-in-backward;
+    animation-duration: 400ms;
+    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="forward"]::view-transition-old(app-surface),
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="backward"]::view-transition-new(app-surface) {
+    animation: none;
+    opacity: 1;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition-scope="hierarchy"]::view-transition-image-pair(app-surface) {
+    isolation: isolate;
+  }
+
+  html[data-ui-transition-scope="hierarchy"]::view-transition-old(app-surface),
+  html[data-ui-transition-scope="hierarchy"]::view-transition-new(app-surface) {
+    background: var(--paper);
+  }
+
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="forward"]::view-transition-old(app-surface) {
+    z-index: 1;
+  }
+
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="forward"]::view-transition-new(app-surface) {
+    z-index: 2;
+    opacity: 1;
+  }
+
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="backward"]::view-transition-old(app-surface) {
+    z-index: 2;
+    opacity: 1;
+  }
+
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="backward"]::view-transition-new(app-surface) {
+    z-index: 1;
+    opacity: 1;
+  }
+
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="forward"]::view-transition-new(app-surface) {
+    animation-name: ui-transition-in-hierarchy;
+    animation-duration: 460ms;
+    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition-scope="hierarchy"][data-ui-transition="backward"]::view-transition-old(app-surface) {
+    animation-name: ui-transition-out-hierarchy;
+    animation-duration: 420ms;
+    animation-timing-function: cubic-bezier(0.22, 0.61, 0.36, 1);
+    animation-fill-mode: both;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition-scope="card"]::view-transition-old(app-surface),
+  html[data-ui-transition-scope="card"]::view-transition-new(app-surface) {
+    animation-duration: 360ms;
+  }
+
+  html[data-ui-transition="reveal"]::view-transition-old(app-surface) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition="reveal"]::view-transition-new(app-surface) {
+    animation-name: ui-transition-in-reveal;
+    animation-duration: 320ms;
+    animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+    animation-fill-mode: both;
+    background:
+      linear-gradient(135deg, rgba(15, 118, 110, 0.14), transparent 36%),
+      linear-gradient(315deg, rgba(199, 125, 45, 0.16), transparent 38%),
+      var(--paper);
+    mix-blend-mode: normal;
+  }
+}
+
+@keyframes ui-transition-in-forward {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes ui-transition-out-forward {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-100%, 0, 0); }
+}
+
+@keyframes ui-transition-in-backward {
+  from { transform: translate3d(-100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+@keyframes ui-transition-out-backward {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(100%, 0, 0); }
+}
+
+@keyframes ui-transition-in-hierarchy {
+  from {
+    clip-path: circle(0px at var(--ui-transition-x, 50%) var(--ui-transition-y, 50%));
+  }
+  to {
+    clip-path: circle(var(--ui-transition-radius, 150vmax) at var(--ui-transition-x, 50%) var(--ui-transition-y, 50%));
+  }
+}
+
+@keyframes ui-transition-out-hierarchy {
+  from {
+    clip-path: circle(var(--ui-transition-radius, 150vmax) at var(--ui-transition-x, 50%) var(--ui-transition-y, 50%));
+  }
+  to {
+    clip-path: circle(0px at var(--ui-transition-x, 50%) var(--ui-transition-y, 50%));
+  }
+}
+
+@keyframes ui-transition-in-reveal {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0); }
+}
+
 .word-button {
   width: 100%;
   min-width: 0;
@@ -1383,6 +1644,22 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(root),
+  ::view-transition-group(app-surface),
+  ::view-transition-old(root),
+  ::view-transition-new(root),
+  ::view-transition-old(app-surface),
+  ::view-transition-new(app-surface) {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+  }
+
+  .study-sense-progress-bar span,
+  .word-card-wrap.is-card-completing {
+    animation-duration: 1ms;
+    transition-duration: 1ms;
+  }
+
   .sense-item.is-confirming {
     animation-duration: 1ms;
   }
@@ -2714,6 +2991,14 @@ button {
 
   .study-progress-tools {
     gap: 8px;
+  }
+
+  .study-sense-progress {
+    padding: 8px 10px;
+  }
+
+  .study-sense-progress-head strong {
+    font-size: 0.96rem;
   }
 
   .study-feedback-button {
