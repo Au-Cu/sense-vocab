@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-22T11:22:18.078Z",
+  "generatedAt": "2026-08-23T04:47:27.037Z",
   "bundleSchemaVersion": 1,
   "counts": {
     "remoteAudioWithoutCompleteAttribution": 0,
@@ -7,7 +7,7 @@
     "tatoebaExamplesWithoutCompleteAttribution": 0,
     "tatoebaExamplesWithMetadataMismatch": 0,
     "semanticExamplesWithoutTraceableAttribution": 85,
-    "translationSourcesRequiringCommercialReview": 8902,
+    "translationSourcesRequiringCommercialReview": 8886,
     "legacyExternalServicesRequiringReplacement": 2
   },
   "releasePolicy": {

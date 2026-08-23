@@ -7,7 +7,8 @@
     "20260809161847_compliance_runtime_fixes.sql",
     "20260809162137_compliance_dashboard_ambiguity_fix.sql",
     "20260812051224_increase_feedback_submission_limits.sql",
-    "20260812154800_update_compliance_dashboard_latest_evidence.sql"
+    "20260812154800_update_compliance_dashboard_latest_evidence.sql",
+    "20260822144248_admin_feedback_triage_readonly.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -19,10 +20,10 @@
     "defaultFunctionExposureRevoked": true
   },
   "counts": {
-    "discoveredFunctionSignatures": 64,
-    "securityDefinerSignatures": 55,
-    "explicitFinalGrants": 48,
-    "browserRpcNames": 36
+    "discoveredFunctionSignatures": 66,
+    "securityDefinerSignatures": 57,
+    "explicitFinalGrants": 51,
+    "browserRpcNames": 38
   },
   "grants": [
     {
@@ -314,6 +315,24 @@
       "roles": [
         "authenticated"
       ]
+    },
+    {
+      "signature": "public.submit_feedback(uuid, text, jsonb, jsonb, integer, boolean, text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_feedback_triage(text, integer, integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_feedback_detail(text)",
+      "roles": [
+        "authenticated"
+      ]
     }
   ],
   "functions": [
@@ -471,12 +490,30 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.admin_feedback_detail(p_anonymous_id text)",
+      "schema": "public",
+      "name": "admin_feedback_detail",
+      "latestMigration": "20260822144248_admin_feedback_triage_readonly.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
       "key": "public.admin_feedback_list(p_status text default null, p_limit integer default 100, p_offset integer default 0)",
       "schema": "public",
       "name": "admin_feedback_list",
       "latestMigration": "202607290004_membership_notifications.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.admin_feedback_triage(p_status text default null, p_limit integer default 100, p_offset integer default 0)",
+      "schema": "public",
+      "name": "admin_feedback_triage",
+      "latestMigration": "20260822144248_admin_feedback_triage_readonly.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
     },
     {
@@ -843,7 +880,7 @@
       "key": "public.submit_feedback(p_feedback_id uuid, p_message text, p_image_paths jsonb, p_context jsonb, p_expected_image_count integer, p_attachment_rights_confirmed boolean, p_attachment_ai_disclosure text)",
       "schema": "public",
       "name": "submit_feedback",
-      "latestMigration": "20260812051224_increase_feedback_submission_limits.sql",
+      "latestMigration": "20260822144248_admin_feedback_triage_readonly.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": true,
       "checksCallerIdentity": true

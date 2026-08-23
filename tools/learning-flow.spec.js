@@ -35,6 +35,49 @@ const CONTENT_ADDED_SENSE_KEYS = [
   "shiver:n-2",
   "silver:adj-3",
   "versatile:adj-3",
+  "turn:v-3",
+  "writing:n-2",
+  "class:n-3",
+  "difference:n-3",
+  "site:n-2",
+  "remain:v-4",
+  "rise:n-6",
+  "rise:v-3",
+  "network:v-1",
+  "mass:n-3",
+  "apply:v-4",
+  "growth:n-3",
+  "stand:n-4",
+  "stand:v-3",
+  "return:v-3",
+  "exercise:v-2",
+  "force:n-2",
+  "negative:adj-3",
+  "range:v-5",
+  "guide:n-2",
+  "epidemic:adj-1",
+  "measure:v-4",
+  "story:n-3",
+  "global:adj-2",
+  "stop:v-2",
+  "statement:n-2",
+  "charge:v-6",
+  "charge:v-7",
+  "appeal:n-7",
+  "step:n-2",
+  "sight:n-2",
+  "image:n-3",
+  "mention:n-1",
+  "stick:v-2",
+  "saving:n-1",
+  "upset:adj-1",
+  "understanding:adj-1",
+  "energy:n-2",
+  "drive:v-2",
+  "pursue:v-4",
+  "wear:v-3",
+  "north:adj-1",
+  "draw:v-4",
 ];
 
 test.use({
@@ -1541,6 +1584,42 @@ test("approved feedback senses initialize for previously introduced words", asyn
   ))).toBe(true);
   await page.locator('.sense-item[data-key="versatile:adj-3"]').click();
   expect((await readState(page)).progress["versatile:adj-3"].status).toBe("mastered");
+});
+
+test("current approved senses initialize and enter the queue for historical users", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 10,
+      view: "home",
+      plan: {
+        dailyTarget: 1,
+        startedOn: "2026-08-23",
+        createdOn: "2026-08-23",
+        updatedOn: "2026-08-23",
+      },
+      introducedWords: ["turn"],
+      progress: {
+        "turn:v-1": { status: "mastered" },
+        "turn:v-2": { status: "mastered" },
+        "turn:n-3": { status: "mastered" },
+      },
+      activityLog: {},
+      studyWindows: [],
+      learningDayCounter: 1,
+      wordListSort: "mastery",
+    }));
+  }, STORAGE_KEY);
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  expect((await readState(page)).progress["turn:v-3"].status).toBe("new");
+
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("turn");
+  await page.locator("#revealButton").click();
+  await expect(page.locator('.sense-item[data-key="turn:v-3"]')).toBeEnabled();
 });
 
 test("reinforcement cards keep inactive mastered senses visible before and after marking", async ({ page }) => {

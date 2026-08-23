@@ -804,6 +804,7 @@ test("recommended conflict merge persists the converged state locally and remote
 
 test("retained guest recovery survives same-device cloud vectors", async ({ page }) => {
   await installFakeCloud(page);
+  await page.clock.install({ time: new Date("2026-08-22T12:00:00+08:00") });
   await page.goto(APP_URL);
   await waitForAccount(page);
   await page.evaluate(({ guestKey, migrationKey }) => {
@@ -1546,8 +1547,10 @@ test("study feedback binds the current word and stays a compact secondary action
   expect(feedback.context).toMatchObject({
     source: "study",
     wordText: word,
+    issueType: "redundant-sense",
   });
   expect(feedback.context.wordId).toBeTruthy();
+  expect(feedback.context.senseId).toBeTruthy();
   expect(feedback.context.senses).toBeUndefined();
 });
 

@@ -27,7 +27,7 @@ test("content rights metadata is complete-or-blocked and SemCor is never attribu
     (word.senses ?? []).filter((sense) =>
       String(sense.exampleSource ?? "").toLowerCase() === "semcor"),
   );
-  expect(semCorSenses).toHaveLength(2836);
+  expect(semCorSenses).toHaveLength(2831);
   const semCorFields = fields.filter((field) =>
     String(field.source ?? "").toLowerCase() === "semcor");
   expect(semCorFields).toHaveLength(semCorSenses.length);

@@ -1,6 +1,6 @@
 {
   "name": "sense-vocab-mvp",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "private": true,
   "scripts": {
     "build:cloud-client": "esbuild tools/cloud-client-entry.js --bundle --format=iife --platform=browser --target=es2020 --outfile=cloud-client.js",
@@ -19,6 +19,13 @@
     "build:third-party-compliance": "node tools/generate-third-party-compliance.mjs",
     "audit:supabase-security": "node tools/audit-supabase-security.mjs",
     "verify:commercial-release": "node tools/verify-commercial-release.mjs",
+    "op:snapshot": "node tools/op-snapshot.mjs",
+    "op:freeze": "node tools/op-freeze.mjs",
+    "verify:compact": "node tools/run-compact-command.mjs --",
+    "verify:targeted": "node tools/verify-targeted.mjs --",
+    "verify:release": "node tools/verify-release.mjs --require-freeze",
+    "deploy:verified": "node tools/deploy-verified.mjs",
+    "test:op-tools": "node --test tools/op-tooling.test.mjs",
     "build:web": "npm run build:cloud-client && npm run build:confusion-globe && npm run build:vocabulary-index && npm run verify:content-identity && npm run audit:content && npm run verify:rights-ledger && npm run build:public-attributions && npm run build:third-party-compliance && node tools/build-web.mjs",
     "package:web": "npm run build:web && powershell -NoProfile -ExecutionPolicy Bypass -File tools/package-web.ps1",
     "test": "playwright test",

@@ -48,7 +48,30 @@ test("the shared pool preserves the reviewed Kaoyan book and adds IELTS", async 
   );
   expect(index.words).toHaveLength(bundle.words.length);
   expect(index.words.reduce((total, word) => total + word.senses.length, 0))
-    .toBe(10257);
+    .toBe(10300);
+});
+
+test("approved added senses are all covered by the historical-user initializer", () => {
+  const manifest = JSON.parse(fs.readFileSync(
+    path.join(
+      ROOT_DIR,
+      "data",
+      "content-change-sets",
+      "op-feedback-2026-08-23.json",
+    ),
+    "utf8",
+  ));
+  const source = fs.readFileSync(path.join(ROOT_DIR, "app.js"), "utf8");
+  const initializer = source.match(
+    /const CONTENT_ADDED_SENSE_KEYS = new Set\(\[([\s\S]*?)\]\);/,
+  );
+  expect(initializer).not.toBeNull();
+  const runtimeKeys = new Set(
+    [...initializer[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]),
+  );
+  expect(
+    manifest.compatibility.addedSenseKeys.filter((key) => !runtimeKeys.has(key)),
+  ).toEqual([]);
 });
 
 test("reviewed heteronyms have distinct sourced recordings without changing stable IDs", () => {
@@ -257,4 +280,40 @@ test("duplicated multi-book local state is compacted without changing learning d
   expect(result.state.bookStates.kaoyan).toBeUndefined();
   expect(result.state.bookStates.ielts.plan.dailyTarget).toBe(30);
   expect(result.rawLength).toBeLessThan(beforeCharacters * 0.9);
+});
+
+test("word list searches Chinese meanings with direct, fuzzy, and semantic matches", async ({ page }) => {
+  await openFreshApp(page);
+  await page.locator("#wordListButton").click();
+  const search = page.locator("#wordSearchInput");
+
+  await expect(search).toHaveAttribute("placeholder", "搜索英文单词或中文义项");
+
+  await search.fill("购买");
+  await expect(page.locator(".word-list-item").first()).toHaveAttribute(
+    "data-word-id",
+    "purchase",
+  );
+  expect(await page.locator(".word-list-item").count()).toBeGreaterThan(0);
+
+  await search.fill("开兴");
+  await expect(page.locator(".word-list-item[data-word-id='happy']")).toHaveCount(1);
+
+  await search.fill("开心");
+  await expect(page.locator(".word-list-item[data-word-id='happy']")).toHaveCount(1);
+  await expect(page.locator(".word-list-item[data-word-id='glad']")).toHaveCount(1);
+  await expect(page.locator(".word-list-item[data-word-id='happy']").first())
+    .toBeVisible();
+
+  await search.fill("act");
+  await expect(page.locator(".word-list-item[data-word-id='act']")).toHaveCount(1);
+});
+
+test("Chinese meaning search stays usable at a phone viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openFreshApp(page);
+  await page.locator("#wordListButton").click();
+  await page.locator("#wordSearchInput").fill("保护");
+  await expect(page.locator(".word-list-item").first()).toBeVisible();
+  await expect(page.locator(".word-list-item[data-word-id='protect']")).toHaveCount(1);
 });

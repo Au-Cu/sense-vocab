@@ -56,6 +56,44 @@ const SENSE_STATUS = Object.freeze({
   REVIEW: "review",
   MASTERED: "mastered",
 });
+const CHINESE_SEARCH_SYNONYM_GROUPS = [
+  ["开心", "高兴", "快乐", "愉快", "欢乐", "喜悦", "幸福", "快活"],
+  ["悲伤", "难过", "伤心", "悲哀", "忧伤", "悲痛"],
+  ["快速", "迅速", "飞快", "敏捷", "急速"],
+  ["开始", "着手", "启动", "开端"],
+  ["结束", "终止", "完结", "完成", "终结"],
+  ["购买", "买", "购置", "采购"],
+  ["重要", "主要", "关键", "核心"],
+  ["帮助", "协助", "援助", "帮忙"],
+  ["改变", "变化", "变更", "修改", "转变"],
+  ["保护", "保卫", "维护", "保障"],
+  ["安全", "安稳", "可靠"],
+  ["危险", "风险", "危机"],
+  ["选择", "挑选", "选取"],
+  ["决定", "决心", "判决", "裁定"],
+  ["允许", "许可", "准许", "批准"],
+  ["禁止", "阻止", "制止", "禁令"],
+  ["工作", "劳动", "任务", "运作"],
+  ["行动", "活动", "动作"],
+  ["表演", "演出", "出演"],
+  ["问题", "困难", "麻烦", "疑问"],
+  ["说明", "解释", "阐明", "表明"],
+  ["增加", "提高", "增长", "上升"],
+  ["减少", "降低", "减小", "下降"],
+  ["真实", "实际", "真正", "事实"],
+  ["错误", "有误", "过错", "失误"],
+  ["聪明", "明智", "机敏", "精明"],
+  ["美丽", "漂亮", "美好", "优美"],
+  ["小心", "谨慎", "注意"],
+  ["同意", "赞成", "支持"],
+  ["反对", "抵制", "拒绝"],
+  ["获得", "取得", "得到", "收获"],
+  ["发送", "发出", "传递"],
+  ["接受", "承认", "接纳"],
+  ["需要", "要求", "必要"],
+  ["使用", "利用", "应用"],
+  ["相似", "类似", "相近"],
+].map((group) => group.map((value) => value.normalize("NFKC")));
 const CONTENT_ADDED_SENSE_KEYS = new Set([
   "volunteer:n-3",
   "prepare:v-2",
@@ -88,6 +126,49 @@ const CONTENT_ADDED_SENSE_KEYS = new Set([
   "shiver:n-2",
   "silver:adj-3",
   "versatile:adj-3",
+  "turn:v-3",
+  "writing:n-2",
+  "class:n-3",
+  "difference:n-3",
+  "site:n-2",
+  "remain:v-4",
+  "rise:n-6",
+  "rise:v-3",
+  "network:v-1",
+  "mass:n-3",
+  "apply:v-4",
+  "growth:n-3",
+  "stand:n-4",
+  "stand:v-3",
+  "return:v-3",
+  "exercise:v-2",
+  "force:n-2",
+  "negative:adj-3",
+  "range:v-5",
+  "guide:n-2",
+  "epidemic:adj-1",
+  "measure:v-4",
+  "story:n-3",
+  "global:adj-2",
+  "stop:v-2",
+  "statement:n-2",
+  "charge:v-6",
+  "charge:v-7",
+  "appeal:n-7",
+  "step:n-2",
+  "sight:n-2",
+  "image:n-3",
+  "mention:n-1",
+  "stick:v-2",
+  "saving:n-1",
+  "upset:adj-1",
+  "understanding:adj-1",
+  "energy:n-2",
+  "drive:v-2",
+  "pursue:v-4",
+  "wear:v-3",
+  "north:adj-1",
+  "draw:v-4",
 ]);
 
 function updateAppViewportHeight() {
@@ -246,6 +327,7 @@ let state = null;
 let rootState = null;
 let vocabularyBundle = null;
 let vocabularyIndex = null;
+let vocabularySearchRelations = new Map();
 let vocabularyDetailsReady = false;
 let vocabularyDetailsPromise = null;
 let vocabularyDetailsError = null;
@@ -387,6 +469,8 @@ function normalizeVocabularyIndex(data) {
         .filter((sense) => sense?.id)
         .map((sense, index) => ({
           id: sense.id,
+          meaning: typeof sense.meaning === "string" ? sense.meaning : "",
+          synsetId: typeof sense.synsetId === "string" ? sense.synsetId : null,
           importance: Number.isFinite(sense.importance)
             ? sense.importance
             : Math.max(1, 100 - index * 3),
@@ -448,6 +532,7 @@ function normalizeWordList(data) {
         exampleLicenseUrl: sense.exampleLicenseUrl,
         exampleSourcePage: sense.exampleSourcePage,
         exampleHistoryPage: sense.exampleHistoryPage,
+        synsetId: sense.synsetId,
         importance: Math.max(1, 100 - target.senses.length * 3),
       });
     });
@@ -458,9 +543,25 @@ function normalizeWordList(data) {
     .map(({ seenSenses, ...word }) => word);
 }
 
+function normalizeVocabularySearchRelations(data) {
+  const relations = data?.search?.semanticRelations;
+  if (!relations || typeof relations !== "object" || Array.isArray(relations)) {
+    return new Map();
+  }
+  return new Map(
+    Object.entries(relations).map(([synsetId, targets]) => [
+      synsetId,
+      new Set(Array.isArray(targets) ? targets.filter(Boolean) : []),
+    ]),
+  );
+}
+
 function installVocabularyData(data, { details = false } = {}) {
   vocabularyBundle = data;
   bookById = new Map(data.books.map((book) => [book.id, book]));
+  vocabularySearchRelations = normalizeVocabularySearchRelations(
+    vocabularyIndex ?? data,
+  );
   const normalizedPool = details
     ? normalizeWordList(data.words)
     : normalizeVocabularyIndex(data.words);
@@ -2662,19 +2763,158 @@ function wordStatusBadges(word) {
   return badges.length > 0 ? badges : [{ label: "待新学", type: "new" }];
 }
 
+function normalizeChineseSearchText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLocaleLowerCase("zh-Hans")
+    .replace(/[\p{White_Space}\p{P}\p{S}]+/gu, "");
+}
+
+function isChineseSearchQuery(value) {
+  return /[\u3400-\u9fff]/u.test(String(value ?? ""));
+}
+
+function chineseSearchAliases(query) {
+  const normalized = normalizeChineseSearchText(query);
+  if (!normalized) return [];
+  const aliases = new Set([normalized]);
+  CHINESE_SEARCH_SYNONYM_GROUPS.forEach((group) => {
+    if (group.includes(normalized)) {
+      group.forEach((value) => {
+        if (value.length > 1 || value === normalized) aliases.add(value);
+      });
+    }
+  });
+  return [...aliases];
+}
+
+function chineseSearchEditSimilarity(left, right) {
+  if (left === right) return 1;
+  if (!left || !right) return 0;
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let leftIndex = 1; leftIndex <= left.length; leftIndex += 1) {
+    let diagonal = previous[0];
+    previous[0] = leftIndex;
+    for (let rightIndex = 1; rightIndex <= right.length; rightIndex += 1) {
+      const saved = previous[rightIndex];
+      previous[rightIndex] = left[leftIndex - 1] === right[rightIndex - 1]
+        ? diagonal
+        : 1 + Math.min(diagonal, previous[rightIndex], previous[rightIndex - 1]);
+      diagonal = saved;
+    }
+  }
+  return 1 - previous[right.length] / Math.max(left.length, right.length);
+}
+
+function chineseSearchTextScore(query, text) {
+  const normalizedQuery = normalizeChineseSearchText(query);
+  const normalizedText = normalizeChineseSearchText(text);
+  if (!normalizedQuery || !normalizedText) return 0;
+  if (normalizedQuery === normalizedText) return 1;
+  if (normalizedText.includes(normalizedQuery)) {
+    return 0.91 + 0.08 * normalizedQuery.length / normalizedText.length;
+  }
+  if (normalizedQuery.length === 1 || normalizedText.length === 1) return 0;
+
+  const queryCharacters = new Set([...normalizedQuery]);
+  const textCharacters = new Set([...normalizedText]);
+  const overlap = [...queryCharacters].filter((character) => {
+    return textCharacters.has(character);
+  }).length;
+  const dice = 2 * overlap / (queryCharacters.size + textCharacters.size);
+  const edit = chineseSearchEditSimilarity(normalizedQuery, normalizedText);
+  return Math.max(dice * 0.72 + edit * 0.28, edit * 0.75);
+}
+
+function chineseSenseDirectScore(query, sense) {
+  const meaning = typeof sense?.meaning === "string" ? sense.meaning : "";
+  if (!meaning) return 0;
+  const segments = meaning.split(/[,\uFF0C\u3001;\uFF1B|/]+/u).filter(Boolean);
+  const normalizedQuery = normalizeChineseSearchText(query);
+  return Math.max(
+    ...chineseSearchAliases(query).map((alias) => {
+      const aliasScore = Math.max(
+        ...segments.map((segment) => chineseSearchTextScore(alias, segment)),
+        chineseSearchTextScore(alias, meaning),
+      );
+      return alias === normalizedQuery ? aliasScore : aliasScore * 0.82;
+    }),
+    0,
+  );
+}
+
+function chineseWordSearchScores(scopeWords, query) {
+  const directBySense = new Map();
+  const sensesBySynset = new Map();
+  const bestByWord = new Map();
+  const seedScores = new Map();
+
+  scopeWords.forEach((word) => {
+    word.senses.forEach((sense) => {
+      const score = chineseSenseDirectScore(query, sense);
+      directBySense.set(`${word.id}:${sense.id}`, score);
+      if (score > 0) {
+        bestByWord.set(word.id, Math.max(bestByWord.get(word.id) ?? 0, score));
+      }
+      if (sense.synsetId) {
+        const entries = sensesBySynset.get(sense.synsetId) ?? [];
+        entries.push({ wordId: word.id, senseId: sense.id });
+        sensesBySynset.set(sense.synsetId, entries);
+        if (score >= 0.56) {
+          seedScores.set(
+            sense.synsetId,
+            Math.max(seedScores.get(sense.synsetId) ?? 0, score),
+          );
+        }
+      }
+    });
+  });
+
+  seedScores.forEach((seedScore, synsetId) => {
+    const targets = new Set([
+      synsetId,
+      ...(vocabularySearchRelations.get(synsetId) ?? []),
+    ]);
+    targets.forEach((targetSynsetId) => {
+      (sensesBySynset.get(targetSynsetId) ?? []).forEach(({ wordId, senseId }) => {
+        const directScore = directBySense.get(`${wordId}:${senseId}`) ?? 0;
+        const relationScore = seedScore * (targetSynsetId === synsetId ? 0.88 : 0.74);
+        bestByWord.set(wordId, Math.max(
+          bestByWord.get(wordId) ?? 0,
+          directScore,
+          relationScore,
+        ));
+      });
+    });
+  });
+
+  return bestByWord;
+}
+
 function sortedWordsForList(options = {}) {
-  const query = String(options.query ?? wordListQuery)
-    .trim()
-    .toLocaleLowerCase("en");
+  const rawQuery = String(options.query ?? wordListQuery).trim();
+  const chineseQuery = isChineseSearchQuery(rawQuery);
+  const query = rawQuery.toLocaleLowerCase("en");
   const filter = options.filter ?? wordListFilter;
   const sort = options.sort ?? state.wordListSort;
+  const chineseScores = chineseQuery
+    ? chineseWordSearchScores(words, rawQuery)
+    : new Map();
   const items = words
     .filter((word) => {
       return filter === "all" ||
         wordStatusBadges(word).some(({ type }) => type === filter);
     })
-    .filter((word) => !query || word.word.toLocaleLowerCase("en").includes(query))
-    .map((word) => ({ word, info: wordLearningInfo(word) }));
+    .filter((word) => {
+      if (!query) return true;
+      if (chineseQuery) return (chineseScores.get(word.id) ?? 0) >= 0.35;
+      return word.word.toLocaleLowerCase("en").includes(query);
+    })
+    .map((word) => ({
+      word,
+      info: wordLearningInfo(word),
+      matchScore: chineseScores.get(word.id) ?? 0,
+    }));
   const alpha = (left, right) => left.word.word.localeCompare(
     right.word.word,
     "en",
@@ -2688,6 +2928,9 @@ function sortedWordsForList(options = {}) {
   };
 
   return items.sort((left, right) => {
+    if (chineseQuery && right.matchScore !== left.matchScore) {
+      return right.matchScore - left.matchScore;
+    }
     const mode = sort;
     if (mode === "alpha-asc") return alpha(left, right);
     if (mode === "alpha-desc") return -alpha(left, right);

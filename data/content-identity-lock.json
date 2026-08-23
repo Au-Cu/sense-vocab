@@ -7,8 +7,8 @@
       "id": "kaoyan",
       "name": "考研词汇",
       "entryCount": 5042,
-      "senseReferenceCount": 7940,
-      "identitySha256": "db23764560e8d04eb2c5d36ec16d81c5a76c751c65fa6d59dea48f96a5fab808"
+      "senseReferenceCount": 7983,
+      "identitySha256": "e0b069c69158fe0d758d94ea75671c39b427b41cb959ebb8e5848c93fca9d30b"
     },
     {
       "id": "ielts",
@@ -20,7 +20,7 @@
   ],
   "wordPool": {
     "wordCount": 6607,
-    "senseCount": 10257,
-    "identitySha256": "f9030548985396c697cab96ea6f13fb4fb0ef1dc433a54dfd86207fd7f25cbfe"
+    "senseCount": 10300,
+    "identitySha256": "08aae3384ecc444173c07f589e27cb9275d12e3b0dfa3e0dd38cbe181646a16d"
   }
 }

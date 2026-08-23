@@ -942,12 +942,20 @@
 
   function feedbackContextForSubmission() {
     if (!activeFeedbackContext) return null;
+    const issueType = feedbackIssueSelect.value || null;
+    const senseId = issueType &&
+      issueType !== MISSING_SENSE_ISSUE &&
+      issueType !== OTHER_FEEDBACK_ISSUE
+      ? feedbackSenseSelect.value || null
+      : null;
     return {
       source: activeFeedbackContext.source,
       bookId: activeFeedbackContext.bookId,
       bookName: activeFeedbackContext.bookName,
       wordId: activeFeedbackContext.wordId,
       wordText: activeFeedbackContext.wordText,
+      issueType,
+      senseId,
       cardType: activeFeedbackContext.cardType,
       capturedAt: activeFeedbackContext.capturedAt,
     };
