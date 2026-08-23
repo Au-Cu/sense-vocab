@@ -12,11 +12,11 @@
 | 分支 | `main` |
 | 最新标签 | `v1.8.0` |
 | 正式域名 | `https://sense-vocab.pages.dev/` |
-| 最近已验证部署 | `https://8805d9e4.sense-vocab.pages.dev`，已同步正式域名 |
+| 最近已验证部署 | `https://0fd85ab4.sense-vocab.pages.dev`，`dist` SHA-256 `24ec3b5d…fa427`，已同步正式域名 |
 | 后台 | `https://sense-vocab.pages.dev/admin.html`，无前台入口 |
 | 工作区 | `D:\Files\sense-vocab-mvp` |
 
-`v1.8.0` 聚合中文义项搜索、只读反馈 triage、反馈义项上下文、OP 发布验证工具及本轮已批准内容更新。正式域名部署证据以本次 GitHub Release 和对应 `dist` 哈希核验为准。
+`v1.8.0` 已聚合中文义项搜索、只读反馈 triage、反馈义项上下文、OP 发布验证工具及本轮已批准内容更新；GitHub Release、唯一部署域名和正式域名均已核验。
 
 ## 当前产品与数据
 
