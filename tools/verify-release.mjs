@@ -129,10 +129,17 @@ if (requireFreeze && candidate?.inputHash !== initialSource.hash) {
       latestRelease.failedStage === "build" &&
       !(latestRelease.failedFiles?.length) &&
       !(latestRelease.failedTests?.length);
+    const retryableTestSetupFailure = latestRelease?.result === "failed" &&
+      latestRelease.inputHash === initialSource.hash &&
+      latestRelease.failedStage === "test" &&
+      !(latestRelease.failedFiles?.length) &&
+      !(latestRelease.failedTests?.length) &&
+      Object.keys(latestRelease.counts ?? {}).length === 0;
+    const retryableInfrastructureFailure = retryableBuildFailure || retryableTestSetupFailure;
     if (
       latestRelease?.result === "failed" &&
       latestRelease.inputHash === initialSource.hash &&
-      !retryableBuildFailure
+      !retryableInfrastructureFailure
     ) {
       block("The full gate already failed for this frozen input. Change a relevant input, make the failed spec pass in verify:targeted, then freeze again.", {
         inputHash: initialSource.hash,

@@ -308,6 +308,9 @@ test("a localStorage quota error does not abort an authenticated cloud sync", as
   await expect.poll(() => page.evaluate(() => {
     return window.__fakeCloud.saves.at(-1)?.state?.plan?.dailyTarget ?? null;
   })).toBe(27);
+  await openAccount(page);
+  await expect(page.locator("#accountStorageValue")).toHaveText("已达写入上限");
+  await expect(page.locator("#accountStorageDetail")).toContainText("浏览器已拒绝新的本地写入");
 });
 
 test("guest mode remains the default when cloud credentials are absent", async ({ page }) => {
@@ -331,6 +334,78 @@ test("guest mode remains the default when cloud credentials are absent", async (
   await expect(page.locator("#accountStateBadge")).toHaveText("游客");
   await expect(page.locator("#accountMessage")).toContainText("云端账户尚未配置");
   await expect(page.locator("#accountSubmitButton")).toBeDisabled();
+});
+
+test("account page reports app usage without treating a browser-wide estimate as writable quota", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "storage", {
+      configurable: true,
+      value: {
+        estimate: async () => ({
+          usage: 25 * 1024 * 1024,
+          quota: 100 * 1024 * 1024,
+        }),
+      },
+    });
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+
+  await openAccount(page);
+  await expect(page.locator("#accountStorageCard")).toBeVisible();
+  await expect(page.locator("#accountStorageValue")).toHaveText(/^已用约 /);
+  await expect(page.locator("#accountStorageDetail")).toHaveText(
+    "浏览器总存储估算不代表本应用可写空间，因此不再显示不可靠的剩余百分比。",
+  );
+  await expect(page.locator("#accountStorageProgress")).toBeHidden();
+  await expect(page.locator("#accountStorageProgress")).not.toHaveAttribute("aria-valuenow", /.*/);
+
+  for (const viewport of [
+    { width: 1100, height: 850 },
+    { width: 390, height: 844 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const layout = await page.evaluate(() => {
+      const dialog = document.querySelector(".account-dialog").getBoundingClientRect();
+      const card = document.querySelector("#accountStorageCard").getBoundingClientRect();
+      return {
+        documentOverflow: document.documentElement.scrollWidth > window.innerWidth,
+        cardFitsDialog: card.left >= dialog.left && card.right <= dialog.right,
+      };
+    });
+    expect(layout.documentOverflow).toBe(false);
+    expect(layout.cardFitsDialog).toBe(true);
+  }
+});
+
+test("account storage indicator does not depend on the browser-wide estimate API", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "storage", {
+      configurable: true,
+      value: {
+        estimate: async () => {
+          throw new Error("estimate unavailable");
+        },
+      },
+    });
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await waitForAccount(page);
+
+  await openAccount(page);
+  await expect(page.locator("#accountStorageValue")).toHaveText(/^已用约 /);
+  await expect(page.locator("#accountStorageProgress")).not.toHaveAttribute("aria-valuenow", /.*/);
+  await expect(page.locator("#accountStorageProgress")).toHaveAttribute(
+    "aria-valuetext",
+    /^本应用已用约 /,
+  );
+  await expect(page.locator("#accountStorageDetail")).toHaveText(
+    "浏览器总存储估算不代表本应用可写空间，因此不再显示不可靠的剩余百分比。",
+  );
 });
 
 test("registration uses one email, one password, and an emailed OTP", async ({ page }) => {

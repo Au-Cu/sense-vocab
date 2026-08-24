@@ -13,6 +13,13 @@
   const accountDeleteConfirm = document.querySelector("#accountDeleteConfirm");
   const accountFeedbackView = document.querySelector("#accountFeedbackView");
   const accountDataActions = document.querySelector("#accountDataActions");
+  const accountStorageCard = document.querySelector("#accountStorageCard");
+  const accountStorageValue = document.querySelector("#accountStorageValue");
+  const accountStorageProgress = document.querySelector("#accountStorageProgress");
+  const accountStorageProgressFill = document.querySelector(
+    "#accountStorageProgressFill",
+  );
+  const accountStorageDetail = document.querySelector("#accountStorageDetail");
   const accountLoginTab = document.querySelector("#accountLoginTab");
   const accountRegisterTab = document.querySelector("#accountRegisterTab");
   const accountForm = document.querySelector("#accountForm");
@@ -130,6 +137,26 @@
     window.SenseVocabCloud?.create;
   const cloud = typeof factory === "function" ? factory(config) : null;
 
+  function showFloatingDialog(dialog, originTarget = null) {
+    if (window.senseVocabModalMotion?.open) {
+      window.senseVocabModalMotion.open(dialog, originTarget);
+      return;
+    }
+    dialog.hidden = false;
+    document.documentElement.classList.add("has-floating-dialog");
+  }
+
+  function hideFloatingDialog(dialog, options = {}) {
+    if (window.senseVocabModalMotion?.close) {
+      window.senseVocabModalMotion.close(dialog, options);
+      return;
+    }
+    dialog.hidden = true;
+    const hasOpenDialog = [...document.querySelectorAll(".modal-backdrop")]
+      .some((candidate) => !candidate.hidden);
+    document.documentElement.classList.toggle("has-floating-dialog", hasOpenDialog);
+  }
+
   let mode = "login";
   let authStep = "credentials";
   let pendingAuth = null;
@@ -153,6 +180,8 @@
   let notificationsBusy = false;
   let notificationSnapshot = { authenticated: false, unreadCount: 0, items: [] };
   let localQuotaWarning = false;
+  let localStorageCapacityReached = false;
+  let storageEstimateRequest = 0;
   const volatileSyncMeta = new Map();
   const volatileGuestDecisions = new Map();
 
@@ -244,6 +273,75 @@
   function setMessage(message = "", type = "") {
     accountMessage.textContent = message;
     accountMessage.classList.toggle("is-error", type === "error");
+  }
+
+  function formatStorageBytes(value) {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) return "";
+    const units = ["B", "KB", "MB", "GB", "TB"];
+    let amount = bytes;
+    let unitIndex = 0;
+    while (amount >= 1024 && unitIndex < units.length - 1) {
+      amount /= 1024;
+      unitIndex += 1;
+    }
+    const fractionDigits = unitIndex > 0 && amount < 10 ? 1 : 0;
+    return `${amount.toFixed(fractionDigits).replace(/\.0$/, "")} ${units[unitIndex]}`;
+  }
+
+  function localStorageUsageBytes() {
+    let bytes = 0;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key === null) continue;
+      bytes += new Blob([key, localStorage.getItem(key) ?? ""]).size;
+    }
+    return bytes;
+  }
+
+  function renderStorageUsageUnavailable() {
+    accountStorageCard.classList.add("is-unavailable");
+    accountStorageValue.textContent = "无法获取";
+    accountStorageProgress.hidden = true;
+    accountStorageProgress.removeAttribute("aria-valuenow");
+    accountStorageProgress.setAttribute("aria-valuetext", "无法获取本地存储用量");
+    accountStorageProgressFill.style.width = "0%";
+    accountStorageDetail.textContent = "当前浏览器阻止读取本应用的本地存储用量";
+  }
+
+  async function refreshLocalStorageEstimate() {
+    const requestId = ++storageEstimateRequest;
+    accountStorageCard.classList.remove("is-unavailable");
+    accountStorageValue.textContent = "正在读取";
+    accountStorageProgress.hidden = true;
+    accountStorageProgress.removeAttribute("aria-valuenow");
+    accountStorageProgress.setAttribute("aria-valuetext", "正在读取本地存储用量");
+    accountStorageProgressFill.style.width = "0%";
+    accountStorageDetail.textContent = "正在读取本应用实际占用的本地空间";
+
+    try {
+      const usage = localStorageUsageBytes();
+      if (requestId !== storageEstimateRequest) return;
+      const usageText = formatStorageBytes(usage);
+      const capacityReached = localStorageCapacityReached ||
+        (typeof app.isActiveStatePersisted === "function" && !app.isActiveStatePersisted());
+      if (capacityReached) {
+        accountStorageValue.textContent = "已达写入上限";
+        accountStorageProgress.hidden = false;
+        accountStorageProgress.setAttribute("aria-valuenow", "100");
+        accountStorageProgress.setAttribute("aria-valuetext", "本地存储已达写入上限");
+        accountStorageProgressFill.style.width = "100%";
+        accountStorageDetail.textContent = `本应用已用约 ${usageText}；浏览器已拒绝新的本地写入。`;
+        return;
+      }
+      accountStorageValue.textContent = `已用约 ${usageText}`;
+      accountStorageProgress.removeAttribute("aria-valuenow");
+      accountStorageProgress.setAttribute("aria-valuetext", `本应用已用约 ${usageText}`);
+      accountStorageDetail.textContent = "浏览器总存储估算不代表本应用可写空间，因此不再显示不可靠的剩余百分比。";
+    } catch {
+      if (requestId !== storageEstimateRequest) return;
+      renderStorageUsageUnavailable();
+    }
   }
 
   function setNotificationsMessage(message = "", type = "") {
@@ -512,7 +610,7 @@
     registrationWelcomeMessage.textContent = Number.isFinite(registrationNumber)
       ? `恭喜你成为第 ${registrationNumber} 位注册用户`
       : "恭喜你注册成功";
-    registrationWelcomeDialog.hidden = false;
+    showFloatingDialog(registrationWelcomeDialog);
   }
 
   function updateNotificationBadge(snapshot = notificationSnapshot) {
@@ -668,15 +766,15 @@
     );
   }
 
-  async function openNotificationsDialog() {
-    if (moreDialog) moreDialog.hidden = true;
-    notificationsDialog.hidden = false;
+  async function openNotificationsDialog(event) {
+    if (moreDialog) hideFloatingDialog(moreDialog, { force: true });
+    showFloatingDialog(notificationsDialog, event?.currentTarget);
     await refreshNotifications();
     await markVisibleNotificationsRead();
   }
 
   function closeNotificationsDialog() {
-    notificationsDialog.hidden = true;
+    hideFloatingDialog(notificationsDialog, { force: true });
     setNotificationsMessage();
   }
 
@@ -1174,7 +1272,7 @@
     activeFeedbackContext = normalizeFeedbackContext(context);
     pendingFeedbackRequest = true;
     renderFeedbackContext();
-    accountDialog.hidden = false;
+    showFloatingDialog(accountDialog);
     if (!currentUser) {
       showPrimaryAccountView();
       setMessage("登录账户后才能提交问题反馈。", "error");
@@ -1198,6 +1296,7 @@
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = false;
     accountDataActions.hidden = true;
+    accountStorageCard.hidden = true;
     resetFeedbackForm();
     setMessage();
     feedbackMessage.focus();
@@ -1225,6 +1324,7 @@
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = true;
     accountDataActions.hidden = needsConsent || hasConflict;
+    accountStorageCard.hidden = needsConsent || hasConflict;
     recoverGuestDataButton.hidden = !hasRecoverableGuestState();
     if (!deleting) resetDeleteConfirmation();
     if (hasConflict) renderConflictComparison();
@@ -1254,14 +1354,15 @@
     );
   }
 
-  function openAccountDialog() {
+  function openAccountDialog(event) {
     showPrimaryAccountView();
-    accountDialog.hidden = false;
+    showFloatingDialog(accountDialog, event?.currentTarget);
+    void refreshLocalStorageEstimate();
     if (!currentUser && !pendingConsentSession && cloud) accountEmail.focus();
   }
 
   function closeAccountDialog() {
-    accountDialog.hidden = true;
+    hideFloatingDialog(accountDialog, { force: true });
     clearFeedbackFiles();
     clearFeedbackRequest();
     showPrimaryAccountView();
@@ -1320,7 +1421,7 @@
       pendingConflict = null;
       app.activateGuest();
       announceAccountScope();
-      accountDialog.hidden = false;
+      showFloatingDialog(accountDialog);
       showPrimaryAccountView();
       setMessage("确认数据处理方式后才会读取原有云端学习记录。");
       return false;
@@ -1329,7 +1430,7 @@
       pendingConflict = null;
       app.activateGuest();
       announceAccountScope();
-      accountDialog.hidden = false;
+      showFloatingDialog(accountDialog);
       showPrimaryAccountView();
       setMessage(
         error?.message ?? "暂时无法核验隐私同意，云端记录尚未读取。",
@@ -2466,6 +2567,7 @@
     accountFeedbackView.hidden = true;
     accountDeleteConfirm.hidden = false;
     accountDataActions.hidden = true;
+    accountStorageCard.hidden = true;
     resetDeleteConfirmation();
     setMessage();
     deleteAccountConfirmation.focus();
@@ -2490,11 +2592,11 @@
     if (event.target === notificationsDialog) closeNotificationsDialog();
   });
   closeRegistrationWelcomeButton.addEventListener("click", () => {
-    registrationWelcomeDialog.hidden = true;
+    hideFloatingDialog(registrationWelcomeDialog, { force: true });
   });
   registrationWelcomeDialog.addEventListener("click", (event) => {
     if (event.target === registrationWelcomeDialog) {
-      registrationWelcomeDialog.hidden = true;
+      hideFloatingDialog(registrationWelcomeDialog, { force: true });
     }
   });
   feedbackIssueSelect.addEventListener("change", () => {
@@ -2531,6 +2633,7 @@
   window.addEventListener("sensevocab:state-saved", (event) => {
     if (!currentUser || pendingConsentSession) return;
     if (event.detail?.storageKey !== app.accountStorageKey(currentUser.id)) return;
+    localStorageCapacityReached = event.detail?.persisted === false;
     saveSyncMeta(currentUser.id, { dirty: true });
     setSyncStatus(
       event.detail?.persisted === false
@@ -2542,6 +2645,10 @@
   });
 
   window.addEventListener("sensevocab:storage-error", (event) => {
+    if (event.detail?.quotaExceeded) localStorageCapacityReached = true;
+    if (!accountDialog.hidden && !accountStorageCard.hidden) {
+      void refreshLocalStorageEstimate();
+    }
     if (!event.detail?.quotaExceeded) {
       setMessage("浏览器存储写入失败，请立即导出学习数据。", "error");
       return;
@@ -2591,7 +2698,9 @@
     if (!currentUser || event.key !== app.accountStorageKey(currentUser.id)) return;
     if (!event.newValue) return;
     try {
-      const incoming = JSON.parse(event.newValue);
+      const incoming = typeof app.decodeStorageValue === "function"
+        ? app.decodeStorageValue(event.newValue)
+        : JSON.parse(event.newValue);
       const localState = app.getState();
       const merged = app.mergeStates(localState, incoming);
       if (app.stateSignature(merged) === app.stateSignature(localState)) return;
@@ -2610,7 +2719,7 @@
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     if (!registrationWelcomeDialog.hidden) {
-      registrationWelcomeDialog.hidden = true;
+      hideFloatingDialog(registrationWelcomeDialog, { force: true });
     } else if (!notificationsDialog.hidden) {
       closeNotificationsDialog();
     } else if (!accountDialog.hidden) {

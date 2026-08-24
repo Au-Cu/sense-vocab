@@ -1,7 +1,13 @@
 const DEFAULT_DAILY_TARGET = 20;
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const ACCOUNT_STORAGE_PREFIX = `${STORAGE_KEY}:account:`;
+const LOCAL_STORAGE_COMPRESSION_PREFIX = "svlz1:";
+const LZ_MIN_MATCH = 4;
+const LZ_MAX_MATCH = 65538;
+const LZ_MAX_DISTANCE = 65535;
+const LZ_MAX_CANDIDATES = 16;
 const DATA_VERSION = 10;
+const DASHBOARD_DATA_VERSION = 1;
 const ROOT_STATE_VERSION = 2;
 const DEFAULT_BOOK_ID = "kaoyan";
 const VOCABULARY_INDEX_URL = "./data/vocabulary-index.json";
@@ -210,6 +216,15 @@ const FALLBACK_WORDS = [
 
 const homePanel = document.querySelector("#homePanel");
 const studyPanel = document.querySelector("#studyPanel");
+const dashboardPanel = document.querySelector("#dashboardPanel");
+const mainAppNav = document.querySelector("#mainAppNav");
+const modalLayer = document.querySelector("#modalLayer");
+const appShellElement = document.querySelector("#appShell");
+const globalHomeNavButton = document.querySelector("#globalHomeNavButton");
+const globalDashboardNavButton = document.querySelector("#globalDashboardNavButton");
+const dashboardHost = document.querySelector("#dashboardHost");
+const dashboardBackButton = document.querySelector("#dashboardBackButton");
+const dashboardRoot = document.querySelector("#learningDashboard");
 const studyTopbar = studyPanel.querySelector(".topbar");
 const studyProgressRow = studyPanel.querySelector(".study-progress-row");
 const homeCompletedWords = document.querySelector("#homeCompletedWords");
@@ -224,6 +239,32 @@ const heatmapTooltip = document.querySelector("#heatmapTooltip");
 const heatmapScroll = document.querySelector(".heatmap-scroll");
 const heatmapMonths = document.querySelector("#heatmapMonths");
 const heatmapGrid = document.querySelector("#heatmapGrid");
+const dashboardBookSelect = document.querySelector("#dashboardBookSelect");
+const dashboardUnitSelect = document.querySelector("#dashboardUnitSelect");
+const dashboardRangeSelect = document.querySelector("#dashboardRangeSelect");
+const dashboardHeading = document.querySelector("#dashboardHeading");
+const dashboardSubtitle = document.querySelector(".dashboard-subtitle");
+const dashboardQuality = document.querySelector("#dashboardQuality");
+const dashboardDailyUnitLabel = document.querySelector("#dashboardDailyUnitLabel");
+const dashboardDailyChart = document.querySelector("#dashboardDailyChart");
+const dashboardDailySummary = document.querySelector("#dashboardDailySummary");
+const dashboardStatusUnitLabel = document.querySelector("#dashboardStatusUnitLabel");
+const dashboardStatusBar = document.querySelector("#dashboardStatusBar");
+const dashboardStatusLegend = document.querySelector("#dashboardStatusLegend");
+const dashboardPoolChart = document.querySelector("#dashboardPoolChart");
+const dashboardPoolSummary = document.querySelector("#dashboardPoolSummary");
+const dashboardPoolQuality = document.querySelector("#dashboardPoolQuality");
+const dashboardConversionChart = document.querySelector("#dashboardConversionChart");
+const dashboardConversionSummary = document.querySelector("#dashboardConversionSummary");
+const dashboardConversionQuality = document.querySelector("#dashboardConversionQuality");
+const dashboardHoldChart = document.querySelector("#dashboardHoldChart");
+const dashboardHoldSummary = document.querySelector("#dashboardHoldSummary");
+const dashboardHoldQuality = document.querySelector("#dashboardHoldQuality");
+const dashboardSankeyChart = document.querySelector("#dashboardSankeyChart");
+const dashboardSankeySummary = document.querySelector("#dashboardSankeySummary");
+const dashboardStartDate = document.querySelector("#dashboardStartDate");
+const dashboardEndDate = document.querySelector("#dashboardEndDate");
+let dashboardSankeyCleanup = null;
 const planButton = document.querySelector("#planButton");
 const advanceStudyButton = document.querySelector("#advanceStudyButton");
 const wordListButton = document.querySelector("#wordListButton");
@@ -231,8 +272,13 @@ const startStudyButton = document.querySelector("#startStudyButton");
 const moreButton = document.querySelector("#moreButton");
 const moreDialog = document.querySelector("#moreDialog");
 const closeMoreButton = document.querySelector("#closeMoreButton");
+const dashboardButton = document.querySelector("#dashboardButton");
 const homeFeedbackButton = document.querySelector("#homeFeedbackButton");
 const replayTutorialButton = document.querySelector("#replayTutorialButton");
+
+if (dashboardHost && dashboardRoot && dashboardRoot.parentElement !== dashboardHost) {
+  dashboardHost.append(dashboardRoot);
+}
 
 const wordListPanel = document.querySelector("#wordListPanel");
 const wordSortSelect = document.querySelector("#wordSortSelect");
@@ -240,6 +286,8 @@ const wordSearchInput = document.querySelector("#wordSearchInput");
 const wordListFilters = document.querySelector("#wordListFilters");
 const wordListEmpty = document.querySelector("#wordListEmpty");
 const wordList = document.querySelector("#wordList");
+const wordListSummary = document.querySelector("#wordListSummary");
+const wordListLoadMoreButton = document.querySelector("#wordListLoadMoreButton");
 const wordListBackButton = document.querySelector("#wordListBackButton");
 
 const confusionPanel = document.querySelector("#confusionPanel");
@@ -271,6 +319,7 @@ const queueProgress = document.querySelector("#queueProgress");
 const senseProgressLabel = document.querySelector("#senseProgressLabel");
 const senseProgressBar = document.querySelector("#senseProgressBar");
 const cardMode = document.querySelector("#cardMode");
+const studyCardViewport = document.querySelector("#studyCardViewport");
 
 const planDialog = document.querySelector("#planDialog");
 const planTitle = document.querySelector("#planTitle");
@@ -347,12 +396,20 @@ let soundContext = null;
 let completionFeedbackTimer = null;
 let wordFitFrame = null;
 let renderedStudyCardKey = null;
+let renderedStudyView = null;
 let studyScrollResetFrame = null;
 let pendingCrossDayReturn = false;
 let midnightRefreshTimer = null;
 let wordListQuery = "";
 let wordListFilter = "all";
+const WORD_LIST_PAGE_SIZE = 80;
+let wordListVisibleCount = WORD_LIST_PAGE_SIZE;
+let wordListIndexCache = null;
+let wordListIndexRevision = 0;
 let heatmapPositionedBookId = null;
+let dashboardBookId = null;
+let dashboardUnit = "sense";
+let dashboardRangeDays = 21;
 let tutorialRuntime = null;
 let tutorialAutoScheduledScope = null;
 let tutorialAutoTimer = null;
@@ -871,6 +928,8 @@ function createState() {
     progress: {},
     activityLog: {},
     studyWindows: [],
+    dashboardEvents: {},
+    dashboardSnapshots: {},
     confusionLinks: {},
     learningDayCounter: 0,
     wordListSort: "mastery",
@@ -910,6 +969,12 @@ function normalizeLoadedState(saved) {
       ? saved.activityLog
       : {},
     studyWindows: Array.isArray(saved.studyWindows) ? saved.studyWindows : [],
+    dashboardEvents: saved.dashboardEvents && typeof saved.dashboardEvents === "object"
+      ? saved.dashboardEvents
+      : {},
+    dashboardSnapshots: saved.dashboardSnapshots && typeof saved.dashboardSnapshots === "object"
+      ? saved.dashboardSnapshots
+      : {},
     confusionLinks: normalizeConfusionLinks(saved.confusionLinks),
     learningDayCounter: Number.isFinite(saved.learningDayCounter)
       ? saved.learningDayCounter
@@ -951,6 +1016,8 @@ function normalizeRootState(saved) {
       "progress",
       "activityLog",
       "studyWindows",
+      "dashboardEvents",
+      "dashboardSnapshots",
       "confusionLinks",
       "learningDayCounter",
       "wordListSort",
@@ -1012,7 +1079,7 @@ function readStoredState(storageKey) {
   const raw = localStorage.getItem(storageKey);
   if (!raw) return { raw: null, parsed: null };
   try {
-    return { raw, parsed: JSON.parse(raw) };
+    return { raw, parsed: decodeStorageValue(raw) };
   } catch {
     return { raw, parsed: null };
   }
@@ -1021,13 +1088,30 @@ function readStoredState(storageKey) {
 function migrateStoredStateToCompactFormat(storageKey, normalized, raw) {
   if (!raw) return;
   try {
-    const compact = JSON.stringify(compactLocalState(normalized));
-    if (compact.length < raw.length) {
+    const compact = serializeLocalState(normalized);
+    if (compact !== raw && (
+      !raw.startsWith(LOCAL_STORAGE_COMPRESSION_PREFIX) ||
+      compact.length < raw.length
+    )) {
       localStorage.setItem(storageKey, compact);
     }
   } catch {
     // A failed replacement leaves the previous localStorage value untouched.
   }
+}
+
+function writeStoredState(storageKey, serialized) {
+  try {
+    localStorage.setItem(storageKey, serialized);
+    return;
+  } catch (error) {
+    if (!isStorageQuotaError(error)) throw error;
+  }
+
+  // Existing account caches may still use the verbose format. Compact them
+  // before retrying the write that contains the newest learning state.
+  compactKnownStateCaches();
+  localStorage.setItem(storageKey, serialized);
 }
 
 function compactKnownStateCaches() {
@@ -1056,6 +1140,8 @@ function loadState(storageKey = activeStorageKey) {
 function saveState(options = {}) {
   if (tutorialRuntime?.active) return;
   if (!isPersistenceSafe()) return;
+  wordListIndexRevision += 1;
+  wordListIndexCache = null;
   const notify = options.notify !== false;
   let persisted = true;
   let attemptedCharacters = 0;
@@ -1089,9 +1175,9 @@ function saveState(options = {}) {
       });
       state = rootState.bookStates[activeBookId()];
     }
-    const serialized = JSON.stringify(compactLocalState(nextRootState));
+    const serialized = serializeLocalState(nextRootState);
     attemptedCharacters = serialized.length;
-    localStorage.setItem(activeStorageKey, serialized);
+    writeStoredState(activeStorageKey, serialized);
   } catch (error) {
     persisted = false;
     window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
@@ -1149,6 +1235,17 @@ function normalizeActivityEntry(entry = {}) {
     learningDays: [...new Set(Array.isArray(entry.learningDays) ? entry.learningDays : [])]
       .filter(Number.isFinite),
   };
+}
+
+function normalizeDashboardMap(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const entries = Object.entries(value)
+    .filter(([key, entry]) => {
+      return typeof key === "string" && key.length > 0 &&
+        entry && typeof entry === "object" && !Array.isArray(entry);
+    })
+    .map(([key, entry]) => [key, cloneSerializable(entry)]);
+  return Object.fromEntries(entries);
 }
 
 function activeStudyWindow() {
@@ -1404,6 +1501,9 @@ function sanitizeState() {
     if (!Object.values(SENSE_STATUS).includes(progress.status)) {
       progress.status = SENSE_STATUS.NEW;
     }
+    if (typeof progress.statusEnteredAt !== "string") {
+      progress.statusEnteredAt = null;
+    }
     if (
       (progress.status === SENSE_STATUS.REINFORCE || progress.status === SENSE_STATUS.REVIEW) &&
       !progress.dueDate
@@ -1470,6 +1570,8 @@ function sanitizeState() {
   state.activityLog = state.activityLog && typeof state.activityLog === "object"
     ? state.activityLog
     : {};
+  state.dashboardEvents = normalizeDashboardMap(state.dashboardEvents);
+  state.dashboardSnapshots = normalizeDashboardMap(state.dashboardSnapshots);
   state.studyWindows = Array.isArray(state.studyWindows)
     ? state.studyWindows
       .filter((studyWindow) => {
@@ -1515,6 +1617,280 @@ function sanitizeState() {
 
 function cloneSerializable(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+const STORAGE_STATUS_CODES = Object.freeze({
+  new: 0,
+  reinforce: 1,
+  review: 2,
+  mastered: 3,
+});
+const STORAGE_STATUS_BY_CODE = Object.freeze(
+  Object.fromEntries(Object.entries(STORAGE_STATUS_CODES).map(([key, value]) => [value, key])),
+);
+
+function stringFromCharCodes(codes) {
+  const chunks = [];
+  for (let index = 0; index < codes.length; index += 8192) {
+    chunks.push(String.fromCharCode(...codes.slice(index, index + 8192)));
+  }
+  return chunks.join("");
+}
+
+// The local cache is synchronous, so use a small UTF-16 LZ stream instead of
+// waiting for an asynchronous CompressionStream during every study action.
+function compressStorageText(input) {
+  if (!input) return "";
+
+  const candidates = new Map();
+  const output = [];
+  let flagIndex = -1;
+  let flags = 0;
+  let flagBit = 0;
+
+  function beginToken() {
+    if (flagBit !== 0) return;
+    flagIndex = output.length;
+    output.push(0);
+    flags = 0;
+  }
+
+  function finishToken() {
+    flagBit += 1;
+    if (flagBit === 16) {
+      output[flagIndex] = flags;
+      flagBit = 0;
+    }
+  }
+
+  function addCandidate(position) {
+    if (position + 2 >= input.length) return;
+    const key = input.slice(position, position + 3);
+    const list = candidates.get(key) ?? [];
+    list.push(position);
+    if (list.length > LZ_MAX_CANDIDATES) {
+      list.splice(0, list.length - LZ_MAX_CANDIDATES);
+    }
+    candidates.set(key, list);
+  }
+
+  let cursor = 0;
+  while (cursor < input.length) {
+    let bestLength = 0;
+    let bestPosition = -1;
+    if (cursor + 2 < input.length) {
+      const key = input.slice(cursor, cursor + 3);
+      const list = candidates.get(key) ?? [];
+      for (let index = list.length - 1; index >= 0; index -= 1) {
+        const position = list[index];
+        if (cursor - position > LZ_MAX_DISTANCE) continue;
+        const maxLength = Math.min(LZ_MAX_MATCH, input.length - cursor);
+        let length = 0;
+        while (
+          length < maxLength &&
+          input.charCodeAt(position + length) === input.charCodeAt(cursor + length)
+        ) {
+          length += 1;
+        }
+        if (length >= LZ_MIN_MATCH && length > bestLength) {
+          bestLength = length;
+          bestPosition = position;
+          if (length === maxLength || length >= 2048) break;
+        }
+      }
+    }
+
+    beginToken();
+    if (bestPosition >= 0) {
+      output.push(cursor - bestPosition - 1, bestLength - LZ_MIN_MATCH);
+      for (let offset = 0; offset < bestLength; offset += 1) {
+        addCandidate(cursor + offset);
+      }
+      cursor += bestLength;
+    } else {
+      flags |= 1 << flagBit;
+      output.push(input.charCodeAt(cursor));
+      addCandidate(cursor);
+      cursor += 1;
+    }
+    finishToken();
+  }
+
+  if (flagBit !== 0) output[flagIndex] = flags;
+  return stringFromCharCodes(output);
+}
+
+function decompressStorageText(input) {
+  if (!input) return "";
+  const output = [];
+  let cursor = 0;
+  while (cursor < input.length) {
+    const flags = input.charCodeAt(cursor);
+    cursor += 1;
+    for (let bit = 0; bit < 16 && cursor < input.length; bit += 1) {
+      if (flags & (1 << bit)) {
+        output.push(input.charCodeAt(cursor));
+        cursor += 1;
+        continue;
+      }
+      if (cursor + 1 >= input.length) {
+        throw new Error("Invalid compressed local state.");
+      }
+      const distance = input.charCodeAt(cursor) + 1;
+      const length = input.charCodeAt(cursor + 1) + LZ_MIN_MATCH;
+      cursor += 2;
+      if (distance > output.length) {
+        throw new Error("Invalid compressed local state distance.");
+      }
+      for (let offset = 0; offset < length; offset += 1) {
+        output.push(output[output.length - distance]);
+      }
+    }
+  }
+  return stringFromCharCodes(output);
+}
+
+function encodeDashboardSnapshotsForStorage(bookId, snapshots) {
+  const entries = Object.values(snapshots ?? {})
+    .filter((snapshot) => snapshot && typeof snapshot === "object")
+    .sort((left, right) => String(left.date ?? "").localeCompare(String(right.date ?? "")));
+  if (!entries.length) return {};
+
+  const keys = [...new Set(entries.flatMap((snapshot) => [
+    ...Object.keys(snapshot.statuses ?? {}),
+    ...Object.keys(snapshot.enteredAt ?? {}),
+  ]))];
+  const keyIndexes = new Map(keys.map((key, index) => [key, index]));
+  const times = [...new Set(entries.flatMap((snapshot) => {
+    return Object.values(snapshot.enteredAt ?? {})
+      .filter((value) => typeof value === "string");
+  }))];
+  const timeIndexes = new Map(times.map((value, index) => [value, index]));
+
+  return {
+    __senseVocabSnapshotEncoding: 1,
+    keys,
+    times,
+    rows: entries.map((snapshot) => ({
+      id: snapshot.id ?? `${bookId}:${snapshot.date ?? ""}`,
+      bookId: snapshot.bookId ?? bookId,
+      date: snapshot.date ?? null,
+      observedAt: snapshot.observedAt ?? null,
+      version: snapshot.version ?? DASHBOARD_DATA_VERSION,
+      quality: snapshot.quality ?? "exact",
+      statuses: Object.entries(snapshot.statuses ?? {}).flatMap(([key, status]) => {
+        const keyIndex = keyIndexes.get(key);
+        if (keyIndex === undefined) return [];
+        const code = STORAGE_STATUS_CODES[status];
+        return [[keyIndex, code === undefined ? status : code]];
+      }),
+      enteredAt: Object.entries(snapshot.enteredAt ?? {}).flatMap(([key, value]) => {
+        const keyIndex = keyIndexes.get(key);
+        const timeIndex = timeIndexes.get(value);
+        if (keyIndex === undefined || timeIndex === undefined) return [];
+        return [[keyIndex, timeIndex]];
+      }),
+    })),
+  };
+}
+
+function decodeDashboardSnapshotsFromStorage(encoded) {
+  if (
+    !encoded ||
+    encoded.__senseVocabSnapshotEncoding !== 1 ||
+    !Array.isArray(encoded.keys) ||
+    !Array.isArray(encoded.rows)
+  ) return encoded;
+
+  const keys = encoded.keys;
+  const times = Array.isArray(encoded.times) ? encoded.times : [];
+  return Object.fromEntries(encoded.rows.map((row) => {
+    const statuses = Object.fromEntries((Array.isArray(row.statuses) ? row.statuses : [])
+      .flatMap(([keyIndex, code]) => {
+        const key = keys[keyIndex];
+        if (typeof key !== "string") return [];
+        return [[key, typeof code === "number" ? STORAGE_STATUS_BY_CODE[code] ?? "new" : code]];
+      }));
+    const enteredAt = Object.fromEntries((Array.isArray(row.enteredAt) ? row.enteredAt : [])
+      .flatMap(([keyIndex, timeIndex]) => {
+        const key = keys[keyIndex];
+        const time = times[timeIndex];
+        if (typeof key !== "string" || typeof time !== "string") return [];
+        return [[key, time]];
+      }));
+    const snapshot = {
+      id: row.id,
+      bookId: row.bookId,
+      date: row.date,
+      observedAt: row.observedAt,
+      version: row.version,
+      statuses,
+      enteredAt,
+      quality: row.quality,
+    };
+    return [snapshot.id ?? `${snapshot.bookId}:${snapshot.date}`, snapshot];
+  }));
+}
+
+function encodeLocalStorageScope(scope, bookId) {
+  return {
+    ...scope,
+    dashboardSnapshots: encodeDashboardSnapshotsForStorage(
+      bookId,
+      scope.dashboardSnapshots,
+    ),
+  };
+}
+
+function encodeLocalStorageState(candidate) {
+  const compact = compactLocalState(candidate);
+  const activeId = compact.activeBookId;
+  const bookStates = Object.fromEntries(
+    Object.entries(compact.bookStates ?? {}).map(([bookId, bookState]) => {
+      return [bookId, encodeLocalStorageScope(bookState, bookId)];
+    }),
+  );
+  const activeScope = encodeLocalStorageScope(compact, activeId);
+  return {
+    ...compact,
+    ...activeScope,
+    bookStates,
+    __senseVocabStorageFormat: 2,
+  };
+}
+
+function decodeLocalStorageState(value) {
+  if (!value || typeof value !== "object" || value.__senseVocabStorageFormat !== 2) {
+    return value;
+  }
+  const decoded = { ...value };
+  delete decoded.__senseVocabStorageFormat;
+  const activeId = decoded.activeBookId;
+  const decodeScope = (scope) => ({
+    ...scope,
+    dashboardSnapshots: decodeDashboardSnapshotsFromStorage(scope.dashboardSnapshots),
+  });
+  decoded.bookStates = Object.fromEntries(
+    Object.entries(decoded.bookStates ?? {}).map(([bookId, bookState]) => {
+      return [bookId, decodeScope(bookState)];
+    }),
+  );
+  return decodeScope(decoded, activeId);
+}
+
+function decodeStorageValue(raw) {
+  if (typeof raw !== "string" || !raw) return null;
+  const json = raw.startsWith(LOCAL_STORAGE_COMPRESSION_PREFIX)
+    ? decompressStorageText(raw.slice(LOCAL_STORAGE_COMPRESSION_PREFIX.length))
+    : raw;
+  return decodeLocalStorageState(JSON.parse(json));
+}
+
+function serializeLocalState(candidate) {
+  // Keep new writes as ordinary JSON so existing integrations and local
+  // recovery tools can continue to inspect the cache directly. The reader
+  // still accepts the legacy svlz1 representation for backward compatibility.
+  return JSON.stringify(encodeLocalStorageState(candidate));
 }
 
 function accountStorageKey(userId) {
@@ -1598,6 +1974,8 @@ function recoveryStateSignature(candidate) {
           progress: bookState.progress,
           activityLog: bookState.activityLog,
           studyWindows: bookState.studyWindows,
+          dashboardEvents: bookState.dashboardEvents,
+          dashboardSnapshots: bookState.dashboardSnapshots,
           confusionLinks: bookState.confusionLinks,
         }];
       }),
@@ -1657,7 +2035,7 @@ function captureActiveNavigation() {
   if (!state || !rootState) return null;
   return {
     bookId: activeBookId(),
-    view: ["home", "study", "word-list"].includes(state.view)
+    view: ["home", "study", "word-list", "dashboard"].includes(state.view)
       ? state.view
       : "home",
     wordBrowse: state.wordBrowse
@@ -1685,6 +2063,7 @@ window.SenseVocabApp = {
   guestStorageKey: STORAGE_KEY,
   accountStorageKey,
   getActiveStorageKey: () => activeStorageKey,
+  decodeStorageValue,
   getState: cloudStateSnapshot,
   getGuestState: () => loadState(STORAGE_KEY),
   getAccountState: (userId) => loadState(accountStorageKey(userId)),
@@ -2246,6 +2625,7 @@ function progressFor(key) {
       masteredOnActual: null,
       lastLearningDay: null,
       dueLearningDay: null,
+      statusEnteredAt: null,
       updatedAt: null,
     };
   }
@@ -2446,6 +2826,7 @@ function canStartAdvanceStudy() {
 
 function uiTransitionTarget(scope) {
   if (scope === "reveal") return senseArea.hidden ? studyPanel : senseArea;
+  if (scope === "card") return studyCardViewport ?? studyPanel;
   return appShell;
 }
 
@@ -2475,7 +2856,7 @@ function clearUiTransitionOrigin(root = document.documentElement) {
   root.style.removeProperty("--ui-transition-radius");
 }
 
-function cloneUiTransitionSurface(surface) {
+function cloneUiTransitionSurface(surface, { includeNavigation = false } = {}) {
   if (!(surface instanceof Element)) return null;
   const clone = surface.cloneNode(true);
   clone.removeAttribute("id");
@@ -2484,16 +2865,54 @@ function cloneUiTransitionSurface(surface) {
   clone.setAttribute("inert", "");
   clone.classList.add("ui-transition-snapshot");
   clone.style.viewTransitionName = "none";
+  if (includeNavigation && mainAppNav) {
+    const navigationClone = mainAppNav.cloneNode(true);
+    navigationClone.removeAttribute("id");
+    navigationClone.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+    navigationClone.setAttribute("aria-hidden", "true");
+    navigationClone.setAttribute("inert", "");
+    navigationClone.classList.add("ui-transition-navigation-snapshot");
+    navigationClone.style.viewTransitionName = "none";
+    clone.append(navigationClone);
+  }
   return clone;
 }
 
-function uiTransitionFrames(kind, scope) {
+function uiTransitionFrames(kind, scope, role = "incoming") {
+  if (scope === "card" || scope === "page") {
+    const entering = role === "incoming";
+    if (kind === "backward") {
+      return entering
+        ? [
+          { transform: "translate3d(-100%, 0, 0)", opacity: 0.86 },
+          { transform: "translate3d(0, 0, 0)", opacity: 1 },
+        ]
+        : [
+          { transform: "translate3d(0, 0, 0)", opacity: 1 },
+          { transform: "translate3d(100%, 0, 0)", opacity: 0.86 },
+        ];
+    }
+    return entering
+      ? [
+        { transform: "translate3d(100%, 0, 0)", opacity: 0.86 },
+        { transform: "translate3d(0, 0, 0)", opacity: 1 },
+      ]
+      : [
+        { transform: "translate3d(0, 0, 0)", opacity: 1 },
+        { transform: "translate3d(-100%, 0, 0)", opacity: 0.86 },
+      ];
+  }
   if (scope === "hierarchy") {
     const origin = "var(--ui-transition-x, 50%) var(--ui-transition-y, 50%)";
-    return [
-      { clipPath: `circle(0px at ${origin})` },
-      { clipPath: `circle(var(--ui-transition-radius, 150vmax) at ${origin})` },
-    ];
+    return kind === "backward"
+      ? [
+        { clipPath: `circle(var(--ui-transition-radius, 150vmax) at ${origin})` },
+        { clipPath: `circle(0px at ${origin})` },
+      ]
+      : [
+        { clipPath: `circle(0px at ${origin})` },
+        { clipPath: `circle(var(--ui-transition-radius, 150vmax) at ${origin})` },
+      ];
   }
   if (kind === "backward") {
     return [
@@ -2593,20 +3012,37 @@ function commitUiTransition(kind, update, {
     }
   }
 
-  const outgoingSurface = scope === "hierarchy" ? cloneUiTransitionSurface(appShell) : null;
+  const transitionSurface = scope === "card" ? studyCardViewport : appShell;
+  const outgoingSurface = ["hierarchy", "page", "card"].includes(scope)
+    ? cloneUiTransitionSurface(transitionSurface, {
+      includeNavigation: scope === "hierarchy",
+    })
+    : null;
+  const transitionRect = scope === "card" ? transitionSurface?.getBoundingClientRect() : null;
   update();
   let target = uiTransitionTarget(scope);
   let fallbackOverlay = null;
-  if (scope === "hierarchy" && outgoingSurface) {
-    const incomingSurface = cloneUiTransitionSurface(appShell);
+  if (["hierarchy", "page", "card"].includes(scope) && outgoingSurface) {
+    const incomingSurface = cloneUiTransitionSurface(transitionSurface, {
+      includeNavigation: scope === "hierarchy",
+    });
     if (incomingSurface) {
       fallbackOverlay = document.createElement("div");
-      fallbackOverlay.className = `ui-transition-fallback-overlay${kind === "backward" ? " is-backward" : ""}`;
+      fallbackOverlay.className = `ui-transition-fallback-overlay${scope === "card" ? " is-card" : ""}${scope === "hierarchy" ? " is-hierarchy" : ""}${kind === "backward" ? " is-backward" : ""}`;
+      if (scope === "card" && transitionRect) {
+        fallbackOverlay.style.left = `${transitionRect.left}px`;
+        fallbackOverlay.style.top = `${transitionRect.top}px`;
+        fallbackOverlay.style.width = `${transitionRect.width}px`;
+        fallbackOverlay.style.height = `${transitionRect.height}px`;
+        fallbackOverlay.style.inset = "auto";
+      }
       outgoingSurface.classList.add("ui-transition-snapshot-old");
       incomingSurface.classList.add("ui-transition-snapshot-new");
       fallbackOverlay.append(outgoingSurface, incomingSurface);
       document.body.append(fallbackOverlay);
-      target = kind === "backward" ? outgoingSurface : incomingSurface;
+       target = scope === "hierarchy"
+         ? (kind === "backward" ? outgoingSurface : incomingSurface)
+         : incomingSurface;
       const cleanup = () => {
         fallbackOverlay?.remove();
         fallbackOverlay = null;
@@ -2622,13 +3058,25 @@ function commitUiTransition(kind, update, {
   }
   let animation = null;
   try {
-    animation = target?.animate?.(uiTransitionFrames(kind, scope), {
+    animation = target?.animate?.(uiTransitionFrames(kind, scope, "incoming"), {
       duration: scope === "hierarchy" ? 460 : scope === "reveal" ? 300 : 340,
       easing: "cubic-bezier(0.16, 1, 0.3, 1)",
       fill: "both",
     }) ?? null;
   } catch {
     animation = null;
+  }
+  if (fallbackOverlay && ["page", "card"].includes(scope)) {
+    try {
+      const outgoingTarget = fallbackOverlay.querySelector(".ui-transition-snapshot-old");
+      outgoingTarget?.animate?.(uiTransitionFrames(kind, scope, "outgoing"), {
+        duration: scope === "card" ? 360 : 420,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "both",
+      });
+    } catch {
+      // The incoming surface remains usable if an outgoing snapshot cannot animate.
+    }
   }
   if (!animation) {
     delete root.dataset.uiTransition;
@@ -2657,9 +3105,26 @@ function render() {
         ? `session:${session.studyDate}:${session.currentIndex}:${studyCard.wordId}`
         : `finished:${session.studyDate}:${session.currentIndex}:${session.queue.length}`;
   const studyCardChanged = studyCardKey !== null && studyCardKey !== renderedStudyCardKey;
+  const enteringStudy = state.view === "study" && renderedStudyView !== "study";
   homePanel.hidden = state.view !== "home";
   studyPanel.hidden = state.view !== "study";
   wordListPanel.hidden = state.view !== "word-list";
+  dashboardPanel.hidden = state.view !== "dashboard";
+  const mainNavigationVisible = state.view === "home" || state.view === "dashboard";
+  mainAppNav.hidden = !mainNavigationVisible;
+globalHomeNavButton.classList.toggle("is-active", state.view === "home");
+globalDashboardNavButton.classList.toggle("is-active", state.view === "dashboard");
+if (state.view === "home") {
+  globalHomeNavButton.setAttribute("aria-current", "page");
+} else {
+  globalHomeNavButton.removeAttribute("aria-current");
+}
+if (state.view === "dashboard") {
+  globalDashboardNavButton.setAttribute("aria-current", "page");
+} else {
+  globalDashboardNavButton.removeAttribute("aria-current");
+}
+appShell.classList.toggle("is-study-view", state.view === "study");
   confusionPanel.hidden = state.view !== "confusion";
   renderHome();
   renderStudy();
@@ -2670,34 +3135,1333 @@ function render() {
   if (state.view === "confusion") renderConfusionPanel();
   applyAccountBootstrapGate();
   renderedStudyCardKey = studyCardKey;
-  if (studyCardChanged) resetStudyScrollPosition();
+  renderedStudyView = state.view;
+  if (studyCardChanged) resetStudyScrollPosition({ resetPage: enteringStudy });
+}
+
+const DASHBOARD_STATUS_META = Object.freeze([
+  { key: SENSE_STATUS.MASTERED, label: "已掌握", color: "#16a34a" },
+  { key: SENSE_STATUS.REVIEW, label: "待复习", color: "#0f766e" },
+  { key: SENSE_STATUS.REINFORCE, label: "待强化", color: "#c77d2d" },
+  { key: SENSE_STATUS.NEW, label: "待新学", color: "#68727d" },
+]);
+
+function dashboardBookState(bookId = dashboardBookId ?? activeBookId()) {
+  return rootState?.bookStates?.[bookId] ?? createState();
+}
+
+function dashboardWords(bookId = dashboardBookId ?? activeBookId()) {
+  return wordsForBook(bookId);
+}
+
+function dashboardDateList(days = dashboardRangeDays, end = currentDate()) {
+  const safeDays = Math.max(1, Math.min(180, Number(days) || 21));
+  return Array.from({ length: safeDays }, (_, index) => {
+    return addDays(end, index - safeDays + 1);
+  });
+}
+
+function dashboardSenseKeys(bookWords) {
+  return bookWords.flatMap((word) => allSenseKeysForWord(word));
+}
+
+function dashboardStatusForKey(bookState, key) {
+  const value = bookState.progress?.[key]?.status;
+  return Object.values(SENSE_STATUS).includes(value) ? value : SENSE_STATUS.NEW;
+}
+
+function dashboardWordStatus(bookState, word) {
+  const priority = [
+    SENSE_STATUS.NEW,
+    SENSE_STATUS.REINFORCE,
+    SENSE_STATUS.REVIEW,
+    SENSE_STATUS.MASTERED,
+  ];
+  const statuses = allSenseKeysForWord(word).map((key) => {
+    return dashboardStatusForKey(bookState, key);
+  });
+  return priority.find((status) => statuses.includes(status)) ?? SENSE_STATUS.NEW;
+}
+
+function dashboardCountStatuses(bookState, bookWords, unit) {
+  const counts = Object.fromEntries(Object.values(SENSE_STATUS).map((status) => [status, 0]));
+  if (unit === "word") {
+    bookWords.forEach((word) => {
+      counts[dashboardWordStatus(bookState, word)] += 1;
+    });
+  } else {
+    dashboardSenseKeys(bookWords).forEach((key) => {
+      counts[dashboardStatusForKey(bookState, key)] += 1;
+    });
+  }
+  return counts;
+}
+
+function dashboardEventEntries(bookState, bookWords = dashboardWords()) {
+  const knownKeys = new Set(dashboardSenseKeys(bookWords));
+  return Object.values(bookState.dashboardEvents ?? {})
+    .filter((event) => {
+      return /^\d{4}-\d{2}-\d{2}$/.test(event?.date ?? "") &&
+        knownKeys.has(event.senseId) &&
+        Object.values(SENSE_STATUS).includes(event.from) &&
+        Object.values(SENSE_STATUS).includes(event.to);
+    });
+}
+
+function dashboardRecordTransition(bookState, key, from, to, options = {}) {
+  if (!bookState || !isKnownSenseKey(key) || from === to) return false;
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(options.date ?? "")
+    ? options.date
+    : currentActivityDate();
+  const observedAt = options.observedAt ?? new Date().toISOString();
+  const id = `${date}|${key}|${from}|${to}|${observedAt}`;
+  bookState.dashboardEvents = normalizeDashboardMap(bookState.dashboardEvents);
+  bookState.dashboardEvents[id] = {
+    id,
+    date,
+    observedAt,
+    senseId: key,
+    from,
+    to,
+    source: options.source ?? null,
+    learningDay: Number.isFinite(options.learningDay) ? options.learningDay : null,
+  };
+  return true;
+}
+
+function dashboardSnapshotKey(bookId, date) {
+  return `${bookId}:${date}`;
+}
+
+function dashboardRecordSnapshot(bookId = activeBookId(), date = currentDate()) {
+  const bookState = dashboardBookState(bookId);
+  const bookWords = dashboardWords(bookId);
+  if (!bookState || !bookWords.length || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const hasLearningEvidence = (bookState.introducedWords?.length ?? 0) > 0 ||
+    Object.keys(bookState.progress ?? {}).length > 0 ||
+    Object.values(bookState.activityLog ?? {}).some((entry) => {
+      return Number(entry?.newCount) > 0 || Number(entry?.reviewCount) > 0 ||
+        (Array.isArray(entry?.newWords) && entry.newWords.length > 0) ||
+        (Array.isArray(entry?.reviewWords) && entry.reviewWords.length > 0);
+    });
+  if (!hasLearningEvidence) return false;
+  const statuses = {};
+  const enteredAt = {};
+  dashboardSenseKeys(bookWords).forEach((key) => {
+    const progress = bookState.progress?.[key];
+    if (progress?.status && progress.status !== SENSE_STATUS.NEW) {
+      statuses[key] = dashboardStatusForKey(bookState, key);
+    }
+    if (progress?.statusEnteredAt) enteredAt[key] = progress.statusEnteredAt;
+  });
+  const id = dashboardSnapshotKey(bookId, date);
+  const previous = bookState.dashboardSnapshots?.[id];
+  const snapshot = {
+    id,
+    version: DASHBOARD_DATA_VERSION,
+    bookId,
+    date,
+    observedAt: new Date().toISOString(),
+    statuses,
+    enteredAt,
+    quality: "exact",
+  };
+  if (previous && stableStateStringify(previous.statuses) === stableStateStringify(statuses) &&
+    stableStateStringify(previous.enteredAt) === stableStateStringify(enteredAt)) {
+    return false;
+  }
+  bookState.dashboardSnapshots = normalizeDashboardMap(bookState.dashboardSnapshots);
+  bookState.dashboardSnapshots[id] = snapshot;
+  const dates = Object.values(bookState.dashboardSnapshots)
+    .filter((entry) => entry?.bookId === bookId && /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? ""))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  dates.slice(0, Math.max(0, dates.length - 180)).forEach((entry) => {
+    delete bookState.dashboardSnapshots[entry.id];
+  });
+  return true;
+}
+
+function dashboardDateLabel(date) {
+  const parsed = parseDate(date);
+  return `${parsed.getMonth() + 1}/${parsed.getDate()}`;
+}
+
+function dashboardEscape(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[character]));
+}
+
+function dashboardSvgLabel(label) {
+  // The chart already exposes an aria-label and one fixed, card-level detail
+  // region. Native SVG title popovers would duplicate that detail on desktop.
+  return "";
+}
+
+function dashboardDisplayLabel(key, fallback = "") {
+  return {
+    new: "新学",
+    reinforce: "待强化",
+    review: "待复习",
+    mastered: "已掌握",
+    "new-mastered": "新学 → 掌握",
+    "reinforce-review": "强化 → 复习",
+    "review-mastered": "复习 → 掌握",
+    "hold-reinforce": "强化停留",
+    "hold-review": "复习停留",
+  }[key] ?? fallback;
+}
+
+function dashboardApplyUserCopy() {
+  const labels = {
+    dashboardHeading: "统计数据",
+    dashboardDailyHeading: "每日学习量",
+    dashboardStatusHeading: "词书进度",
+    dashboardPoolHeading: "强化与复习池",
+    dashboardConversionHeading: "义项转化率",
+    dashboardHoldHeading: "状态停留时间",
+    dashboardSankeyHeading: "义项状态流转",
+  };
+  Object.entries(labels).forEach(([id, text]) => {
+    const element = document.getElementById(id);
+    if (element) element.textContent = text;
+  });
+  const ariaLabels = {
+    dashboardDailyChart: "每日学习柱状图，可横向滚动查看",
+    dashboardPoolChart: "强化与复习池趋势图，可横向滚动查看",
+    dashboardConversionChart: "义项转化率趋势图，可横向滚动查看",
+    dashboardHoldChart: "状态停留时间趋势图，可横向滚动查看",
+    dashboardSankeyChart: "义项状态流转图",
+  };
+  Object.entries(ariaLabels).forEach(([id, text]) => {
+    const element = document.getElementById(id);
+    if (element) element.setAttribute("aria-label", text);
+  });
+  if (dashboardUnitSelect) {
+    dashboardUnitSelect.closest(".dashboard-control")?.querySelector("span")?.replaceChildren("统计口径");
+  }
+  if (dashboardRangeSelect) {
+    dashboardRangeSelect.closest(".dashboard-control")?.querySelector("span")?.replaceChildren("时间范围");
+  }
+  dashboardBookSelect?.closest(".dashboard-control")?.querySelector("span")?.replaceChildren("词书");
+}
+
+function dashboardChartEmpty(message = "暂无数据") {
+  const normalizedMessage = String(message ?? "") === "所选时间暂无状态变化"
+    ? "所选时间暂无状态变化"
+    : "暂无数据";
+  return `<div class="dashboard-empty" role="status">${dashboardEscape(normalizedMessage)}</div>`;
+}
+
+function dashboardSetMarkup(container, markup) {
+  if (!container) return;
+  const range = document.createRange();
+  range.selectNode(container);
+  container.replaceChildren(range.createContextualFragment(markup));
+}
+
+function dashboardTooltipForElement(element) {
+  return element.dataset.dashboardTooltip || element.querySelector?.("title")?.textContent?.trim() || "";
+}
+
+function dashboardDetailForFrame(frame) {
+  const card = frame?.closest?.(".dashboard-card") ?? frame?.parentElement?.closest?.(".dashboard-card");
+  if (!card) return null;
+  let detail = card.querySelector(
+    ":scope > .dashboard-sankey-detail-row .dashboard-card-detail, :scope > .dashboard-chart-detail-row .dashboard-card-detail, :scope > .dashboard-card-heading .dashboard-card-detail",
+  );
+  if (!detail) {
+    const heading = card.querySelector(":scope > .dashboard-card-heading");
+    if (!heading) return null;
+    detail = document.createElement("span");
+    detail.className = "dashboard-card-detail";
+    detail.setAttribute("role", "status");
+    detail.setAttribute("aria-live", "polite");
+    detail.hidden = true;
+    heading.append(detail);
+  }
+  return detail;
+}
+
+function dashboardWriteDetail(detail, text) {
+  if (!detail) return;
+  const normalized = String(text ?? "").trim();
+  const card = detail.closest(".dashboard-card");
+  const heading = card?.querySelector(":scope > .dashboard-card-heading");
+  const timeHost = heading?.querySelector(".dashboard-card-time");
+  const dateMatch = normalized.match(
+    /^(\d{4}-\d{2}-\d{2}(?:\s+至\s+\d{4}-\d{2}-\d{2})?)(?:[\u3000\s]+)(.*)$/,
+  );
+  const timeText = dateMatch?.[1] ?? "";
+  const detailText = dateMatch?.[2]?.trim() ?? normalized;
+  if (timeHost) {
+    timeHost.textContent = timeText;
+    timeHost.hidden = !timeText;
+  }
+  detail.replaceChildren();
+  if (detailText) {
+    const parts = detailText
+      .split(/[\u3000；]/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    parts.forEach((part, index) => {
+      const item = document.createElement("span");
+      item.className = "dashboard-detail-part";
+      item.textContent = part;
+      detail.append(item);
+    });
+    detail.setAttribute("aria-label", normalized.replace(/\u3000/g, "，"));
+  } else {
+    detail.removeAttribute("aria-label");
+  }
+  detail.hidden = !detailText;
+  const detailRow = detail.closest(".dashboard-chart-detail-row, .dashboard-sankey-detail-row");
+  if (detailRow) detailRow.hidden = !detailText;
+}
+
+function dashboardSetDefaultDetail(frame, text) {
+  if (!frame) return;
+  const normalized = String(text ?? "").trim();
+  frame.dataset.dashboardDefaultDetail = normalized;
+  const detail = dashboardDetailForFrame(frame);
+  if (!detail) return;
+  dashboardWriteDetail(detail, normalized);
+}
+
+function dashboardShowTooltip(frame, element) {
+  if (!frame || !element) return;
+  frame.querySelectorAll(".is-dashboard-active").forEach((target) => {
+    if (target !== element) target.classList.remove("is-dashboard-active");
+  });
+  element.classList.add("is-dashboard-active");
+  const detail = dashboardDetailForFrame(frame);
+  if (!detail) return;
+  dashboardWriteDetail(detail, dashboardTooltipForElement(element));
+}
+
+function dashboardHideTooltip(frame, element = null) {
+  element?.classList.remove("is-dashboard-active");
+  frame?.querySelectorAll(".is-dashboard-active").forEach((target) => target.classList.remove("is-dashboard-active"));
+  const detail = dashboardDetailForFrame(frame);
+  if (detail) {
+    const fallback = frame?.dataset?.dashboardDefaultDetail ?? "";
+    dashboardWriteDetail(detail, fallback);
+  }
+}
+
+function dashboardBindChartInteractions(frame) {
+  if (!frame) return;
+  frame.querySelectorAll("[data-dashboard-hit]").forEach((element) => {
+    element.setAttribute("tabindex", "0");
+    element.addEventListener("pointerenter", () => dashboardShowTooltip(frame, element));
+    element.addEventListener("pointerleave", (event) => {
+      if (event.pointerType !== "touch") dashboardHideTooltip(frame, element);
+    });
+    element.addEventListener("focus", () => dashboardShowTooltip(frame, element));
+    element.addEventListener("blur", () => dashboardHideTooltip(frame, element));
+    element.addEventListener("pointerdown", () => dashboardShowTooltip(frame, element));
+  });
+}
+
+function dashboardDateDetail(date, details) {
+  const prefix = `${date} `;
+  const compact = details
+    .map((detail) => String(detail ?? "").trim())
+    .filter(Boolean)
+    .map((detail) => detail.startsWith(prefix) ? detail.slice(prefix.length) : detail)
+    .filter((detail, index, values) => values.indexOf(detail) === index);
+  return `${date}${compact.length ? `　${compact.join("；")}` : "　暂无数据"}`;
+}
+
+function dashboardBindTimeSeriesInteractions(frame, svg, groups, plotTop, plotBottom) {
+  const plotScroll = frame?.querySelector(".dashboard-plot-scroll");
+  if (!plotScroll || !svg || !groups.length) return;
+  const crosshair = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  crosshair.classList.add("dashboard-crosshair");
+  crosshair.setAttribute("y1", String(plotTop));
+  crosshair.setAttribute("y2", String(plotBottom));
+  crosshair.setAttribute("aria-hidden", "true");
+  crosshair.setAttribute("visibility", "hidden");
+  const svgTitle = svg.querySelector(":scope > title");
+  if (svgTitle) svgTitle.after(crosshair);
+  else svg.prepend(crosshair);
+  const ordered = [...groups].sort((left, right) => left.x - right.x);
+  const defaultGroup = ordered.at(-1);
+  dashboardSetDefaultDetail(frame, defaultGroup?.detail ?? "");
+
+  const clearSelection = () => {
+    frame.querySelectorAll(".is-dashboard-active").forEach((element) => element.classList.remove("is-dashboard-active"));
+    crosshair.setAttribute("visibility", "hidden");
+    dashboardHideTooltip(frame);
+  };
+  const selectGroup = (group) => {
+    if (!group) return;
+    frame.querySelectorAll(".is-dashboard-active").forEach((element) => element.classList.remove("is-dashboard-active"));
+    svg.querySelectorAll(`[data-dashboard-index="${group.index}"]`).forEach((element) => {
+      if (element.matches(".dashboard-bar, .dashboard-point, .dashboard-target-line")) {
+        element.classList.add("is-dashboard-active");
+      }
+    });
+    crosshair.setAttribute("x1", String(group.x));
+    crosshair.setAttribute("x2", String(group.x));
+    crosshair.removeAttribute("visibility");
+    const detail = dashboardDetailForFrame(frame);
+    if (detail) {
+      dashboardWriteDetail(detail, group.detail);
+    }
+  };
+  const groupAtClientX = (clientX) => {
+    const bounds = svg.getBoundingClientRect();
+    const viewBox = svg.viewBox?.baseVal;
+    if (!bounds.width || !viewBox?.width) return null;
+    const x = viewBox.x + (clientX - bounds.left) / bounds.width * viewBox.width;
+    let nearest = ordered[0];
+    let nearestDistance = Math.abs(x - nearest.x);
+    ordered.slice(1).forEach((group) => {
+      const distance = Math.abs(x - group.x);
+      if (distance < nearestDistance) {
+        nearest = group;
+        nearestDistance = distance;
+      }
+    });
+    const nearestIndex = ordered.indexOf(nearest);
+    const previousGap = nearestIndex > 0 ? nearest.x - ordered[nearestIndex - 1].x : null;
+    const nextGap = nearestIndex < ordered.length - 1 ? ordered[nearestIndex + 1].x - nearest.x : null;
+    const localGap = Math.max(32, previousGap ?? nextGap ?? 64, nextGap ?? previousGap ?? 64);
+    return nearestDistance <= localGap * 0.62 ? nearest : null;
+  };
+  const selectAtClientX = (clientX) => {
+    const group = groupAtClientX(clientX);
+    if (group) selectGroup(group);
+  };
+
+  plotScroll.addEventListener("pointermove", (event) => selectAtClientX(event.clientX));
+  plotScroll.addEventListener("pointerdown", (event) => selectAtClientX(event.clientX));
+  plotScroll.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "touch") clearSelection();
+  });
+  plotScroll.addEventListener("touchstart", (event) => {
+    if (event.touches[0]) selectAtClientX(event.touches[0].clientX);
+  }, { passive: true });
+  plotScroll.addEventListener("touchmove", (event) => {
+    if (event.touches[0]) selectAtClientX(event.touches[0].clientX);
+  }, { passive: true });
+
+  frame.querySelectorAll("[data-dashboard-index]").forEach((element) => {
+    if (!element.matches(".dashboard-bar, .dashboard-point, .dashboard-target-line")) return;
+    element.setAttribute("tabindex", "0");
+    element.addEventListener("focus", () => {
+      const group = ordered.find((candidate) => String(candidate.index) === element.dataset.dashboardIndex);
+      selectGroup(group);
+    });
+    element.addEventListener("blur", clearSelection);
+  });
+}
+
+function dashboardEnhanceChart(container, options = {}) {
+  if (!container) return;
+  const svg = container.querySelector("svg");
+  if (!svg) return;
+  svg.querySelectorAll(".dashboard-bar, .dashboard-point, .dashboard-target-line, .dashboard-sankey-flow, .dashboard-sankey-node").forEach((element) => {
+    element.dataset.dashboardHit = "true";
+  });
+  const labels = [...svg.querySelectorAll(".dashboard-y-label")].map((label) => label.textContent);
+  svg.querySelectorAll(".dashboard-y-label").forEach((label) => label.remove());
+  const frame = document.createElement("div");
+  frame.className = "dashboard-chart-frame";
+  const leftAxis = document.createElement("div");
+  leftAxis.className = "dashboard-axis-rail dashboard-axis-left";
+  const rightAxis = document.createElement("div");
+  rightAxis.className = "dashboard-axis-rail dashboard-axis-right";
+  labels.forEach((label) => {
+    const leftLabel = document.createElement("span");
+    leftLabel.textContent = label;
+    const rightLabel = document.createElement("span");
+    rightLabel.textContent = label;
+    leftAxis.append(leftLabel);
+    rightAxis.append(rightLabel);
+  });
+  const plotScroll = document.createElement("div");
+  plotScroll.className = "dashboard-plot-scroll";
+  plotScroll.tabIndex = 0;
+  plotScroll.setAttribute("aria-label", "图表，可横向滚动");
+  plotScroll.append(svg);
+  frame.append(leftAxis, plotScroll, rightAxis);
+  container.replaceChildren(frame);
+  if (options.groups?.length) {
+    dashboardBindTimeSeriesInteractions(
+      frame,
+      svg,
+      options.groups,
+      Number(options.plotTop ?? 0),
+      Number(options.plotBottom ?? 220),
+    );
+  } else {
+    dashboardBindChartInteractions(frame);
+  }
+  requestAnimationFrame(() => {
+    plotScroll.scrollLeft = plotScroll.scrollWidth;
+  });
+}
+
+function dashboardEnhanceStatusBar(counts, total) {
+  if (!dashboardStatusBar || !dashboardStatusLegend) return;
+  const clear = () => {
+    dashboardStatusBar.querySelectorAll(".is-dashboard-active").forEach((target) => target.classList.remove("is-dashboard-active"));
+    dashboardStatusLegend.querySelectorAll(".is-dashboard-active").forEach((target) => target.classList.remove("is-dashboard-active"));
+  };
+  const show = (status) => {
+    clear();
+    dashboardStatusBar.querySelector(`[data-dashboard-status="${status}"]`)?.classList.add("is-dashboard-active");
+    dashboardStatusLegend.querySelector(`[data-dashboard-status="${status}"]`)?.classList.add("is-dashboard-active");
+  };
+  dashboardStatusBar.querySelectorAll(".dashboard-status-segment").forEach((segment) => {
+    const meta = DASHBOARD_STATUS_META.find((entry) => segment.classList.contains(`dashboard-status-${entry.key}`));
+    const value = counts[meta?.key] ?? 0;
+    segment.textContent = "";
+    segment.dataset.dashboardStatus = meta?.key ?? "";
+    segment.setAttribute("tabindex", "0");
+    segment.addEventListener("pointerenter", () => show(meta?.key));
+    segment.addEventListener("pointerdown", () => show(meta?.key));
+    segment.addEventListener("focus", () => show(meta?.key));
+    segment.addEventListener("pointerleave", (event) => {
+      if (event.pointerType !== "touch") clear();
+    });
+    segment.addEventListener("blur", clear);
+  });
+  dashboardStatusLegend.querySelectorAll("[data-dashboard-status]").forEach((legendItem) => {
+    const status = legendItem.dataset.dashboardStatus;
+    legendItem.setAttribute("tabindex", "0");
+    legendItem.addEventListener("pointerenter", () => show(status));
+    legendItem.addEventListener("pointerdown", () => show(status));
+    legendItem.addEventListener("focus", () => show(status));
+    legendItem.addEventListener("pointerleave", (event) => {
+      if (event.pointerType !== "touch") clear();
+    });
+    legendItem.addEventListener("blur", clear);
+  });
+}
+
+function dashboardRenderStackedBars(container, dates, rows, summary, targetByDate = {}, targetUnitLabel = "义项") {
+  if (!container) return;
+  if (!dates.length || !rows.some((row) => row.values.some((value) => value > 0))) {
+    dashboardSetMarkup(container, dashboardChartEmpty("暂无学习记录"));
+    dashboardSetDefaultDetail(container, dates.length ? `${dates.at(-1)}　暂无学习记录` : "暂无学习记录");
+    if (summary) summary.textContent = "";
+    return;
+  }
+  const chartWidth = Math.max(620, dates.length * 46);
+  const chartHeight = 220;
+  const left = 34;
+  const bottom = 34;
+  const top = 12;
+  const plotHeight = chartHeight - top - bottom;
+  const maxValue = Math.max(1, ...dates.map((_, index) => rows.reduce((sum, row) => sum + row.values[index], 0)), ...Object.values(targetByDate));
+  const barWidth = Math.max(18, Math.min(34, 34 - (dates.length > 42 ? 8 : 0)));
+  const groups = [];
+  let markup = `<svg class="dashboard-svg" role="img" aria-label="每日学习量堆叠柱状图" viewBox="0 0 ${chartWidth} ${chartHeight}" width="${chartWidth}" height="${chartHeight}">${dashboardSvgLabel("每日学习量堆叠柱状图")}`;
+  markup += `<line class="dashboard-axis" x1="${left}" y1="${top + plotHeight}" x2="${chartWidth - 8}" y2="${top + plotHeight}" />`;
+  // The fixed axis rails are laid out in document order from top to bottom.
+  // Emit the stacked-bar labels in that same visual order; the plot itself
+  // still maps larger values towards the top of the chart.
+  [1, 0.5, 0].forEach((ratio) => {
+    const y = top + plotHeight - ratio * plotHeight;
+    markup += `<line class="dashboard-grid-line" x1="${left}" y1="${y}" x2="${chartWidth - 8}" y2="${y}" /><text class="dashboard-y-label" x="${left - 6}" y="${y + 4}" text-anchor="end">${Math.round(maxValue * ratio)}</text>`;
+  });
+  dates.forEach((date, index) => {
+    let cursor = top + plotHeight;
+    const x = left + index * (chartWidth - left - 12) / dates.length + ((chartWidth - left - 12) / dates.length - barWidth) / 2;
+    rows.forEach((row) => {
+      const value = row.values[index] ?? 0;
+      if (value <= 0) return;
+      const height = value / maxValue * plotHeight;
+      cursor -= height;
+      const barTooltip = `${date} ${row.label} ${value}`;
+      markup += `<rect class="dashboard-bar dashboard-${row.key}" x="${x.toFixed(1)}" y="${cursor.toFixed(1)}" width="${barWidth}" height="${height.toFixed(1)}" rx="3" data-dashboard-index="${index}" data-dashboard-hit="true" data-dashboard-tooltip="${dashboardEscape(barTooltip)}"></rect>`;
+    });
+    const target = Number(targetByDate[date]);
+    if (target > 0) {
+      const y = top + plotHeight - target / maxValue * plotHeight;
+      const targetTooltip = `${date} 计划新学 ${target}`;
+      markup += `<line class="dashboard-target-line" x1="${x - 4}" y1="${y.toFixed(1)}" x2="${x + barWidth + 4}" y2="${y.toFixed(1)}" data-dashboard-index="${index}" data-dashboard-hit="true" data-dashboard-tooltip="${dashboardEscape(targetTooltip)}"></line>`;
+    }
+    groups.push({
+      index,
+      x: x + barWidth / 2,
+      detail: dashboardDateDetail(date, [
+        ...rows.map((row) => `${date} ${row.label}：${row.values[index] ?? 0}`),
+        `${date} 计划新学：${Number.isFinite(target) ? target : 0}`,
+      ]),
+    });
+    if (index % (dates.length > 42 ? 7 : dates.length > 21 ? 3 : 1) === 0 || index === dates.length - 1) {
+      markup += `<text class="dashboard-axis-label" x="${x + barWidth / 2}" y="${chartHeight - 10}" text-anchor="middle">${dashboardEscape(dashboardDateLabel(date))}</text>`;
+    }
+  });
+  markup += "</svg>";
+  dashboardSetMarkup(container, markup);
+  dashboardEnhanceChart(container, { groups, plotTop: top, plotBottom: top + plotHeight });
+  if (summary) {
+    dashboardSetMarkup(summary, rows.map((row) => `<span class="dashboard-summary-item"><i class="dashboard-dot dashboard-${row.key}"></i>${dashboardEscape(row.label)}</span>`).join("") +
+      (Object.keys(targetByDate).length ? `<span class="dashboard-summary-item"><i class="dashboard-target-dot"></i>计划新学</span>` : ""));
+  }
+}
+
+function dashboardRenderLineChart(container, dates, series, summary, options = {}) {
+  if (!container) return;
+  const hasValue = series.some((item) => item.values.some((value) => Number.isFinite(value)));
+  if (!dates.length || !hasValue) {
+    dashboardSetMarkup(container, dashboardChartEmpty(options.emptyMessage ?? "暂无数据"));
+    dashboardSetDefaultDetail(container, dates.length ? `${dates.at(-1)}　暂无数据` : "暂无数据");
+    if (summary) dashboardSetMarkup(summary, options.summary ?? "");
+    return;
+  }
+  const chartWidth = Math.max(620, dates.length * 46);
+  const chartHeight = 220;
+  const left = 34;
+  const right = 10;
+  const top = 14;
+  const bottom = 34;
+  const plotWidth = chartWidth - left - right;
+  const plotHeight = chartHeight - top - bottom;
+  const min = Number.isFinite(options.min) ? options.min : 0;
+  const max = Number.isFinite(options.max) ? options.max : Math.max(1, ...series.flatMap((item) => item.values.filter(Number.isFinite)));
+  const xFor = (index) => left + (dates.length <= 1 ? 0 : index * plotWidth / (dates.length - 1));
+  const yFor = (value) => top + plotHeight - (value - min) / Math.max(1, max - min) * plotHeight;
+  const groups = dates.map((date, index) => ({
+    index,
+    x: xFor(index),
+    detail: dashboardDateDetail(date, series.map((item) => {
+      if (item.tooltip?.[index]) return item.tooltip[index];
+      const label = dashboardDisplayLabel(item.key, item.label);
+      const value = item.values[index];
+      return `${date} ${label}：${Number.isFinite(value) ? Number(value.toFixed?.(1) ?? value) : "暂无数据"}`;
+    })),
+  }));
+  let markup = `<svg class="dashboard-svg" role="img" aria-label="${dashboardEscape(options.ariaLabel ?? "学习趋势图")}" viewBox="0 0 ${chartWidth} ${chartHeight}" width="${chartWidth}" height="${chartHeight}">${dashboardSvgLabel(options.ariaLabel ?? "学习趋势图")}`;
+  [0, 0.5, 1].forEach((ratio) => {
+    const y = top + ratio * plotHeight;
+    const value = max - ratio * (max - min);
+    markup += `<line class="dashboard-grid-line" x1="${left}" y1="${y}" x2="${chartWidth - right}" y2="${y}" /><text class="dashboard-y-label" x="${left - 6}" y="${y + 4}" text-anchor="end">${dashboardEscape(Number(value.toFixed(1)))}</text>`;
+  });
+  series.forEach((item) => {
+    let segment = [];
+    const segments = [];
+    item.values.forEach((value, index) => {
+      if (Number.isFinite(value)) {
+        segment.push(`${xFor(index).toFixed(1)},${yFor(value).toFixed(1)}`);
+      } else if (segment.length) {
+        segments.push(segment);
+        segment = [];
+      }
+    });
+    if (segment.length) segments.push(segment);
+    segments.filter((points) => points.length > 1).forEach((points) => {
+      markup += `<polyline class="dashboard-line dashboard-${item.key}" points="${points.join(" ")}" fill="none" />`;
+    });
+    item.values.forEach((value, index) => {
+      if (!Number.isFinite(value)) return;
+      const title = item.tooltip?.[index] ?? `${dates[index]} ${dashboardDisplayLabel(item.key, item.label)} ${value}`;
+      markup += `<circle class="dashboard-point dashboard-${item.key}" cx="${xFor(index)}" cy="${yFor(value)}" r="3" data-dashboard-index="${index}" data-dashboard-hit="true" data-dashboard-tooltip="${dashboardEscape(title)}"></circle>`;
+    });
+  });
+  dates.forEach((date, index) => {
+    if (index % (dates.length > 42 ? 7 : dates.length > 21 ? 3 : 1) !== 0 && index !== dates.length - 1) return;
+    markup += `<text class="dashboard-axis-label" x="${xFor(index)}" y="${chartHeight - 10}" text-anchor="middle">${dashboardEscape(dashboardDateLabel(date))}</text>`;
+  });
+  markup += "</svg>";
+  dashboardSetMarkup(container, markup);
+  dashboardEnhanceChart(container, { groups, plotTop: top, plotBottom: top + plotHeight });
+  if (summary) dashboardSetMarkup(summary, series.map((item) => `<span class="dashboard-summary-item"><i class="dashboard-dot dashboard-${item.key}"></i>${dashboardEscape(dashboardDisplayLabel(item.key, item.label))}</span>`).join(""));
+}
+
+function dashboardActivityValues(bookState, bookWords, dates, unit) {
+  const events = dashboardEventEntries(bookState, bookWords);
+  const values = { new: [], reinforce: [], review: [] };
+  dates.forEach((date) => {
+    const activity = normalizeActivityEntry(bookState.activityLog?.[date]);
+    const perSegment = { new: new Set(), reinforce: new Set(), review: new Set() };
+    events.filter((event) => event.date === date).forEach((event) => {
+      const segment = event.source === "review" ? "review"
+        : event.source === "reinforcement" ? "reinforce"
+          : event.source === "new" || event.source === "extra" || event.source === "advance" ? "new"
+            : event.to === SENSE_STATUS.MASTERED && event.from === SENSE_STATUS.NEW ? "new"
+              : event.to === SENSE_STATUS.REVIEW ? "reinforce" : null;
+      if (segment) perSegment[segment].add(event.senseId);
+    });
+    if (unit === "word") {
+      const wordSets = Object.fromEntries(Object.keys(perSegment).map((key) => [key, new Set()]));
+      Object.entries(perSegment).forEach(([segment, keys]) => keys.forEach((key) => wordSets[segment].add(splitSenseKey(key).wordId)));
+      if (!wordSets.new.size) activity.newWords.forEach((wordId) => wordSets.new.add(wordId));
+      if (!wordSets.review.size) activity.reviewWords.forEach((wordId) => wordSets.review.add(wordId));
+      values.new.push(wordSets.new.size);
+      values.reinforce.push(wordSets.reinforce.size);
+      values.review.push(wordSets.review.size);
+      return;
+    }
+    if (!perSegment.new.size) {
+      activity.newWords.forEach((wordId) => {
+        const word = bookWords.find((entry) => entry.id === wordId);
+        allSenseKeysForWord(word).forEach((key) => {
+          const progress = bookState.progress?.[key];
+          if (progress?.firstSeenActual === date || progress?.firstSeen === date) perSegment.new.add(key);
+        });
+      });
+    }
+    if (!perSegment.review.size) {
+      activity.reviewWords.forEach((wordId) => {
+        const word = bookWords.find((entry) => entry.id === wordId);
+        allSenseKeysForWord(word).forEach((key) => {
+          const progress = bookState.progress?.[key];
+          if (progress?.lastSeenActual === date || progress?.lastSeen === date) perSegment.review.add(key);
+        });
+      });
+    }
+    values.new.push(perSegment.new.size);
+    values.reinforce.push(perSegment.reinforce.size);
+    values.review.push(perSegment.review.size);
+  });
+  return values;
+}
+
+function dashboardPlannedTargets(bookState, bookWords, dates, unit) {
+  const targets = {};
+  const introducedBeforeDate = (date) => {
+    const ids = new Set();
+    Object.entries(bookState.activityLog ?? {}).forEach(([entryDate, entry]) => {
+      if (entryDate >= date) return;
+      normalizeActivityEntry(entry).newWords.forEach((wordId) => ids.add(String(wordId)));
+    });
+    return ids;
+  };
+  dates.forEach((date) => {
+    const activity = normalizeActivityEntry(bookState.activityLog?.[date]);
+    const wordTarget = Math.max(0, Number(activity.target ?? bookState.plan?.dailyTarget ?? 0));
+    if (unit === "word") {
+      targets[date] = wordTarget;
+      return;
+    }
+    const alreadyIntroduced = introducedBeforeDate(date);
+    const plannedWordIds = [];
+    activity.newWords.forEach((wordId) => {
+      if (plannedWordIds.length < wordTarget && !plannedWordIds.includes(String(wordId))) {
+        plannedWordIds.push(String(wordId));
+      }
+    });
+    for (const word of bookWords) {
+      if (plannedWordIds.length >= wordTarget) break;
+      const wordId = String(word.id);
+      if (alreadyIntroduced.has(wordId) || plannedWordIds.includes(wordId)) continue;
+      plannedWordIds.push(wordId);
+    }
+    const senseIds = new Set();
+    plannedWordIds.forEach((wordId) => {
+      const word = bookWords.find((entry) => String(entry.id) === wordId);
+      allSenseKeysForWord(word).forEach((key) => senseIds.add(key));
+    });
+    targets[date] = senseIds.size;
+  });
+  return targets;
+}
+
+function dashboardPoolSeries(bookState, bookWords, dates, unit) {
+  const snapshots = bookState.dashboardSnapshots ?? {};
+  const keys = dashboardSenseKeys(bookWords);
+  return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].map((status) => ({
+    key: status,
+    label: status === SENSE_STATUS.REINFORCE ? "待强化" : "待复习",
+    values: dates.map((date) => {
+      const snapshot = snapshots[dashboardSnapshotKey(bookIdForState(bookState), date)];
+      if (!snapshot) return null;
+      const statusKeys = keys.filter((key) => snapshot.statuses?.[key] === status);
+      if (unit === "word") return new Set(statusKeys.map((key) => splitSenseKey(key).wordId)).size;
+      return statusKeys.length;
+    }),
+  }));
+}
+
+function bookIdForState(bookState) {
+  return Object.entries(rootState?.bookStates ?? {}).find(([, value]) => value === bookState)?.[0] ?? dashboardBookId ?? activeBookId();
+}
+
+function dashboardConversionSeries(bookState, dates) {
+  const events = dashboardEventEntries(bookState, dashboardWords(bookIdForState(bookState)));
+  const definitions = [
+    ["new-mastered", "新学 → 掌握", SENSE_STATUS.NEW, SENSE_STATUS.MASTERED],
+    ["reinforce-review", "强化 → 复习", SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW],
+    ["review-mastered", "复习 → 掌握", SENSE_STATUS.REVIEW, SENSE_STATUS.MASTERED],
+  ];
+  return definitions.map(([key, label, from, to]) => {
+    const tooltip = [];
+    const values = dates.map((date, index) => {
+      const source = new Set(events.filter((event) => event.date === date && event.from === from && event.to === to).map((event) => event.senseId));
+      const denominator = new Set(events.filter((event) => event.date === date && event.from === from).map((event) => event.senseId));
+      if (denominator.size === 0) {
+        tooltip[index] = `${date} ${label}：无可靠分母`;
+        return null;
+      }
+      tooltip[index] = `${date} ${label}：${source.size}/${denominator.size}（${Math.round(source.size / denominator.size * 100)}%）`;
+      return source.size / denominator.size * 100;
+    });
+    return { key, label, values, tooltip };
+  });
+}
+
+function dashboardHoldSeries(bookState, bookWords, dates) {
+  const snapshots = bookState.dashboardSnapshots ?? {};
+  const bookId = bookIdForState(bookState);
+  return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].map((status) => {
+    const tooltip = [];
+    const values = dates.map((date, index) => {
+      const snapshot = snapshots[dashboardSnapshotKey(bookId, date)];
+      if (!snapshot) {
+        tooltip[index] = `${date}：暂无数据`;
+        return null;
+      }
+      const keys = dashboardSenseKeys(bookWords).filter((key) => snapshot.statuses?.[key] === status);
+      const durations = keys.map((key) => {
+        const entered = snapshot.enteredAt?.[key];
+        const time = entered ? Date.parse(entered) : NaN;
+        const end = Date.parse(snapshot.observedAt);
+        return Number.isFinite(time) && Number.isFinite(end) && end >= time ? (end - time) / DAY_MS : null;
+      }).filter(Number.isFinite);
+      if (!durations.length) {
+        tooltip[index] = `${date}：暂无数据`;
+        return null;
+      }
+      const average = durations.reduce((sum, value) => sum + value, 0) / durations.length;
+      tooltip[index] = `${date} ${status === SENSE_STATUS.REINFORCE ? "强化" : "复习"}：${durations.length}，平均 ${average.toFixed(1)} 天`;
+      return average;
+    });
+    return { key: status === SENSE_STATUS.REINFORCE ? "hold-reinforce" : "hold-review", label: status === SENSE_STATUS.REINFORCE ? "强化停留" : "复习停留", values, tooltip };
+  });
+}
+
+function dashboardSankeyData(bookState, bookWords, start, end) {
+  const flows = new Map();
+  const uniqueSenseIds = new Set();
+  const addFlow = (senseId, from, to) => {
+    if (from === to) return;
+    const allowed = (from === SENSE_STATUS.NEW && [SENSE_STATUS.REINFORCE, SENSE_STATUS.MASTERED].includes(to)) ||
+      (from === SENSE_STATUS.REINFORCE && to === SENSE_STATUS.REVIEW) ||
+      (from === SENSE_STATUS.REVIEW && [SENSE_STATUS.MASTERED, SENSE_STATUS.REINFORCE].includes(to));
+    if (!allowed) return;
+    uniqueSenseIds.add(senseId);
+    const flowKey = `${from}|${to}`;
+    const flow = flows.get(flowKey) ?? { from, to, senseIds: new Set() };
+    flow.senseIds.add(senseId);
+    flows.set(flowKey, flow);
+  };
+
+  const events = dashboardEventEntries(bookState, bookWords)
+    .filter((event) => event.date >= start && event.date <= end);
+  events.forEach((event) => addFlow(event.senseId, event.from, event.to));
+  if (events.length) {
+    return {
+      flows: [...flows.values()].map(({ senseIds, ...flow }) => ({ ...flow, count: senseIds.size })),
+      uniqueSenseCount: uniqueSenseIds.size,
+      insufficient: false,
+    };
+  }
+
+  const snapshots = bookState.dashboardSnapshots ?? {};
+  const bookId = bookIdForState(bookState);
+  const startSnapshot = snapshots[dashboardSnapshotKey(bookId, start)];
+  const endSnapshot = snapshots[dashboardSnapshotKey(bookId, end)];
+  if (!startSnapshot || !endSnapshot) return { flows: [], insufficient: true };
+  dashboardSenseKeys(bookWords).forEach((key) => {
+    const from = startSnapshot.statuses?.[key] ?? SENSE_STATUS.NEW;
+    const to = endSnapshot.statuses?.[key] ?? SENSE_STATUS.NEW;
+    addFlow(key, from, to);
+  });
+  return {
+    flows: [...flows.values()].map(({ senseIds, ...flow }) => ({ ...flow, count: senseIds.size })),
+    uniqueSenseCount: uniqueSenseIds.size,
+    insufficient: false,
+  };
+}
+
+function dashboardRenderStatusBar(bookState, bookWords, unit) {
+  if (!dashboardStatusBar || !dashboardStatusLegend) return;
+  const counts = dashboardCountStatuses(bookState, bookWords, unit);
+  const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  dashboardStatusBar.replaceChildren();
+  DASHBOARD_STATUS_META.forEach((meta) => {
+    const value = counts[meta.key] ?? 0;
+    const segment = document.createElement("span");
+    segment.className = `dashboard-status-segment dashboard-status-${meta.key}`;
+    segment.style.width = `${total ? value / total * 100 : 0}%`;
+    segment.setAttribute("aria-label", `${meta.label} ${value}，${total ? Math.round(value / total * 100) : 0}%`);
+    segment.textContent = "";
+    dashboardStatusBar.append(segment);
+  });
+  dashboardStatusBar.setAttribute("aria-label", `词书状态：${DASHBOARD_STATUS_META.map((meta) => `${meta.label} ${counts[meta.key] ?? 0}`).join("，")}`);
+  dashboardSetMarkup(dashboardStatusLegend, DASHBOARD_STATUS_META.map((meta) => `<span class="dashboard-legend-item" data-dashboard-status="${meta.key}"><i class="dashboard-status-swatch dashboard-status-${meta.key}"></i>${meta.label} ${counts[meta.key] ?? 0}（${total ? Math.round((counts[meta.key] ?? 0) / total * 100) : 0}%）</span>`).join(""));
+  dashboardEnhanceStatusBar(counts, total);
+}
+
+const DASHBOARD_SANKEY_SIZE = Object.freeze({ width: 760, height: 300 });
+const DASHBOARD_SANKEY_NODE_WIDTH = 16;
+const DASHBOARD_SANKEY_MAX_NODE_HEIGHT = 118;
+const DASHBOARD_SANKEY_FLOW_GAP = 4;
+const DASHBOARD_SANKEY_STATIONS = Object.freeze({
+  [SENSE_STATUS.NEW]: 48,
+  [SENSE_STATUS.REINFORCE]: 254,
+  [SENSE_STATUS.REVIEW]: 460,
+  [SENSE_STATUS.MASTERED]: 640,
+});
+
+function dashboardSankeyRouteMeta(from, to) {
+  if (from === SENSE_STATUS.NEW && to === SENSE_STATUS.MASTERED) {
+    return { lane: "direct", sourceOrder: 0, targetOrder: 0 };
+  }
+  if (from === SENSE_STATUS.REINFORCE && to === SENSE_STATUS.REVIEW) {
+    return { lane: "forward", sourceOrder: 0, targetOrder: 0 };
+  }
+  if (from === SENSE_STATUS.REVIEW && to === SENSE_STATUS.REINFORCE) {
+    return { lane: "return", sourceOrder: 1, targetOrder: 0 };
+  }
+  if (from === SENSE_STATUS.REVIEW && to === SENSE_STATUS.MASTERED) {
+    return { lane: "forward", sourceOrder: 0, targetOrder: 1 };
+  }
+  return { lane: "forward", sourceOrder: 1, targetOrder: 0 };
+}
+
+function dashboardSankeyLayout(flows) {
+  const nodeDefinitions = [
+    { id: SENSE_STATUS.NEW, status: SENSE_STATUS.NEW, x: DASHBOARD_SANKEY_STATIONS[SENSE_STATUS.NEW], column: 0 },
+    { id: SENSE_STATUS.REINFORCE, status: SENSE_STATUS.REINFORCE, x: DASHBOARD_SANKEY_STATIONS[SENSE_STATUS.REINFORCE], column: 1 },
+    { id: SENSE_STATUS.REVIEW, status: SENSE_STATUS.REVIEW, x: DASHBOARD_SANKEY_STATIONS[SENSE_STATUS.REVIEW], column: 2 },
+    { id: SENSE_STATUS.MASTERED, status: SENSE_STATUS.MASTERED, x: DASHBOARD_SANKEY_STATIONS[SENSE_STATUS.MASTERED], column: 3 },
+    { id: "reinforce-return", status: SENSE_STATUS.REINFORCE, x: DASHBOARD_SANKEY_STATIONS[SENSE_STATUS.MASTERED], column: 3 },
+  ];
+  const layouts = flows.map((flow) => ({
+    ...flow,
+    key: `${flow.from}|${flow.to}`,
+    ...dashboardSankeyRouteMeta(flow.from, flow.to),
+    sourceNodeId: flow.from,
+    targetNodeId: flow.from === SENSE_STATUS.REVIEW && flow.to === SENSE_STATUS.REINFORCE
+      ? "reinforce-return"
+      : flow.to,
+  }));
+  const nodeTraffic = Object.fromEntries(nodeDefinitions.map((node) => [node.id, {
+    incoming: 0,
+    outgoing: 0,
+    incomingFlows: [],
+    outgoingFlows: [],
+  }]));
+  layouts.forEach((flow) => {
+    const source = nodeTraffic[flow.sourceNodeId];
+    const target = nodeTraffic[flow.targetNodeId];
+    source.outgoing += flow.count;
+    target.incoming += flow.count;
+    source.outgoingFlows.push(flow);
+    target.incomingFlows.push(flow);
+  });
+  const maxTraffic = Math.max(1, ...Object.values(nodeTraffic).map((traffic) => (
+    Math.max(traffic.incoming, traffic.outgoing)
+  )));
+  const unitScale = DASHBOARD_SANKEY_MAX_NODE_HEIGHT / maxTraffic;
+  layouts.forEach((flow) => {
+    flow.thickness = Math.max(4, flow.count * unitScale);
+  });
+  const sideHeight = (items) => items.reduce((sum, flow) => sum + flow.thickness, 0) +
+    Math.max(0, items.length - 1) * DASHBOARD_SANKEY_FLOW_GAP;
+  const nodes = nodeDefinitions.map((definition) => {
+    const traffic = nodeTraffic[definition.id];
+    traffic.outgoingFlows.sort((left, right) => left.sourceOrder - right.sourceOrder);
+    traffic.incomingFlows.sort((left, right) => left.targetOrder - right.targetOrder);
+    return {
+      ...definition,
+      incoming: traffic.incoming,
+      outgoing: traffic.outgoing,
+      incomingFlows: traffic.incomingFlows,
+      outgoingFlows: traffic.outgoingFlows,
+      value: Math.max(traffic.incoming, traffic.outgoing),
+      height: Math.max(12, sideHeight(traffic.incomingFlows), sideHeight(traffic.outgoingFlows)),
+    };
+  });
+  const nodeById = Object.fromEntries(nodes.map((node) => [node.id, node]));
+  [SENSE_STATUS.NEW].forEach((id) => {
+    nodeById[id].y = 92 - nodeById[id].height / 2;
+  });
+  [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].forEach((id) => {
+    nodeById[id].y = 188 - nodeById[id].height / 2;
+  });
+  const finalNodes = [nodeById[SENSE_STATUS.MASTERED], nodeById["reinforce-return"]]
+    .filter((node) => node.value > 0);
+  const finalGap = 22;
+  const finalHeight = finalNodes.reduce((sum, node) => sum + node.height, 0) +
+    Math.max(0, finalNodes.length - 1) * finalGap;
+  let finalY = Math.max(22, 130 - finalHeight / 2);
+  finalNodes.forEach((node) => {
+    node.y = finalY;
+    finalY += node.height + finalGap;
+  });
+  nodes.filter((node) => !Number.isFinite(node.y)).forEach((node) => {
+    node.y = 188 - node.height / 2;
+  });
+  nodes.forEach((node) => {
+    const assign = (items, endpoint) => {
+      const height = sideHeight(items);
+      let cursorY = node.y + (node.height - height) / 2;
+      items.forEach((flow) => {
+        if (endpoint === "source") flow.sourceTop = cursorY;
+        else flow.targetTop = cursorY;
+        cursorY += flow.thickness + DASHBOARD_SANKEY_FLOW_GAP;
+      });
+    };
+    assign(node.outgoingFlows, "source");
+    assign(node.incomingFlows, "target");
+  });
+  return { flows: layouts, nodes };
+}
+
+function dashboardSankeyBandPath(flow) {
+  const sourceX = DASHBOARD_SANKEY_STATIONS[flow.from] + DASHBOARD_SANKEY_NODE_WIDTH / 2;
+  const targetX = (flow.targetNodeId === "reinforce-return"
+    ? DASHBOARD_SANKEY_STATIONS[SENSE_STATUS.MASTERED]
+    : DASHBOARD_SANKEY_STATIONS[flow.to]) - DASHBOARD_SANKEY_NODE_WIDTH / 2;
+  const span = targetX - sourceX;
+  const firstControlX = sourceX + span * 0.44;
+  const secondControlX = targetX - span * 0.44;
+  const sourceBottom = flow.sourceTop + flow.thickness;
+  const targetBottom = flow.targetTop + flow.thickness;
+  return `M ${sourceX} ${flow.sourceTop} C ${firstControlX} ${flow.sourceTop}, ${secondControlX} ${flow.targetTop}, ${targetX} ${flow.targetTop} L ${targetX} ${targetBottom} C ${secondControlX} ${targetBottom}, ${firstControlX} ${sourceBottom}, ${sourceX} ${sourceBottom} Z`;
+}
+
+function dashboardSankeyMotionPath(flow) {
+  const sourceX = DASHBOARD_SANKEY_STATIONS[flow.from] + DASHBOARD_SANKEY_NODE_WIDTH / 2;
+  const targetX = (flow.targetNodeId === "reinforce-return"
+    ? DASHBOARD_SANKEY_STATIONS[SENSE_STATUS.MASTERED]
+    : DASHBOARD_SANKEY_STATIONS[flow.to]) - DASHBOARD_SANKEY_NODE_WIDTH / 2;
+  const sourceY = flow.sourceTop + flow.thickness / 2;
+  const targetY = flow.targetTop + flow.thickness / 2;
+  const span = targetX - sourceX;
+  return `M ${sourceX} ${sourceY} C ${sourceX + span * 0.44} ${sourceY}, ${targetX - span * 0.44} ${targetY}, ${targetX} ${targetY}`;
+}
+
+function dashboardEnableSankeyPanZoom(frame, canvas, svg) {
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const baseWidth = DASHBOARD_SANKEY_SIZE.width;
+  const baseHeight = DASHBOARD_SANKEY_SIZE.height;
+  const mobile = frame.clientWidth <= 560;
+  const fitScale = Math.min(
+    Math.max(0.1, (frame.clientWidth - 20) / baseWidth),
+    Math.max(0.1, (frame.clientHeight - 20) / baseHeight),
+  );
+  const initialScale = Math.min(mobile ? 1.5 : 1.25, fitScale);
+  const minScale = Math.max(0.1, initialScale * 0.82);
+  const maxScale = mobile ? 1.5 : 1.4;
+  let scale = initialScale;
+  let panX = 0;
+  let panY = 0;
+  let drag = null;
+
+  const clampPan = () => {
+    const padding = 10;
+    const scaledWidth = baseWidth * scale;
+    const scaledHeight = baseHeight * scale;
+    if (scaledWidth <= frame.clientWidth - padding * 2) {
+      panX = (frame.clientWidth - scaledWidth) / 2;
+    } else {
+      panX = Math.min(padding, Math.max(frame.clientWidth - scaledWidth - padding, panX));
+    }
+    if (scaledHeight <= frame.clientHeight - padding * 2) {
+      panY = (frame.clientHeight - scaledHeight) / 2;
+    } else {
+      panY = Math.min(padding, Math.max(frame.clientHeight - scaledHeight - padding, panY));
+    }
+  };
+
+  const applyTransform = () => {
+    clampPan();
+    canvas.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${scale})`;
+    frame.dataset.sankeyScale = scale.toFixed(3);
+    frame.dataset.sankeyMinScale = minScale.toFixed(3);
+    frame.dataset.sankeyMaxScale = maxScale.toFixed(3);
+  };
+
+  const resetTransform = () => {
+    scale = initialScale;
+    panX = (frame.clientWidth - baseWidth * scale) / 2;
+    panY = (frame.clientHeight - baseHeight * scale) / 2;
+    applyTransform();
+  };
+
+  const zoomTo = (nextScale) => {
+    const clampedScale = Math.min(maxScale, Math.max(minScale, nextScale));
+    const centerX = frame.clientWidth / 2;
+    const centerY = frame.clientHeight / 2;
+    const contentX = (centerX - panX) / scale;
+    const contentY = (centerY - panY) / scale;
+    scale = clampedScale;
+    panX = centerX - contentX * scale;
+    panY = centerY - contentY * scale;
+    applyTransform();
+  };
+
+  const controls = document.createElement("div");
+  controls.className = "dashboard-sankey-controls";
+  controls.setAttribute("aria-label", "流转图缩放控制");
+  [
+    ["缩小流转图", "−", () => zoomTo(scale / 1.2)],
+    ["复位流转图", "↺", resetTransform],
+    ["放大流转图", "+", () => zoomTo(scale * 1.2)],
+  ].forEach(([label, text, handler]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dashboard-sankey-control";
+    button.setAttribute("aria-label", label);
+    button.textContent = text;
+    button.addEventListener("click", handler, { signal });
+    controls.append(button);
+  });
+  const hint = document.createElement("span");
+  hint.className = "dashboard-sankey-gesture-hint";
+  hint.textContent = "拖动或缩放查看";
+  frame.append(controls, hint);
+  frame.tabIndex = 0;
+  frame.setAttribute("aria-label", "义项状态流转图，可拖动，并可使用加减按钮缩放");
+
+  frame.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest(".dashboard-sankey-controls")) return;
+    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, panX, panY };
+    frame.setPointerCapture(event.pointerId);
+    frame.classList.add("is-dragging");
+  }, { signal });
+  frame.addEventListener("pointermove", (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    panX = drag.panX + event.clientX - drag.x;
+    panY = drag.panY + event.clientY - drag.y;
+    applyTransform();
+  }, { signal });
+  const finishDrag = (event) => {
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag = null;
+    frame.classList.remove("is-dragging");
+    if (frame.hasPointerCapture(event.pointerId)) frame.releasePointerCapture(event.pointerId);
+  };
+  frame.addEventListener("pointerup", finishDrag, { signal });
+  frame.addEventListener("pointercancel", finishDrag, { signal });
+  frame.addEventListener("dblclick", resetTransform, { signal });
+  frame.addEventListener("wheel", (event) => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    zoomTo(scale * (event.deltaY < 0 ? 1.12 : 1 / 1.12));
+  }, { signal, passive: false });
+  frame.addEventListener("keydown", (event) => {
+    if (event.target !== frame) return;
+    const step = 28;
+    if (event.key === "+" || event.key === "=") zoomTo(scale * 1.2);
+    else if (event.key === "-") zoomTo(scale / 1.2);
+    else if (event.key === "Home") resetTransform();
+    else if (event.key === "ArrowLeft") panX += step;
+    else if (event.key === "ArrowRight") panX -= step;
+    else if (event.key === "ArrowUp") panY += step;
+    else if (event.key === "ArrowDown") panY -= step;
+    else return;
+    event.preventDefault();
+    applyTransform();
+  }, { signal });
+
+  const resizeObserver = new ResizeObserver(() => applyTransform());
+  resizeObserver.observe(frame);
+  resetTransform();
+  dashboardSankeyCleanup = () => {
+    controller.abort();
+    resizeObserver.disconnect();
+  };
+}
+
+function dashboardRenderSankey(bookState, bookWords, start, end) {
+  dashboardSankeyCleanup?.();
+  dashboardSankeyCleanup = null;
+  const data = dashboardSankeyData(bookState, bookWords, start, end);
+  if (data.insufficient || !data.flows.length) {
+    dashboardSetMarkup(
+      dashboardSankeyChart,
+      dashboardChartEmpty(data.insufficient ? "暂无数据" : "所选时间暂无状态变化"),
+    );
+    dashboardSetDefaultDetail(
+      dashboardSankeyChart,
+      data.insufficient ? `${start} 至 ${end}　暂无数据` : `${start} 至 ${end}　暂无状态变化`,
+    );
+    dashboardSankeySummary.textContent = "";
+    return;
+  }
+  const sourceTotals = data.flows.reduce((totals, flow) => {
+    totals[flow.from] = (totals[flow.from] ?? 0) + flow.count;
+    return totals;
+  }, {});
+  const layout = dashboardSankeyLayout(data.flows);
+  const statusColors = { new: "#68727d", reinforce: "#c77d2d", review: "#0f766e", mastered: "#16a34a" };
+  let markup = `<svg class="dashboard-svg dashboard-sankey-svg" role="img" aria-label="义项状态流转流水线" viewBox="0 0 ${DASHBOARD_SANKEY_SIZE.width} ${DASHBOARD_SANKEY_SIZE.height}" width="${DASHBOARD_SANKEY_SIZE.width}" height="${DASHBOARD_SANKEY_SIZE.height}" aria-describedby="dashboardSankeySummary">`;
+  markup += `<defs><filter id="dashboardSankeyParticleGlow" x="-250%" y="-250%" width="600%" height="600%"><feGaussianBlur stdDeviation="2.2" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs>`;
+  layout.flows.forEach((flow, flowIndex) => {
+    const percent = Math.round(flow.count / sourceTotals[flow.from] * 100);
+    const fromLabel = dashboardDisplayLabel(flow.from, flow.from);
+    const toLabel = dashboardDisplayLabel(flow.to, flow.to);
+    const label = `${fromLabel} → ${toLabel}：${flow.count} 个义项（占${fromLabel}流出 ${percent}%）`;
+    const bandPath = dashboardSankeyBandPath(flow);
+    const motionPath = dashboardSankeyMotionPath(flow);
+    markup += `<path class="dashboard-sankey-flow dashboard-status-${flow.from}" data-flow-from="${flow.from}" data-flow-to="${flow.to}" data-flow-target-node="${flow.targetNodeId}" data-flow-lane="${flow.lane}" data-flow-source-top="${flow.sourceTop.toFixed(3)}" data-flow-target-top="${flow.targetTop.toFixed(3)}" data-flow-count="${flow.count}" data-flow-thickness="${flow.thickness.toFixed(3)}" d="${bandPath}" fill="${statusColors[flow.from]}" data-dashboard-hit="true" data-dashboard-tooltip="${dashboardEscape(label)}"></path>`;
+    const particleCount = flow.thickness >= 28 ? 4 : 3;
+    const duration = 3.2 + flowIndex * 0.16;
+    markup += `<g class="dashboard-sankey-particles" aria-hidden="true">`;
+    for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
+      const begin = -(duration * particleIndex / particleCount);
+      const radius = 1.5 + (particleIndex % 3) * 0.45;
+      markup += `<circle class="dashboard-sankey-particle" r="${radius.toFixed(2)}" fill="${statusColors[flow.from]}" filter="url(#dashboardSankeyParticleGlow)"><animate attributeName="opacity" values="0;0.78;0.5;0" keyTimes="0;0.14;0.84;1" dur="${duration.toFixed(2)}s" begin="${begin.toFixed(2)}s" repeatCount="indefinite"></animate><animateMotion path="${motionPath}" dur="${duration.toFixed(2)}s" begin="${begin.toFixed(2)}s" repeatCount="indefinite"></animateMotion></circle>`;
+    }
+    markup += `</g>`;
+  });
+  layout.nodes.forEach((node) => {
+    if (!node?.value) return;
+    const status = node.status;
+    const label = dashboardDisplayLabel(status, status);
+    const nodeTooltip = `${label}：${node.value}（流入 ${node.incoming}，流出 ${node.outgoing}）`;
+    const terminal = node.column === 3;
+    const labelBelow = !terminal && (
+      status === SENSE_STATUS.REINFORCE || status === SENSE_STATUS.REVIEW
+    );
+    const labelX = terminal ? node.x + 18 : node.x;
+    const labelY = terminal
+      ? node.y + node.height / 2 + 6
+      : labelBelow
+        ? node.y + node.height + 24
+        : Math.max(24, node.y - 14);
+    markup += `<rect class="dashboard-sankey-node dashboard-status-${status}" data-node-id="${node.id}" data-dashboard-status="${status}" data-node-value="${node.value}" data-node-incoming="${node.incoming}" data-node-outgoing="${node.outgoing}" x="${node.x - DASHBOARD_SANKEY_NODE_WIDTH / 2}" y="${node.y.toFixed(3)}" width="${DASHBOARD_SANKEY_NODE_WIDTH}" height="${node.height.toFixed(3)}" rx="4" data-dashboard-hit="true" data-dashboard-tooltip="${dashboardEscape(nodeTooltip)}"></rect>`;
+    markup += `<text class="dashboard-sankey-label" data-label-status="${status}" data-label-node="${node.id}" x="${labelX}" y="${labelY.toFixed(3)}" text-anchor="${terminal ? "start" : "middle"}">${dashboardEscape(label)}</text>`;
+  });
+  markup += "</svg>";
+  dashboardSetMarkup(dashboardSankeyChart, markup);
+  const svg = dashboardSankeyChart.querySelector("svg");
+  if (svg) {
+    const frame = document.createElement("div");
+    frame.className = "dashboard-sankey-frame";
+    const canvas = document.createElement("div");
+    canvas.className = "dashboard-sankey-canvas";
+    canvas.append(svg);
+    frame.append(canvas);
+    dashboardSankeyChart.replaceChildren(frame);
+    dashboardBindChartInteractions(frame);
+    dashboardEnableSankeyPanZoom(frame, canvas, svg);
+    dashboardSetDefaultDetail(frame, `${start} 至 ${end}　${data.uniqueSenseCount} 个义项发生状态流转`);
+  }
+  dashboardSetMarkup(
+    dashboardSankeySummary,
+    `<table class="dashboard-accessible-table"><caption>状态流转明细</caption><thead><tr><th>起始</th><th>结束</th><th>义项数</th><th>起始状态占比</th></tr></thead><tbody>${data.flows.map((flow) => `<tr><td>${dashboardEscape(dashboardDisplayLabel(flow.from, flow.from))}</td><td>${dashboardEscape(dashboardDisplayLabel(flow.to, flow.to))}</td><td>${flow.count}</td><td>${Math.round(flow.count / sourceTotals[flow.from] * 100)}%</td></tr>`).join("")}</tbody></table>`,
+  );
+}
+
+function renderDashboard() {
+  if (!state || !dashboardDailyChart) return;
+  dashboardApplyUserCopy();
+  if (dashboardHeading) dashboardHeading.hidden = true;
+  if (dashboardSubtitle) dashboardSubtitle.hidden = true;
+  if (!dashboardBookId || !rootState.bookStates[dashboardBookId]) dashboardBookId = activeBookId();
+  if (dashboardBookSelect && vocabularyBundle?.books) {
+    const optionSignature = [...dashboardBookSelect.options].map((option) => option.value).join("|");
+    const nextSignature = vocabularyBundle.books.map((book) => book.id).join("|");
+    if (optionSignature !== nextSignature) {
+      dashboardBookSelect.replaceChildren(
+        ...vocabularyBundle.books.map((book) => {
+          const option = document.createElement("option");
+          option.value = book.id;
+          option.textContent = String(book.displayName ?? book.name ?? book.id).replace(/[《》]/g, "");
+          return option;
+        }),
+      );
+    }
+    dashboardBookSelect.value = dashboardBookId ?? activeBookId();
+  }
+  if (dashboardUnitSelect) dashboardUnitSelect.value = dashboardUnit;
+  if (dashboardRangeSelect) dashboardRangeSelect.value = String(dashboardRangeDays);
+  const bookId = dashboardBookId;
+  const bookState = dashboardBookState(bookId);
+  const bookWords = dashboardWords(bookId);
+  const dates = dashboardDateList(dashboardRangeDays);
+  const unitLabel = dashboardUnit === "word" ? "单词" : "义项";
+  dashboardDailyUnitLabel.textContent = unitLabel;
+  dashboardStatusUnitLabel.textContent = unitLabel;
+  dashboardQuality.textContent = "";
+  const activity = dashboardActivityValues(bookState, bookWords, dates, dashboardUnit);
+  const targetByDate = dashboardPlannedTargets(bookState, bookWords, dates, dashboardUnit);
+  dashboardRenderStackedBars(
+    dashboardDailyChart,
+    dates,
+    [
+      { key: "new", label: "新学", values: activity.new },
+      { key: "reinforce", label: "强化", values: activity.reinforce },
+      { key: "review", label: "复习", values: activity.review },
+    ],
+    dashboardDailySummary,
+    targetByDate,
+    unitLabel,
+  );
+  dashboardRenderStatusBar(bookState, bookWords, dashboardUnit);
+  const pool = dashboardPoolSeries(bookState, bookWords, dates, dashboardUnit);
+  dashboardRenderLineChart(dashboardPoolChart, dates, pool, dashboardPoolSummary, {
+    ariaLabel: "待强化和待复习池数量趋势",
+    emptyMessage: "暂无数据",
+  });
+  dashboardPoolQuality.textContent = "";
+  const conversion = dashboardConversionSeries(bookState, dates);
+  dashboardRenderLineChart(dashboardConversionChart, dates, conversion, dashboardConversionSummary, {
+    ariaLabel: "每日义项转化率",
+    min: 0,
+    max: 100,
+    emptyMessage: "暂无数据",
+  });
+  dashboardConversionQuality.textContent = "";
+  const hold = dashboardHoldSeries(bookState, bookWords, dates);
+  dashboardRenderLineChart(dashboardHoldChart, dates, hold, dashboardHoldSummary, {
+    ariaLabel: "池内平均状态保持时间",
+    emptyMessage: "暂无数据",
+  });
+  dashboardHoldQuality.textContent = "";
+  if (!dashboardStartDate.value) dashboardStartDate.value = dates[0];
+  if (!dashboardEndDate.value) dashboardEndDate.value = dates.at(-1);
+  const start = dashboardStartDate.value;
+  const end = dashboardEndDate.value;
+  dashboardRenderSankey(bookState, bookWords, start <= end ? start : end, start <= end ? end : start);
 }
 
 function applyAccountBootstrapGate() {
   const pending = document.documentElement.dataset.accountReady !== "true";
-  [studyPanel, wordListPanel, confusionPanel].forEach((panel) => {
+  [studyPanel, wordListPanel, dashboardPanel, confusionPanel].forEach((panel) => {
     panel.inert = pending;
   });
   if (!pending) {
     const persistenceSafe = isPersistenceSafe();
     planButton.disabled = !persistenceSafe;
     wordListButton.disabled = !persistenceSafe;
+    globalDashboardNavButton.disabled = !persistenceSafe;
     return;
   }
   planButton.disabled = true;
   wordListButton.disabled = true;
+  globalDashboardNavButton.disabled = true;
   startStudyButton.disabled = true;
   advanceStudyButton.disabled = true;
 }
 
-function resetStudyScrollPosition() {
+function resetStudyScrollPosition({ resetPage = false } = {}) {
   const reset = () => {
-    const scrollingElement = document.scrollingElement;
-    if (scrollingElement) {
-      scrollingElement.scrollLeft = 0;
-      scrollingElement.scrollTop = 0;
+    if (studyCardViewport) {
+      studyCardViewport.scrollLeft = 0;
+      studyCardViewport.scrollTop = 0;
     }
-    window.scrollTo(0, 0);
+    if (resetPage) {
+      const scrollingElement = document.scrollingElement;
+      if (scrollingElement) {
+        scrollingElement.scrollLeft = 0;
+        scrollingElement.scrollTop = 0;
+      }
+      window.scrollTo(0, 0);
+    }
   };
 
   reset();
@@ -2724,7 +4488,10 @@ function fitWordText() {
     96,
     Math.min(revealButton.clientWidth, cardWidth) - horizontalPadding,
   );
-  const measured = wordText.getBoundingClientRect().width;
+  const measured = Math.max(
+    wordText.getBoundingClientRect().width,
+    wordText.scrollWidth,
+  );
   if (measured > available) {
     const fitted = Math.max(18, Math.floor(maximum * available / measured));
     wordText.style.fontSize = `${fitted}px`;
@@ -2773,6 +4540,11 @@ function renderHome() {
   }
 
   renderHeatmap();
+  const dashboardSnapshotChanged = dashboardRecordSnapshot(activeBookId());
+  if (dashboardSnapshotChanged && isPersistenceSafe()) {
+    saveState({ notify: false });
+  }
+  renderDashboard();
   startStudyButton.textContent = button.label;
   startStudyButton.disabled = button.disabled;
   advanceStudyButton.hidden = !hasPlan() || !ensureTodaySession().baseCompleted || remaining === 0;
@@ -3112,6 +4884,25 @@ function chineseWordSearchScores(scopeWords, query) {
   return bestByWord;
 }
 
+function getWordListIndex() {
+  if (
+    wordListIndexCache &&
+    wordListIndexCache.state === state &&
+    wordListIndexCache.revision === wordListIndexRevision
+  ) {
+    return wordListIndexCache.items;
+  }
+
+  const items = words.map((word) => ({
+    word,
+    info: wordLearningInfo(word),
+    badges: wordStatusBadges(word),
+    normalizedWord: word.word.toLocaleLowerCase("en"),
+  }));
+  wordListIndexCache = { state, revision: wordListIndexRevision, items };
+  return items;
+}
+
 function sortedWordsForList(options = {}) {
   const rawQuery = String(options.query ?? wordListQuery).trim();
   const chineseQuery = isChineseSearchQuery(rawQuery);
@@ -3121,20 +4912,19 @@ function sortedWordsForList(options = {}) {
   const chineseScores = chineseQuery
     ? chineseWordSearchScores(words, rawQuery)
     : new Map();
-  const items = words
-    .filter((word) => {
+  const items = getWordListIndex()
+    .filter((item) => {
       return filter === "all" ||
-        wordStatusBadges(word).some(({ type }) => type === filter);
+        item.badges.some(({ type }) => type === filter);
     })
-    .filter((word) => {
+    .filter((item) => {
       if (!query) return true;
-      if (chineseQuery) return (chineseScores.get(word.id) ?? 0) >= 0.35;
-      return word.word.toLocaleLowerCase("en").includes(query);
+      if (chineseQuery) return (chineseScores.get(item.word.id) ?? 0) >= 0.35;
+      return item.normalizedWord.includes(query);
     })
-    .map((word) => ({
-      word,
-      info: wordLearningInfo(word),
-      matchScore: chineseScores.get(word.id) ?? 0,
+    .map((item) => ({
+      ...item,
+      matchScore: chineseScores.get(item.word.id) ?? 0,
     }));
   const alpha = (left, right) => left.word.word.localeCompare(
     right.word.word,
@@ -3354,7 +5144,8 @@ function renderStudy() {
         ? "提前学习完成"
         : "今日任务";
     revealButton.setAttribute("aria-label", "本轮已完成");
-    nextButton.textContent = "下一词";
+    nextButton.disabled = false;
+    nextButton.textContent = "返回主页";
     scheduleWordFit();
     return;
   }
@@ -3692,12 +5483,147 @@ async function startAdvanceStudy(event) {
   }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
-function openMoreDialog() {
-  moreDialog.hidden = false;
+function mountFloatingDialogs() {
+  if (!modalLayer) return;
+  document.querySelectorAll(".modal-backdrop").forEach((dialog) => {
+    if (dialog.parentElement !== modalLayer) modalLayer.append(dialog);
+  });
+}
+
+mountFloatingDialogs();
+
+const floatingDialogTokens = new WeakMap();
+
+function updateFloatingDialogLayerState() {
+  const hasOpenDialog = [...document.querySelectorAll(".modal-backdrop")]
+    .some((dialog) => !dialog.hidden);
+  document.documentElement.classList.toggle("has-floating-dialog", hasOpenDialog);
+  if (appShellElement) appShellElement.inert = hasOpenDialog;
+  if (mainAppNav) mainAppNav.inert = hasOpenDialog;
+}
+
+function setFloatingDialogOrigin(dialog, originTarget = null) {
+  const surface = dialog?.querySelector(".reset-dialog");
+  if (!surface) return;
+  const target = originTarget instanceof Element ? originTarget : document.activeElement;
+  const surfaceRect = surface.getBoundingClientRect();
+  const targetRect = target instanceof Element ? target.getBoundingClientRect() : null;
+  const targetX = targetRect ? targetRect.left + targetRect.width / 2 : innerWidth / 2;
+  const targetY = targetRect ? targetRect.top + targetRect.height / 2 : innerHeight;
+  const originX = targetX - surfaceRect.left;
+  const originY = targetY - surfaceRect.top;
+  surface.style.setProperty("--modal-origin-x", `${originX}px`);
+  surface.style.setProperty("--modal-origin-y", `${originY}px`);
+}
+
+function openFloatingDialog(dialog, originTarget = null) {
+  if (!dialog) return;
+  const token = (floatingDialogTokens.get(dialog) ?? 0) + 1;
+  floatingDialogTokens.set(dialog, token);
+  if (!dialog.hidden && !dialog.classList.contains("is-modal-closing")) {
+    dialog.classList.remove("is-modal-entering");
+    dialog.classList.add("is-modal-open");
+    updateFloatingDialogLayerState();
+    return;
+  }
+  dialog.hidden = false;
+  updateFloatingDialogLayerState();
+  dialog.classList.remove("is-modal-closing", "is-modal-entering", "is-modal-open");
+  setFloatingDialogOrigin(dialog, originTarget);
+  if (prefersReducedMotion()) {
+    dialog.classList.add("is-modal-open");
+    return;
+  }
+  void dialog.offsetWidth;
+  dialog.classList.add("is-modal-entering");
+  const done = () => {
+    if (floatingDialogTokens.get(dialog) !== token || dialog.hidden) return;
+    dialog.classList.remove("is-modal-entering");
+    dialog.classList.add("is-modal-open");
+    positionTutorialOverlay({ force: true });
+  };
+  const animation = [...(dialog.querySelector(".reset-dialog")?.getAnimations?.() ?? [])]
+    .find((item) => item.animationName === "modal-drop-expand");
+  if (animation) {
+    if (tutorialRuntime?.active) {
+      const trackTutorialTarget = () => {
+        if (
+          floatingDialogTokens.get(dialog) !== token ||
+          !dialog.classList.contains("is-modal-entering")
+        ) return;
+        positionTutorialOverlay({ force: true });
+        window.requestAnimationFrame(trackTutorialTarget);
+      };
+      window.requestAnimationFrame(trackTutorialTarget);
+    }
+    Promise.resolve(animation.finished).then(done, done);
+  } else {
+    window.setTimeout(done, 470);
+  }
+}
+
+function closeFloatingDialog(dialog, { force = false } = {}) {
+  if (!dialog || dialog.hidden) return;
+  const token = (floatingDialogTokens.get(dialog) ?? 0) + 1;
+  floatingDialogTokens.set(dialog, token);
+  if (force || prefersReducedMotion()) {
+    dialog.hidden = true;
+    dialog.classList.remove("is-modal-closing", "is-modal-entering", "is-modal-open");
+    const surface = dialog.querySelector(".reset-dialog");
+    surface?.style.removeProperty("--modal-origin-x");
+    surface?.style.removeProperty("--modal-origin-y");
+    updateFloatingDialogLayerState();
+    return;
+  }
+  dialog.classList.remove("is-modal-entering", "is-modal-open");
+  dialog.classList.add("is-modal-closing");
+  const done = () => {
+    if (floatingDialogTokens.get(dialog) !== token) return;
+    dialog.hidden = true;
+    dialog.classList.remove("is-modal-closing", "is-modal-entering", "is-modal-open");
+    const surface = dialog.querySelector(".reset-dialog");
+    surface?.style.removeProperty("--modal-origin-x");
+    surface?.style.removeProperty("--modal-origin-y");
+    updateFloatingDialogLayerState();
+  };
+  const animation = dialog.querySelector(".reset-dialog")?.getAnimations?.()[0];
+  if (animation) {
+    Promise.resolve(animation.finished).then(done, done);
+  } else {
+    window.setTimeout(done, 300);
+  }
+}
+
+window.senseVocabModalMotion = Object.freeze({
+  open: openFloatingDialog,
+  close: closeFloatingDialog,
+});
+
+function openMoreDialog(event) {
+  openFloatingDialog(moreDialog, event?.currentTarget);
 }
 
 function closeMoreDialog() {
-  moreDialog.hidden = true;
+  closeFloatingDialog(moreDialog);
+}
+
+function openDashboard(event) {
+  if (!state || state.view === "dashboard") return;
+  closeMoreDialog();
+  commitUiTransition("forward", () => {
+    state.view = "dashboard";
+    saveState();
+    render();
+  }, { scope: "page" });
+}
+
+function closeDashboard() {
+  if (!state || state.view === "home") return;
+  commitUiTransition("backward", () => {
+    state.view = "home";
+    saveState();
+    render();
+  }, { scope: "page" });
 }
 
 function openWordList(event) {
@@ -4250,6 +6176,8 @@ async function closeConfusionGlobe(options = {}) {
 async function openWordCard(wordId, options = {}) {
   if (!wordById.has(wordId)) return;
   if (!await ensureVocabularyDetailsReady("word-card")) return;
+  const transitionOrigin = options.origin ?? getUiTransitionOrigin(options.event?.currentTarget);
+  studyHierarchyOrigin = transitionOrigin;
   commitUiTransition("forward", () => {
     state.wordBrowse = options.source === "word-list"
       ? {
@@ -4263,7 +6191,7 @@ async function openWordCard(wordId, options = {}) {
     state.view = "study";
     saveState();
     render();
-  });
+  }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
 function navigateWordCard(direction) {
@@ -4280,7 +6208,8 @@ function navigateWordCard(direction) {
   }, { scope: "card" });
 }
 
-function closeWordCard() {
+function closeWordCard(event) {
+  const transitionOrigin = studyHierarchyOrigin ?? getUiTransitionOrigin(event?.currentTarget);
   commitUiTransition("backward", () => {
     const deepLinked = Boolean(requestedWordId());
     state.wordBrowse = null;
@@ -4293,6 +6222,12 @@ function closeWordCard() {
     wordDeepLinkReturnView = null;
     saveState();
     render();
+  }, {
+    scope: "hierarchy",
+    origin: transitionOrigin,
+    after: () => {
+      studyHierarchyOrigin = null;
+    },
   });
 }
 
@@ -4322,7 +6257,7 @@ function exitStudy(transitionOrigin = null) {
   });
 }
 
-function openReturnDialog() {
+function openReturnDialog(event) {
   const session = ensureTodaySession();
   const historyOriginIndex = session.historyView?.originIndex;
   pendingCrossDayReturn = false;
@@ -4336,12 +6271,12 @@ function openReturnDialog() {
     session.currentIndex >= historyOriginIndex;
   returnHomeButton.textContent = "返回主页";
   returnHomeButton.className = "secondary-button";
-  returnDialog.hidden = false;
+  openFloatingDialog(returnDialog, event?.currentTarget);
 }
 
 function closeReturnDialog() {
   pendingCrossDayReturn = false;
-  returnDialog.hidden = true;
+  closeFloatingDialog(returnDialog);
 }
 
 function handleReturnHome(event) {
@@ -4646,8 +6581,20 @@ function triggerStudyCompletionCue() {
   triggerStudyCompletionHaptic();
 }
 
-function setProgressMastered(progress, date, learningDay = activeLearningDay()) {
+function dashboardKeyForProgress(progress) {
+  return Object.entries(state?.progress ?? {}).find(([, value]) => value === progress)?.[0] ?? null;
+}
+
+function setProgressMastered(progress, date, learningDay = activeLearningDay(), source = "new") {
   const actualDate = currentActivityDate();
+  const previousStatus = progress.status ?? SENSE_STATUS.NEW;
+  const enteredAt = new Date().toISOString();
+  dashboardRecordTransition(state, dashboardKeyForProgress(progress), previousStatus, SENSE_STATUS.MASTERED, {
+    date: actualDate,
+    observedAt: enteredAt,
+    source,
+    learningDay,
+  });
   progress.status = SENSE_STATUS.MASTERED;
   progress.firstSeen = progress.firstSeen ?? date;
   progress.lastSeen = date;
@@ -4658,7 +6605,10 @@ function setProgressMastered(progress, date, learningDay = activeLearningDay()) 
   progress.dueDate = null;
   progress.lastLearningDay = learningDay;
   progress.dueLearningDay = null;
-  progress.updatedAt = new Date().toISOString();
+  progress.statusEnteredAt = previousStatus === SENSE_STATUS.MASTERED
+    ? progress.statusEnteredAt
+    : enteredAt;
+  progress.updatedAt = enteredAt;
 }
 
 function setProgressPending(
@@ -4667,8 +6617,17 @@ function setProgressPending(
   date,
   dueDate,
   dueLearningDay,
+  source = "reinforcement",
 ) {
   const actualDate = currentActivityDate();
+  const previousStatus = progress.status ?? SENSE_STATUS.NEW;
+  const enteredAt = new Date().toISOString();
+  dashboardRecordTransition(state, dashboardKeyForProgress(progress), previousStatus, status, {
+    date: actualDate,
+    observedAt: enteredAt,
+    source,
+    learningDay: dueLearningDay,
+  });
   progress.status = status;
   progress.firstSeen = progress.firstSeen ?? date;
   progress.lastSeen = date;
@@ -4679,7 +6638,10 @@ function setProgressPending(
   progress.dueDate = dueDate;
   progress.lastLearningDay = activeLearningDay();
   progress.dueLearningDay = dueLearningDay;
-  progress.updatedAt = new Date().toISOString();
+  progress.statusEnteredAt = previousStatus === status
+    ? progress.statusEnteredAt
+    : enteredAt;
+  progress.updatedAt = enteredAt;
 }
 
 function markSenseFamiliar(key, options = {}) {
@@ -4697,7 +6659,7 @@ function markSenseFamiliar(key, options = {}) {
   const date = activeStudyDate();
   const learningDay = activeLearningDay();
   if (isNewLearningKey(card, key)) {
-    setProgressMastered(progress, date, learningDay);
+    setProgressMastered(progress, date, learningDay, card.type ?? "new");
   } else if (card.type === "reinforcement") {
     setProgressPending(
       progress,
@@ -4705,6 +6667,7 @@ function markSenseFamiliar(key, options = {}) {
       date,
       addDays(date, 1),
       learningDay + 1,
+      "reinforcement",
     );
   } else if (card.type === "review") {
     if (progress.status === SENSE_STATUS.REVIEW) {
@@ -4716,6 +6679,7 @@ function markSenseFamiliar(key, options = {}) {
         date,
         addDays(date, 1),
         learningDay + 1,
+        "review",
       );
       session.reviewPromotedKeys = [
         ...new Set([...(session.reviewPromotedKeys ?? []), key]),
@@ -4772,7 +6736,7 @@ function animateSenseMastered(item) {
   window.setTimeout(() => {
     render();
     animateSenseReorder(previousLayout, key);
-  }, 340);
+  }, 180);
 }
 
 function animateSenseReorder(previousLayout, selectedKey) {
@@ -4870,6 +6834,7 @@ function scheduleUnknownSenses() {
       date,
       dueDate,
       dueLearningDay,
+      card?.type ?? "new",
     );
     progress.misses += 1;
   });
@@ -4946,12 +6911,16 @@ function nextWord() {
   }, { scope: "card" });
 }
 
-function handleProgressButton() {
+function handleProgressButton(event) {
   if (state.wordBrowse) {
     closeWordCard();
     return;
   }
   const session = ensureTodaySession();
+  if (!currentCard()) {
+    exitStudy(getUiTransitionOrigin(event?.currentTarget));
+    return;
+  }
   if (session.historyView) {
     returnToCurrentWord();
     return;
@@ -4977,7 +6946,7 @@ function resettableCard() {
   return index >= 0 ? session.queue[index] : null;
 }
 
-function openPlanDialog() {
+function openPlanDialog(event) {
   bookSelect.value = activeBookId();
   const selectedState = rootState.bookStates[bookSelect.value] ?? createState();
   const value = selectedState.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET;
@@ -4987,7 +6956,7 @@ function openPlanDialog() {
   planResetConfirm.hidden = true;
   resetAllPlanButton.hidden = !selectedState.plan?.dailyTarget;
   updatePlanPreview();
-  planDialog.hidden = false;
+  openFloatingDialog(planDialog, event?.currentTarget);
 }
 
 function closePlanDialog(options = {}) {
@@ -4998,7 +6967,7 @@ function closePlanDialog(options = {}) {
   ) return;
   planForm.hidden = false;
   planResetConfirm.hidden = true;
-  planDialog.hidden = true;
+  closeFloatingDialog(planDialog, { force: options.force === true });
 }
 
 function showPlanResetConfirmation() {
@@ -5068,7 +7037,7 @@ function savePlan() {
   render();
 }
 
-function openResetDialog() {
+function openResetDialog(event) {
   if (!state) return;
 
   const card = resettableCard();
@@ -5078,12 +7047,12 @@ function openResetDialog() {
   resetMarkingButton.disabled = !word;
   relearnWordButton.disabled = !word;
   showResetOptions();
-  resetDialog.hidden = false;
+  openFloatingDialog(resetDialog, event?.currentTarget);
 }
 
 function closeResetDialog() {
   pendingResetType = null;
-  resetDialog.hidden = true;
+  closeFloatingDialog(resetDialog);
 }
 
 function showResetOptions() {
@@ -5133,11 +7102,24 @@ function resetCurrentMarking() {
   Object.entries(snapshot.progress ?? {}).forEach(([key, progress]) => {
     if (progress) {
       const restored = cloneProgress(progress);
+      const currentStatus = state.progress[key]?.status ?? SENSE_STATUS.NEW;
+      if (currentStatus !== restored.status) {
+        dashboardRecordTransition(state, key, currentStatus, restored.status, {
+          date: currentActivityDate(),
+          source: "reset",
+        });
+      }
       if (stableStateStringify(state.progress[key]) !== stableStateStringify(restored)) {
         restored.updatedAt = resetUpdatedAt;
       }
       state.progress[key] = restored;
     } else {
+      if (state.progress[key]?.status && state.progress[key].status !== SENSE_STATUS.NEW) {
+        dashboardRecordTransition(state, key, state.progress[key].status, SENSE_STATUS.NEW, {
+          date: currentActivityDate(),
+          source: "reset",
+        });
+      }
       delete state.progress[key];
     }
   });
@@ -5196,7 +7178,16 @@ function relearnCurrentWord() {
 
   const word = wordById.get(card.wordId);
   const allKeys = sortSenseKeysByImportance(allSenseKeysForWord(word));
-  allKeys.forEach((key) => delete state.progress[key]);
+  allKeys.forEach((key) => {
+    const previous = state.progress[key];
+    if (previous && previous.status !== SENSE_STATUS.NEW) {
+      dashboardRecordTransition(state, key, previous.status, SENSE_STATUS.NEW, {
+        date: currentActivityDate(),
+        source: "relearn",
+      });
+    }
+    delete state.progress[key];
+  });
   state.introducedWords = state.introducedWords.filter(
     (wordId) => wordId !== card.wordId,
   );
@@ -5848,6 +7839,12 @@ wordListButton.addEventListener("click", openWordList);
 startStudyButton.addEventListener("click", startStudy);
 moreButton.addEventListener("click", openMoreDialog);
 closeMoreButton.addEventListener("click", closeMoreDialog);
+dashboardButton?.addEventListener("click", openDashboard);
+dashboardBackButton?.addEventListener("click", closeDashboard);
+globalDashboardNavButton?.addEventListener("click", openDashboard);
+globalHomeNavButton?.addEventListener("click", (event) => {
+  if (state?.view === "dashboard") closeDashboard(event);
+});
 moreDialog.addEventListener("click", (event) => {
   if (event.target === moreDialog) closeMoreDialog();
 });
@@ -5886,7 +7883,7 @@ studyFeedbackButton.addEventListener("click", () => {
     detail: { context },
   }));
 });
-exitStudyButton.addEventListener("click", () => {
+exitStudyButton.addEventListener("click", (event) => {
   const confusionRootWordId =
     state.wordBrowse?.confusionEntry?.rootWordId ??
     state.wordBrowse?.confusionReturnRootId;
@@ -5895,7 +7892,7 @@ exitStudyButton.addEventListener("click", () => {
       focusWordId: state.wordBrowse.wordId,
     });
   } else if (state.wordBrowse) {
-    closeWordCard();
+    closeWordCard(event);
   } else {
     openReturnDialog();
   }
@@ -5916,6 +7913,20 @@ confusionSearchResults.addEventListener("click", (event) => {
 });
 
 wordListBackButton.addEventListener("click", closeWordList);
+dashboardBookSelect?.addEventListener("change", () => {
+  dashboardBookId = dashboardBookSelect.value || activeBookId();
+  renderDashboard();
+});
+dashboardUnitSelect?.addEventListener("change", () => {
+  dashboardUnit = dashboardUnitSelect.value === "word" ? "word" : "sense";
+  renderDashboard();
+});
+dashboardRangeSelect?.addEventListener("change", () => {
+  dashboardRangeDays = Math.max(1, Number.parseInt(dashboardRangeSelect.value, 10) || 21);
+  renderDashboard();
+});
+dashboardStartDate?.addEventListener("change", renderDashboard);
+dashboardEndDate?.addEventListener("change", renderDashboard);
 wordSearchInput.addEventListener("input", () => {
   wordListQuery = wordSearchInput.value;
   renderWordList();
@@ -5936,7 +7947,11 @@ wordList.addEventListener("click", async (event) => {
   if (!item) return;
   item.classList.add("is-loading");
   item.setAttribute("aria-busy", "true");
-  await openWordCard(item.dataset.wordId, { source: "word-list" });
+  await openWordCard(item.dataset.wordId, {
+    source: "word-list",
+    event,
+    origin: getUiTransitionOrigin(item),
+  });
   item.classList.remove("is-loading");
   item.removeAttribute("aria-busy");
 });

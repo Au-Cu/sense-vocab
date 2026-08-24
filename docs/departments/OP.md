@@ -49,7 +49,7 @@ OP 可以修改完成修复所需的任何层，不要求其他部门先审核�
 3. 能安全复现并修复的反馈按应急流程验证并标记 `resolved`；本轮无法完成的保持或更新为 `in_progress`，在本次报告/证据中记录原因和下一步，由该状态进入待解决队列。单项反馈未解决不阻止后续发布。
 4. 只有 triage 队列无法可靠读取（认证、权限、网络或 RPC 未部署）、数据安全/适用合规义务要求阻断，或发布验证失败时停止发布；不能解决某个反馈本身不是硬阻断。
 5. 检查 `git status`、完整 diff、最近 tag、`origin/main` 和当日是否已经发布版本。
-6. 香港自然日每天最多一个正式版本；当日全部已验证功能、修复和文档合并到同一版本。
+6. 按 D-025 以发布批次发起时刻认定香港归属日，每个归属日最多一个正式版本；跨午夜完成不改变归属，不以 GitHub `publishedAt` 机械占用次日名额。当日全部已验证功能、修复和文档合并到同一版本。
 7. 最终候选通过 `op:freeze` 后运行一次 `npm run verify:release`；该命令等价保留 `npm run build:web` 与完整 Playwright 门禁，并生成可核验凭据。只有相关输入与 `dist` 哈希一致时才能复用或执行 `deploy:verified`。
 8. 同步更新 `package.json` 和 `package-lock.json`；只有长期项目事实变化时才更新 `README.md`，不再逐版追加历史 `CHANGELOG.md`。显式暂存文件，不使用 `git add -A`。
 9. 根据上次正式发布以来的实际改动生成完整 GitHub Release，创建发布提交和 annotated tag，正常推送，绝不 force push。

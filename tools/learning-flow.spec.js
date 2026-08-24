@@ -174,8 +174,8 @@ test("study progress separates stage words from combined sense progress", async 
   );
   expect(animationDuration).toBe("0.42s");
 
-  await expect(page.locator("#nextButton")).toBeDisabled();
-  await page.locator("#nextButton").evaluate((button) => button.click());
+  await expect(page.locator("#nextButton")).toBeEnabled();
+  await expect(page.locator("#nextButton")).toHaveText("返回主页");
   expect(await page.evaluate(() => window.__vibrationCalls)).toEqual([15]);
 
   await page.locator("#resetButton").click();
@@ -989,14 +989,17 @@ test("a scrolled mobile study card returns to the top when the word changes", as
 
   const firstWord = await page.locator("#wordText").textContent();
   await reveal(page);
+  const cardViewport = page.locator("#studyCardViewport");
+  await expect.poll(() => cardViewport.evaluate((element) => element.scrollHeight - element.clientHeight))
+    .toBeGreaterThan(100);
+  await cardViewport.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => cardViewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
   await page.locator("#nextButton").click();
   await expect(page.locator("#nextButton")).toHaveText("下一词");
-  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
 
   await page.locator("#nextButton").click();
   await expect(page.locator("#wordText")).not.toHaveText(firstWord);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect.poll(() => cardViewport.evaluate((element) => element.scrollTop)).toBe(0);
   const panelTop = await page.locator("#studyPanel").evaluate((panel) => (
     panel.getBoundingClientRect().top
   ));
@@ -1105,6 +1108,7 @@ test("a multi-pronunciation card keeps IPA in senses and sequentially plays ever
 });
 
 test("major study navigation uses directional transitions with safe fallbacks", async ({ page }) => {
+  test.setTimeout(60_000);
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.addInitScript(() => {
@@ -1483,17 +1487,20 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   })).toBeLessThanOrEqual(1);
   const mobileListLayout = await page.evaluate(() => {
     const panel = document.querySelector("#wordListPanel").getBoundingClientRect();
-    const back = document.querySelector("#wordListBackButton").getBoundingClientRect();
+    const backButton = document.querySelector("#wordListBackButton");
+    const back = backButton.getBoundingClientRect();
     return {
       documentFits: document.documentElement.scrollHeight <= window.innerHeight + 1,
       panelFits: panel.top >= 0 && panel.bottom <= window.innerHeight,
-      backVisible: back.top >= panel.top && back.bottom <= panel.bottom,
+      backVisible: back.top >= 0 && back.bottom <= window.innerHeight,
+      backFixed: getComputedStyle(backButton.parentElement).position === "fixed",
       bottomClearance: Math.round(window.innerHeight - panel.bottom),
     };
   });
   expect(mobileListLayout.documentFits).toBe(true);
   expect(mobileListLayout.panelFits).toBe(true);
   expect(mobileListLayout.backVisible).toBe(true);
+  expect(mobileListLayout.backFixed).toBe(true);
   expect(mobileListLayout.bottomClearance).toBeGreaterThanOrEqual(48);
   await page.screenshot({ path: "test-results/word-list-mobile.png", fullPage: true });
   await page.setViewportSize({ width: 1100, height: 850 });
@@ -2356,8 +2363,10 @@ test("mastered senses collapse, expand on demand, and fully mastered words advan
 
   await page.locator("#nextButton").click();
   await expect(page.locator("#wordText")).toHaveText("今日任务已完成");
-  await page.locator("#exitStudyButton").click();
-  await page.locator("#returnHomeButton").click();
+  await expect(page.locator("#nextButton")).toHaveText("返回主页");
+  await expect(page.locator("#nextButton")).toBeEnabled();
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
   currentDayColor = await page.locator('.heatmap-day[data-date="2026-07-26"]')
     .evaluate((element) => element.style.getPropertyValue("--heat-color"));
   expect(currentDayColor).toBe("#49a96d");

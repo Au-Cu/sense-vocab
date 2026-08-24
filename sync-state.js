@@ -18,6 +18,8 @@
     "progress",
     "activityLog",
     "studyWindows",
+    "dashboardEvents",
+    "dashboardSnapshots",
     "confusionLinks",
   ];
   let fallbackDeviceId = null;
@@ -104,6 +106,8 @@
         progress: {},
         activityLog: {},
         studyWindows: {},
+        dashboardEvents: {},
+        dashboardSnapshots: {},
         confusionLinks: {},
       },
     };
@@ -360,6 +364,22 @@
       writer,
     );
     stampMap(
+      nextState.dashboardEvents ?? {},
+      previous.dashboardEvents ?? {},
+      metadata,
+      previousMetadata,
+      "dashboardEvents",
+      writer,
+    );
+    stampMap(
+      nextState.dashboardSnapshots ?? {},
+      previous.dashboardSnapshots ?? {},
+      metadata,
+      previousMetadata,
+      "dashboardSnapshots",
+      writer,
+    );
+    stampMap(
       nextState.confusionLinks ?? {},
       previous.confusionLinks ?? {},
       metadata,
@@ -460,6 +480,10 @@
       left?.lastLearningDay,
       right?.lastLearningDay,
     );
+    base.statusEnteredAt = preferred?.statusEnteredAt ??
+      (String(left?.statusEnteredAt ?? "") >= String(right?.statusEnteredAt ?? "")
+        ? left?.statusEnteredAt ?? null
+        : right?.statusEnteredAt ?? null);
     if (base.status === "mastered") {
       base.masteredOn = maximumDate(left?.masteredOn, right?.masteredOn);
       base.masteredOnActual = maximumDate(
@@ -570,6 +594,11 @@
     if (domain === "progress") return mergeProgress(left, right);
     if (domain === "activityLog") return mergeActivity(left, right);
     if (domain === "studyWindows") return mergeWindow(left, right);
+    if (domain === "dashboardSnapshots") {
+      const leftAt = String(left?.observedAt ?? "");
+      const rightAt = String(right?.observedAt ?? "");
+      return clone(leftAt >= rightAt ? left : right);
+    }
     if (domain === "learningDayCounter") {
       return Math.max(Number(left) || 0, Number(right) || 0);
     }
@@ -782,6 +811,30 @@
       })
       .slice(-500);
 
+    if (hasOwn(left, "dashboardEvents") || hasOwn(right, "dashboardEvents")) {
+      const dashboardEvents = mergeMap(
+        "dashboardEvents",
+        left.dashboardEvents ?? {},
+        right.dashboardEvents ?? {},
+        leftMetadata.records.dashboardEvents,
+        rightMetadata.records.dashboardEvents,
+      );
+      result.dashboardEvents = dashboardEvents.values;
+      metadata.records.dashboardEvents = dashboardEvents.records;
+    }
+
+    if (hasOwn(left, "dashboardSnapshots") || hasOwn(right, "dashboardSnapshots")) {
+      const dashboardSnapshots = mergeMap(
+        "dashboardSnapshots",
+        left.dashboardSnapshots ?? {},
+        right.dashboardSnapshots ?? {},
+        leftMetadata.records.dashboardSnapshots,
+        rightMetadata.records.dashboardSnapshots,
+      );
+      result.dashboardSnapshots = dashboardSnapshots.values;
+      metadata.records.dashboardSnapshots = dashboardSnapshots.records;
+    }
+
     const confusionLinks = mergeMap(
       "confusionLinks",
       left.confusionLinks ?? {},
@@ -820,6 +873,8 @@
     "progress",
     "activityLog",
     "studyWindows",
+    "dashboardEvents",
+    "dashboardSnapshots",
     "confusionLinks",
     "learningDayCounter",
     "wordListSort",
@@ -975,6 +1030,10 @@
     });
     (Array.isArray(value?.studyWindows) ? value.studyWindows : [])
       .forEach((studyWindow) => dates.push(dateKey(studyWindow?.activityDate)));
+    Object.values(value?.dashboardEvents ?? {})
+      .forEach((event) => dates.push(dateKey(event?.date ?? event?.observedAt)));
+    Object.values(value?.dashboardSnapshots ?? {})
+      .forEach((snapshot) => dates.push(dateKey(snapshot?.date ?? snapshot?.observedAt)));
     return maximumDate(...dates) ?? "";
   }
 
@@ -1125,6 +1184,24 @@
       acceptedDates.size > 0 || acceptedSession || acceptedStudyWindow ||
       acceptedConfusionLink;
     if (acceptedLearningEvidence) {
+      if (hasOwn(candidate, "dashboardEvents") || hasOwn(baseline, "dashboardEvents")) {
+        result.dashboardEvents = { ...(baseline.dashboardEvents ?? {}) };
+        Object.entries(candidate.dashboardEvents ?? {}).forEach(([id, event]) => {
+          if (result.dashboardEvents[id]) return;
+          if (!baselineDate || dateKey(event?.date ?? event?.observedAt) >= baselineDate) {
+            result.dashboardEvents[id] = clone(event);
+          }
+        });
+      }
+      if (hasOwn(candidate, "dashboardSnapshots") || hasOwn(baseline, "dashboardSnapshots")) {
+        result.dashboardSnapshots = { ...(baseline.dashboardSnapshots ?? {}) };
+        Object.entries(candidate.dashboardSnapshots ?? {}).forEach(([id, snapshot]) => {
+          if (result.dashboardSnapshots[id]) return;
+          if (!baselineDate || dateKey(snapshot?.date ?? snapshot?.observedAt) >= baselineDate) {
+            result.dashboardSnapshots[id] = clone(snapshot);
+          }
+        });
+      }
       if (!baseline.plan && candidate.plan) result.plan = clone(candidate.plan);
       result.learningDayCounter = Math.max(
         Number(baseline.learningDayCounter) || 0,

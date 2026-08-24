@@ -85,8 +85,9 @@ test("mobile home stays compact, searches words, and opens the heatmap at the la
     items.map((item) => item.getBoundingClientRect())
   ));
   expect(actionBoxes).toHaveLength(3);
-  expect(Math.max(...actionBoxes.map((box) => box.y)) - Math.min(...actionBoxes.map((box) => box.y)))
-    .toBeLessThan(3);
+  const actionRows = [...new Set(actionBoxes.map((box) => box.y))].sort((a, b) => a - b);
+  expect(actionRows).toHaveLength(1);
+  expect(actionBoxes.filter((box) => box.y === actionRows[0])).toHaveLength(3);
   expect(actionBoxes.every((box) => box.bottom <= 844)).toBe(true);
   const homeActionsBox = await page.locator(".home-actions").boundingBox();
   expect(actionBoxes[0].x).toBeLessThanOrEqual(homeActionsBox.x + 1);
@@ -279,6 +280,7 @@ test("the guided tutorial is complete and never mutates real learning data", asy
   await expectHint(page, "可以在重置中撤回");
   await page.locator("#resetButton").click();
   await expectHint(page, "点击这里撤回本次标记");
+  await expect(page.locator("#resetDialog")).toHaveClass(/is-modal-open/);
   const resetTipBox = await page.locator("#tutorialTip").boundingBox();
   const resetTargetBox = await page.locator("#resetMarkingButton").boundingBox();
   expect(resetTipBox.y + resetTipBox.height).toBeLessThanOrEqual(resetTargetBox.y);
