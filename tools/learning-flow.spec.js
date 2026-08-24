@@ -618,7 +618,7 @@ test("advance learning shifts the remaining plan forward by one day", async ({ p
   expect(state.plan.advancedDays).toBe(1);
   expect(state.introducedWords.length).toBe(2);
   await expect(page.locator("#homePlanMeta")).toContainText("计划已提前 1 天");
-  await expect(page.locator("#advanceStudyButton")).toHaveText("再提前一天");
+  await expect(page.locator("#advanceStudyButton")).toBeHidden();
 
   // Incremental learning remains a separate entry and does not change the advance counter.
   await page.locator("#startStudyButton").click();
@@ -1116,6 +1116,7 @@ test("major study navigation uses directional transitions with safe fallbacks", 
     window.__uiTransitionScopes = [];
     window.__uiTransitionOrigins = [];
     window.__uiTransitionCallbacks = [];
+    window.__uiTransitionStyles = [];
     const nativeStart = document.startViewTransition?.bind(document);
     if (nativeStart) {
       Object.defineProperty(document, "startViewTransition", {
@@ -1128,7 +1129,7 @@ test("major study navigation uses directional transitions with safe fallbacks", 
             y: document.documentElement.style.getPropertyValue("--ui-transition-y"),
             radius: document.documentElement.style.getPropertyValue("--ui-transition-radius"),
           });
-          return nativeStart(async () => {
+          const transition = nativeStart(async () => {
             const visibleBefore = [...document.querySelectorAll("#homePanel, #studyPanel, #wordListPanel, #confusionPanel")]
               .find((element) => !element.hidden)?.id ?? "";
             const result = await callback();
@@ -1137,6 +1138,25 @@ test("major study navigation uses directional transitions with safe fallbacks", 
             window.__uiTransitionCallbacks.push({ visibleBefore, visibleAfter });
             return result;
           });
+          Promise.resolve(transition.ready).then(() => {
+            window.__uiTransitionStyles.push({
+              kind: document.documentElement.dataset.uiTransition || "",
+              scope: document.documentElement.dataset.uiTransitionScope || "",
+              appNew: getComputedStyle(
+                document.documentElement,
+                "::view-transition-new(app-surface)",
+              ).animationName,
+              cardOld: getComputedStyle(
+                document.documentElement,
+                "::view-transition-old(study-card-surface)",
+              ).animationName,
+              cardNew: getComputedStyle(
+                document.documentElement,
+                "::view-transition-new(study-card-surface)",
+              ).animationName,
+            });
+          });
+          return transition;
         },
       });
     }
@@ -1202,6 +1222,22 @@ test("major study navigation uses directional transitions with safe fallbacks", 
     .toContainEqual({ visibleBefore: "homePanel", visibleAfter: "wordListPanel" });
   expect(transitionCallbacks)
     .toContainEqual({ visibleBefore: "wordListPanel", visibleAfter: "homePanel" });
+  await expect.poll(() => page.evaluate(() => window.__uiTransitionStyles.some(
+    (entry) => entry.scope === "reveal" && entry.cardNew === "ui-card-in-reveal",
+  ))).toBe(true);
+  const revealTransitionStyle = await page.evaluate(() => window.__uiTransitionStyles.find(
+    (entry) => entry.scope === "reveal" && entry.cardNew === "ui-card-in-reveal",
+  ));
+  expect(revealTransitionStyle.appNew).toBe("none");
+  const cardTransitionStyles = await page.evaluate(() => window.__uiTransitionStyles.filter(
+    (entry) => entry.scope === "card",
+  ));
+  expect(cardTransitionStyles).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      cardOld: expect.stringMatching(/^ui-card-out-(forward|backward)$/),
+      cardNew: expect.stringMatching(/^ui-card-in-(forward|backward)$/),
+    }),
+  ]));
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
     .toBe("");
 

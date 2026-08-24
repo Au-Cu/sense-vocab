@@ -13,13 +13,6 @@
   const accountDeleteConfirm = document.querySelector("#accountDeleteConfirm");
   const accountFeedbackView = document.querySelector("#accountFeedbackView");
   const accountDataActions = document.querySelector("#accountDataActions");
-  const accountStorageCard = document.querySelector("#accountStorageCard");
-  const accountStorageValue = document.querySelector("#accountStorageValue");
-  const accountStorageProgress = document.querySelector("#accountStorageProgress");
-  const accountStorageProgressFill = document.querySelector(
-    "#accountStorageProgressFill",
-  );
-  const accountStorageDetail = document.querySelector("#accountStorageDetail");
   const accountLoginTab = document.querySelector("#accountLoginTab");
   const accountRegisterTab = document.querySelector("#accountRegisterTab");
   const accountForm = document.querySelector("#accountForm");
@@ -180,8 +173,6 @@
   let notificationsBusy = false;
   let notificationSnapshot = { authenticated: false, unreadCount: 0, items: [] };
   let localQuotaWarning = false;
-  let localStorageCapacityReached = false;
-  let storageEstimateRequest = 0;
   const volatileSyncMeta = new Map();
   const volatileGuestDecisions = new Map();
 
@@ -273,75 +264,6 @@
   function setMessage(message = "", type = "") {
     accountMessage.textContent = message;
     accountMessage.classList.toggle("is-error", type === "error");
-  }
-
-  function formatStorageBytes(value) {
-    const bytes = Number(value);
-    if (!Number.isFinite(bytes) || bytes < 0) return "";
-    const units = ["B", "KB", "MB", "GB", "TB"];
-    let amount = bytes;
-    let unitIndex = 0;
-    while (amount >= 1024 && unitIndex < units.length - 1) {
-      amount /= 1024;
-      unitIndex += 1;
-    }
-    const fractionDigits = unitIndex > 0 && amount < 10 ? 1 : 0;
-    return `${amount.toFixed(fractionDigits).replace(/\.0$/, "")} ${units[unitIndex]}`;
-  }
-
-  function localStorageUsageBytes() {
-    let bytes = 0;
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key === null) continue;
-      bytes += new Blob([key, localStorage.getItem(key) ?? ""]).size;
-    }
-    return bytes;
-  }
-
-  function renderStorageUsageUnavailable() {
-    accountStorageCard.classList.add("is-unavailable");
-    accountStorageValue.textContent = "无法获取";
-    accountStorageProgress.hidden = true;
-    accountStorageProgress.removeAttribute("aria-valuenow");
-    accountStorageProgress.setAttribute("aria-valuetext", "无法获取本地存储用量");
-    accountStorageProgressFill.style.width = "0%";
-    accountStorageDetail.textContent = "当前浏览器阻止读取本应用的本地存储用量";
-  }
-
-  async function refreshLocalStorageEstimate() {
-    const requestId = ++storageEstimateRequest;
-    accountStorageCard.classList.remove("is-unavailable");
-    accountStorageValue.textContent = "正在读取";
-    accountStorageProgress.hidden = true;
-    accountStorageProgress.removeAttribute("aria-valuenow");
-    accountStorageProgress.setAttribute("aria-valuetext", "正在读取本地存储用量");
-    accountStorageProgressFill.style.width = "0%";
-    accountStorageDetail.textContent = "正在读取本应用实际占用的本地空间";
-
-    try {
-      const usage = localStorageUsageBytes();
-      if (requestId !== storageEstimateRequest) return;
-      const usageText = formatStorageBytes(usage);
-      const capacityReached = localStorageCapacityReached ||
-        (typeof app.isActiveStatePersisted === "function" && !app.isActiveStatePersisted());
-      if (capacityReached) {
-        accountStorageValue.textContent = "已达写入上限";
-        accountStorageProgress.hidden = false;
-        accountStorageProgress.setAttribute("aria-valuenow", "100");
-        accountStorageProgress.setAttribute("aria-valuetext", "本地存储已达写入上限");
-        accountStorageProgressFill.style.width = "100%";
-        accountStorageDetail.textContent = `本应用已用约 ${usageText}；浏览器已拒绝新的本地写入。`;
-        return;
-      }
-      accountStorageValue.textContent = `已用约 ${usageText}`;
-      accountStorageProgress.removeAttribute("aria-valuenow");
-      accountStorageProgress.setAttribute("aria-valuetext", `本应用已用约 ${usageText}`);
-      accountStorageDetail.textContent = "浏览器总存储估算不代表本应用可写空间，因此不再显示不可靠的剩余百分比。";
-    } catch {
-      if (requestId !== storageEstimateRequest) return;
-      renderStorageUsageUnavailable();
-    }
   }
 
   function setNotificationsMessage(message = "", type = "") {
@@ -1296,7 +1218,6 @@
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = false;
     accountDataActions.hidden = true;
-    accountStorageCard.hidden = true;
     resetFeedbackForm();
     setMessage();
     feedbackMessage.focus();
@@ -1324,7 +1245,6 @@
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = true;
     accountDataActions.hidden = needsConsent || hasConflict;
-    accountStorageCard.hidden = needsConsent || hasConflict;
     recoverGuestDataButton.hidden = !hasRecoverableGuestState();
     if (!deleting) resetDeleteConfirmation();
     if (hasConflict) renderConflictComparison();
@@ -1357,7 +1277,6 @@
   function openAccountDialog(event) {
     showPrimaryAccountView();
     showFloatingDialog(accountDialog, event?.currentTarget);
-    void refreshLocalStorageEstimate();
     if (!currentUser && !pendingConsentSession && cloud) accountEmail.focus();
   }
 
@@ -2567,7 +2486,6 @@
     accountFeedbackView.hidden = true;
     accountDeleteConfirm.hidden = false;
     accountDataActions.hidden = true;
-    accountStorageCard.hidden = true;
     resetDeleteConfirmation();
     setMessage();
     deleteAccountConfirmation.focus();
@@ -2633,7 +2551,6 @@
   window.addEventListener("sensevocab:state-saved", (event) => {
     if (!currentUser || pendingConsentSession) return;
     if (event.detail?.storageKey !== app.accountStorageKey(currentUser.id)) return;
-    localStorageCapacityReached = event.detail?.persisted === false;
     saveSyncMeta(currentUser.id, { dirty: true });
     setSyncStatus(
       event.detail?.persisted === false
@@ -2645,10 +2562,6 @@
   });
 
   window.addEventListener("sensevocab:storage-error", (event) => {
-    if (event.detail?.quotaExceeded) localStorageCapacityReached = true;
-    if (!accountDialog.hidden && !accountStorageCard.hidden) {
-      void refreshLocalStorageEstimate();
-    }
     if (!event.detail?.quotaExceeded) {
       setMessage("浏览器存储写入失败，请立即导出学习数据。", "error");
       return;

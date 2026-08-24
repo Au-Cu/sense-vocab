@@ -2323,14 +2323,6 @@ button {
   background: transparent;
 }
 
-.ui-transition-fallback-overlay.is-backward .ui-transition-snapshot-old {
-  z-index: 2;
-}
-
-.ui-transition-fallback-overlay.is-backward .ui-transition-snapshot-new {
-  z-index: 1;
-}
-
 html[data-ui-transition-scope="hierarchy"] .app-shell > .study-panel:not([hidden]) {
   background: var(--surface);
 }
@@ -2470,7 +2462,7 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
 
   html[data-ui-transition-scope="card"]::view-transition-old(study-card-surface),
   html[data-ui-transition-scope="card"]::view-transition-new(study-card-surface) {
-    animation-duration: 360ms;
+    animation-duration: 300ms;
     animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
     animation-fill-mode: both;
     mix-blend-mode: normal;
@@ -2488,38 +2480,80 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
     clip-path: inset(0 round 8px);
   }
 
+  html[data-ui-transition-scope="card"]::view-transition-old(study-card-surface) {
+    z-index: 1;
+  }
+
+  html[data-ui-transition-scope="card"]::view-transition-new(study-card-surface) {
+    z-index: 2;
+  }
+
   html[data-ui-transition-scope="card"][data-ui-transition="forward"]::view-transition-old(study-card-surface) {
-    animation-name: ui-transition-out-forward;
+    animation-name: ui-card-out-forward;
   }
 
   html[data-ui-transition-scope="card"][data-ui-transition="forward"]::view-transition-new(study-card-surface) {
-    animation-name: ui-transition-in-forward;
+    animation-name: ui-card-in-forward;
   }
 
   html[data-ui-transition-scope="card"][data-ui-transition="backward"]::view-transition-old(study-card-surface) {
-    animation-name: ui-transition-out-backward;
+    animation-name: ui-card-out-backward;
   }
 
   html[data-ui-transition-scope="card"][data-ui-transition="backward"]::view-transition-new(study-card-surface) {
-    animation-name: ui-transition-in-backward;
+    animation-name: ui-card-in-backward;
   }
 
-  html[data-ui-transition="reveal"]::view-transition-old(app-surface) {
+  html[data-ui-transition-scope="reveal"]::view-transition-old(app-surface),
+  html[data-ui-transition-scope="reveal"]::view-transition-new(app-surface) {
     animation: none;
+    opacity: 1;
     mix-blend-mode: normal;
   }
 
-  html[data-ui-transition="reveal"]::view-transition-new(app-surface) {
-    animation-name: ui-transition-in-reveal;
-    animation-duration: 320ms;
+  html[data-ui-transition-scope="reveal"]::view-transition-group(study-card-surface),
+  html[data-ui-transition-scope="reveal"]::view-transition-image-pair(study-card-surface) {
+    contain: paint;
+    overflow: clip;
+    border-radius: 8px;
+    z-index: 2;
+  }
+
+  html[data-ui-transition-scope="reveal"]::view-transition-old(study-card-surface) {
+    animation: none;
+    opacity: 1;
+    z-index: 1;
+    mix-blend-mode: normal;
+  }
+
+  html[data-ui-transition-scope="reveal"]::view-transition-new(study-card-surface) {
+    animation-name: ui-card-in-reveal;
+    animation-duration: 300ms;
     animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
     animation-fill-mode: both;
-    background:
-      linear-gradient(135deg, rgba(15, 118, 110, 0.14), transparent 36%),
-      linear-gradient(315deg, rgba(199, 125, 45, 0.16), transparent 38%),
-      var(--paper);
+    z-index: 2;
     mix-blend-mode: normal;
   }
+}
+
+@keyframes ui-card-in-forward {
+  from { transform: translate3d(14%, 0, 0) scale(0.992); opacity: 0.18; }
+  to { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+
+@keyframes ui-card-out-forward {
+  from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+  to { transform: translate3d(-5%, 0, 0) scale(0.996); opacity: 0.76; }
+}
+
+@keyframes ui-card-in-backward {
+  from { transform: translate3d(-14%, 0, 0) scale(0.992); opacity: 0.18; }
+  to { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+}
+
+@keyframes ui-card-out-backward {
+  from { transform: translate3d(0, 0, 0) scale(1); opacity: 1; }
+  to { transform: translate3d(5%, 0, 0) scale(0.996); opacity: 0.76; }
 }
 
 @keyframes ui-transition-in-forward {
@@ -2560,9 +2594,17 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
   }
 }
 
-@keyframes ui-transition-in-reveal {
-  from { clip-path: inset(0 0 100% 0); }
-  to { clip-path: inset(0); }
+@keyframes ui-card-in-reveal {
+  from {
+    clip-path: inset(0 0 56% 0 round 8px);
+    transform: translate3d(0, 8px, 0) scale(0.992);
+    opacity: 0.42;
+  }
+  to {
+    clip-path: inset(0 round 8px);
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 1;
+  }
 }
 
 .word-button {
@@ -3510,49 +3552,6 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
   color: #946019;
 }
 
-.account-storage-card {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 86%, var(--paper));
-}
-
-.account-storage-card[hidden] {
-  display: none;
-}
-
-.account-storage-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.account-storage-heading span {
-  color: var(--muted);
-  font-size: 0.82rem;
-  font-weight: 680;
-}
-
-.account-storage-heading strong {
-  color: var(--accent-strong);
-  font-size: 0.88rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.account-storage-progress {
-  height: 9px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 13%, var(--paper));
-}
-
-.account-storage-progress[hidden] {
-  display: none;
-}
-
 #dashboardSankeySummary {
   position: absolute !important;
   width: 1px !important;
@@ -3566,42 +3565,12 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
   border: 0 !important;
 }
 
-.account-storage-progress > span {
-  display: block;
-  width: 0;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--accent);
-  transition: width 280ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.account-storage-card > p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-
-.account-storage-card.is-unavailable .account-storage-heading strong {
-  color: var(--muted);
-}
-
-.account-storage-card.is-unavailable .account-storage-progress {
-  background: var(--line);
-}
-
 .account-message {
   min-height: 1.45em;
   margin: 0;
   color: var(--muted);
   font-size: 0.84rem;
   line-height: 1.45;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .account-storage-progress > span {
-    transition: none;
-  }
 }
 
 .notification-ai-label {

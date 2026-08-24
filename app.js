@@ -2817,7 +2817,12 @@ function studyButtonState() {
 }
 
 function canStartAdvanceStudy() {
-  if (!membershipAllowsStudy() || !hasPlan() || availableNewWordCount() === 0) {
+  if (
+    !membershipAllowsStudy() ||
+    !hasPlan() ||
+    scheduleDeltaDays() > 0 ||
+    availableNewWordCount() === 0
+  ) {
     return false;
   }
   const session = ensureTodaySession();
@@ -2879,7 +2884,20 @@ function cloneUiTransitionSurface(surface, { includeNavigation = false } = {}) {
 }
 
 function uiTransitionFrames(kind, scope, role = "incoming") {
-  if (scope === "card" || scope === "page") {
+  if (scope === "card") {
+    const entering = role === "incoming";
+    const direction = kind === "backward" ? -1 : 1;
+    return entering
+      ? [
+        { transform: `translate3d(${direction * 14}%, 0, 0) scale(0.992)`, opacity: 0.18 },
+        { transform: "translate3d(0, 0, 0) scale(1)", opacity: 1 },
+      ]
+      : [
+        { transform: "translate3d(0, 0, 0) scale(1)", opacity: 1 },
+        { transform: `translate3d(${direction * -5}%, 0, 0) scale(0.996)`, opacity: 0.76 },
+      ];
+  }
+  if (scope === "page") {
     const entering = role === "incoming";
     if (kind === "backward") {
       return entering
@@ -2922,8 +2940,8 @@ function uiTransitionFrames(kind, scope, role = "incoming") {
   }
   if (kind === "reveal") {
     return [
-      { opacity: 0, transform: "translate3d(0, 6px, 0)" },
-      { opacity: 1, transform: "translate3d(0, 0, 0)" },
+      { opacity: 0.35, transform: "translate3d(0, 8px, 0) scale(0.992)" },
+      { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)" },
     ];
   }
   return [
@@ -3028,7 +3046,7 @@ function commitUiTransition(kind, update, {
     });
     if (incomingSurface) {
       fallbackOverlay = document.createElement("div");
-      fallbackOverlay.className = `ui-transition-fallback-overlay${scope === "card" ? " is-card" : ""}${scope === "hierarchy" ? " is-hierarchy" : ""}${kind === "backward" ? " is-backward" : ""}`;
+      fallbackOverlay.className = `ui-transition-fallback-overlay${scope === "card" ? " is-card" : ""}${scope === "hierarchy" ? " is-hierarchy" : ""}`;
       if (scope === "card" && transitionRect) {
         fallbackOverlay.style.left = `${transitionRect.left}px`;
         fallbackOverlay.style.top = `${transitionRect.top}px`;
@@ -4547,9 +4565,12 @@ function renderHome() {
   renderDashboard();
   startStudyButton.textContent = button.label;
   startStudyButton.disabled = button.disabled;
-  advanceStudyButton.hidden = !hasPlan() || !ensureTodaySession().baseCompleted || remaining === 0;
+  advanceStudyButton.hidden = scheduleDeltaDays() > 0 ||
+    !hasPlan() ||
+    !ensureTodaySession().baseCompleted ||
+    remaining === 0;
   advanceStudyButton.disabled = !canStartAdvanceStudy();
-  advanceStudyButton.textContent = scheduleDeltaDays() > 0 ? "再提前一天" : "提前学习";
+  advanceStudyButton.textContent = "提前学习";
   if (vocabularyBlockingIntent === "study") {
     startStudyButton.textContent = "正在加载…";
     startStudyButton.disabled = true;
