@@ -2320,7 +2320,11 @@ button {
   max-width: 100%;
   max-height: 100%;
   border-radius: inherit;
-  background: transparent;
+  background: var(--paper);
+}
+
+html[data-ui-transition-scope="card"] .study-card-viewport {
+  will-change: transform, opacity;
 }
 
 html[data-ui-transition-scope="hierarchy"] .app-shell > .study-panel:not([hidden]) {

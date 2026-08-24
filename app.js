@@ -2889,12 +2889,12 @@ function uiTransitionFrames(kind, scope, role = "incoming") {
     const direction = kind === "backward" ? -1 : 1;
     return entering
       ? [
-        { transform: `translate3d(${direction * 14}%, 0, 0) scale(0.992)`, opacity: 0.18 },
+        { transform: `translate3d(${direction * 18}%, 0, 0) scale(0.992)`, opacity: 0.22 },
         { transform: "translate3d(0, 0, 0) scale(1)", opacity: 1 },
       ]
       : [
         { transform: "translate3d(0, 0, 0) scale(1)", opacity: 1 },
-        { transform: `translate3d(${direction * -5}%, 0, 0) scale(0.996)`, opacity: 0.76 },
+        { transform: `translate3d(${direction * -10}%, 0, 0) scale(0.996)`, opacity: 0.1 },
       ];
   }
   if (scope === "page") {
@@ -3006,7 +3006,10 @@ function commitUiTransition(kind, update, {
     after?.();
   };
 
-  if (!hadActiveTransition && typeof document.startViewTransition === "function") {
+  // Card changes use the live viewport plus one outgoing snapshot below. Native
+  // nested view-transition snapshots can briefly expose the freshly rendered
+  // card on Safari and Chromium when a reveal transition has just finished.
+  if (scope !== "card" && !hadActiveTransition && typeof document.startViewTransition === "function") {
     let transition;
     let updateCommitted = false;
     const commitUpdate = () => {
@@ -3041,10 +3044,12 @@ function commitUiTransition(kind, update, {
   let target = uiTransitionTarget(scope);
   let fallbackOverlay = null;
   if (["hierarchy", "page", "card"].includes(scope) && outgoingSurface) {
-    const incomingSurface = cloneUiTransitionSurface(transitionSurface, {
-      includeNavigation: scope === "hierarchy",
-    });
-    if (incomingSurface) {
+    const incomingSurface = scope === "card"
+      ? null
+      : cloneUiTransitionSurface(transitionSurface, {
+        includeNavigation: scope === "hierarchy",
+      });
+    if (scope === "card" || incomingSurface) {
       fallbackOverlay = document.createElement("div");
       fallbackOverlay.className = `ui-transition-fallback-overlay${scope === "card" ? " is-card" : ""}${scope === "hierarchy" ? " is-hierarchy" : ""}`;
       if (scope === "card" && transitionRect) {
@@ -3055,12 +3060,20 @@ function commitUiTransition(kind, update, {
         fallbackOverlay.style.inset = "auto";
       }
       outgoingSurface.classList.add("ui-transition-snapshot-old");
-      incomingSurface.classList.add("ui-transition-snapshot-new");
-      fallbackOverlay.append(outgoingSurface, incomingSurface);
+      if (incomingSurface) {
+        incomingSurface.classList.add("ui-transition-snapshot-new");
+        fallbackOverlay.append(outgoingSurface, incomingSurface);
+      } else {
+        fallbackOverlay.append(outgoingSurface);
+      }
       document.body.append(fallbackOverlay);
-       target = scope === "hierarchy"
-         ? (kind === "backward" ? outgoingSurface : incomingSurface)
-         : incomingSurface;
+      outgoingSurface.scrollLeft = transitionSurface?.scrollLeft ?? 0;
+      outgoingSurface.scrollTop = transitionSurface?.scrollTop ?? 0;
+      target = scope === "card"
+        ? transitionSurface
+        : scope === "hierarchy"
+          ? (kind === "backward" ? outgoingSurface : incomingSurface)
+          : incomingSurface;
       const cleanup = () => {
         fallbackOverlay?.remove();
         fallbackOverlay = null;
@@ -3075,10 +3088,20 @@ function commitUiTransition(kind, update, {
     }
   }
   let animation = null;
+  const animationDuration = scope === "hierarchy"
+    ? 460
+    : scope === "reveal"
+      ? 300
+      : scope === "card"
+        ? 400
+        : 340;
+  const animationEasing = scope === "card"
+    ? "cubic-bezier(0.22, 0.61, 0.36, 1)"
+    : "cubic-bezier(0.16, 1, 0.3, 1)";
   try {
     animation = target?.animate?.(uiTransitionFrames(kind, scope, "incoming"), {
-      duration: scope === "hierarchy" ? 460 : scope === "reveal" ? 300 : 340,
-      easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+      duration: animationDuration,
+      easing: animationEasing,
       fill: "both",
     }) ?? null;
   } catch {
@@ -3088,8 +3111,8 @@ function commitUiTransition(kind, update, {
     try {
       const outgoingTarget = fallbackOverlay.querySelector(".ui-transition-snapshot-old");
       outgoingTarget?.animate?.(uiTransitionFrames(kind, scope, "outgoing"), {
-        duration: scope === "card" ? 360 : 420,
-        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+        duration: scope === "card" ? animationDuration : 420,
+        easing: scope === "card" ? animationEasing : "cubic-bezier(0.16, 1, 0.3, 1)",
         fill: "both",
       });
     } catch {
@@ -6928,7 +6951,7 @@ function nextWord() {
 
     saveState();
     render();
-    triggerStudyCompletionCue();
+    if (!currentCard()) triggerStudyCompletionCue();
   }, { scope: "card" });
 }
 

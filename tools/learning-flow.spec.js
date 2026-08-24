@@ -106,10 +106,12 @@ async function readState(page) {
 }
 
 async function confirmEveryVisibleSense(page) {
-  const actionable = page.locator(".sense-item:not(:disabled):not(.is-collapsible):visible");
+  const senseList = page.locator("#studyPanel #senseList");
+  const actionable = senseList.locator(".sense-item:not(:disabled):not(.is-collapsible):visible");
   while (await actionable.count()) {
+    await expect(senseList).not.toHaveClass(/is-reordering/);
     await actionable.first().click();
-    await page.waitForTimeout(450);
+    await expect(senseList).not.toHaveClass(/is-reordering/);
   }
 }
 
@@ -169,7 +171,7 @@ test("study progress separates stage words from combined sense progress", async 
   await expect(page.locator("#senseProgressLabel")).toHaveText("4 / 4");
   await expect(page.locator("#senseProgressBar")).toHaveAttribute("aria-valuenow", "4");
   await expect(page.locator("#senseProgressBar")).toHaveAttribute("aria-valuemax", "4");
-  const animationDuration = await page.locator(".word-card-wrap").evaluate(
+  const animationDuration = await page.locator("#studyPanel .word-card-wrap").evaluate(
     (element) => getComputedStyle(element).animationDuration,
   );
   expect(animationDuration).toBe("0.42s");
@@ -996,10 +998,49 @@ test("a scrolled mobile study card returns to the top when the word changes", as
   await expect.poll(() => cardViewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(100);
   await page.locator("#nextButton").click();
   await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await expect(page.locator("#nextButton")).toBeEnabled();
+
+  await page.evaluate(() => {
+    window.__studyCardAnimations = [];
+    const nativeAnimate = Element.prototype.animate;
+    Element.prototype.animate = function traceStudyCardAnimation(frames, options) {
+      if (this.classList?.contains("study-card-viewport")) {
+        window.__studyCardAnimations.push({
+          live: this.id === "studyCardViewport",
+          frames: Array.from(frames, (frame) => ({
+            opacity: frame.opacity,
+            transform: frame.transform,
+          })),
+          duration: options.duration,
+          easing: options.easing,
+        });
+      }
+      return nativeAnimate.call(this, frames, options);
+    };
+  });
 
   await page.locator("#nextButton").click();
+  const transitionEvidence = await page.evaluate(() => ({
+    scope: document.documentElement.dataset.uiTransitionScope,
+    overlays: document.querySelectorAll(".ui-transition-fallback-overlay.is-card").length,
+    animations: window.__studyCardAnimations,
+  }));
+  expect(transitionEvidence.scope).toBe("card");
+  expect(transitionEvidence.overlays).toBe(1);
+  expect(transitionEvidence.animations).toHaveLength(2);
+  expect(transitionEvidence.animations.some((animation) => animation.live)).toBe(true);
+  expect(transitionEvidence.animations.some((animation) => !animation.live)).toBe(true);
+  expect(transitionEvidence.animations.every((animation) => animation.duration === 400)).toBe(true);
+  expect(transitionEvidence.animations.every((animation) => (
+    animation.easing === "cubic-bezier(0.22, 0.61, 0.36, 1)"
+  ))).toBe(true);
+  expect(transitionEvidence.animations.every((animation) => (
+    animation.frames[0].opacity !== animation.frames.at(-1).opacity &&
+    animation.frames[0].transform !== animation.frames.at(-1).transform
+  ))).toBe(true);
   await expect(page.locator("#wordText")).not.toHaveText(firstWord);
   await expect.poll(() => cardViewport.evaluate((element) => element.scrollTop)).toBe(0);
+  await expect.poll(() => page.locator(".ui-transition-fallback-overlay.is-card").count()).toBe(0);
   const panelTop = await page.locator("#studyPanel").evaluate((panel) => (
     panel.getBoundingClientRect().top
   ));
@@ -1117,6 +1158,18 @@ test("major study navigation uses directional transitions with safe fallbacks", 
     window.__uiTransitionOrigins = [];
     window.__uiTransitionCallbacks = [];
     window.__uiTransitionStyles = [];
+    window.__manualCardTransitions = [];
+    const nativeAnimate = Element.prototype.animate;
+    Element.prototype.animate = function traceManualCardTransition(frames, options) {
+      if (this.classList?.contains("study-card-viewport")) {
+        window.__manualCardTransitions.push({
+          scope: document.documentElement.dataset.uiTransitionScope || "",
+          live: this.id === "studyCardViewport",
+          duration: options?.duration,
+        });
+      }
+      return nativeAnimate.call(this, frames, options);
+    };
     const nativeStart = document.startViewTransition?.bind(document);
     if (nativeStart) {
       Object.defineProperty(document, "startViewTransition", {
@@ -1211,7 +1264,13 @@ test("major study navigation uses directional transitions with safe fallbacks", 
   const transitionKinds = await page.evaluate(() => window.__uiTransitionKinds);
   expect(transitionKinds).toEqual(expect.arrayContaining(["forward", "reveal", "backward"]));
   const transitionScopes = await page.evaluate(() => window.__uiTransitionScopes);
-  expect(transitionScopes).toEqual(expect.arrayContaining(["hierarchy", "reveal", "card"]));
+  const manualCardTransitions = await page.evaluate(() => window.__manualCardTransitions);
+  expect([...transitionScopes, ...manualCardTransitions.map((entry) => entry.scope)])
+    .toEqual(expect.arrayContaining(["hierarchy", "reveal", "card"]));
+  expect(manualCardTransitions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ scope: "card", live: true, duration: 400 }),
+    expect.objectContaining({ scope: "card", live: false, duration: 400 }),
+  ]));
   const transitionOrigins = await page.evaluate(() => window.__uiTransitionOrigins);
   expect(transitionOrigins.filter((origin) => origin.x && origin.y && origin.radius).length)
     .toBeGreaterThanOrEqual(4);
@@ -1229,15 +1288,6 @@ test("major study navigation uses directional transitions with safe fallbacks", 
     (entry) => entry.scope === "reveal" && entry.cardNew === "ui-card-in-reveal",
   ));
   expect(revealTransitionStyle.appNew).toBe("none");
-  const cardTransitionStyles = await page.evaluate(() => window.__uiTransitionStyles.filter(
-    (entry) => entry.scope === "card",
-  ));
-  expect(cardTransitionStyles).toEqual(expect.arrayContaining([
-    expect.objectContaining({
-      cardOld: expect.stringMatching(/^ui-card-out-(forward|backward)$/),
-      cardNew: expect.stringMatching(/^ui-card-in-(forward|backward)$/),
-    }),
-  ]));
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
     .toBe("");
 
@@ -2361,7 +2411,7 @@ test("mastered senses collapse, expand on demand, and fully mastered words advan
   await page.locator("#exitStudyButton").click();
   await page.locator("#returnHomeButton").click();
   await expect(page.locator("#homePanel")).toBeVisible();
-  currentDayColor = await page.locator('.heatmap-day[data-date="2026-07-26"]')
+  currentDayColor = await page.locator('#homePanel .heatmap-day[data-date="2026-07-26"]')
     .evaluate((element) => element.style.getPropertyValue("--heat-color"));
   expect(currentDayColor).toBe("#dc6a63");
 
@@ -2403,7 +2453,7 @@ test("mastered senses collapse, expand on demand, and fully mastered words advan
   await expect(page.locator("#nextButton")).toBeEnabled();
   await page.locator("#nextButton").click();
   await expect(page.locator("#homePanel")).toBeVisible();
-  currentDayColor = await page.locator('.heatmap-day[data-date="2026-07-26"]')
+  currentDayColor = await page.locator('#homePanel .heatmap-day[data-date="2026-07-26"]')
     .evaluate((element) => element.style.getPropertyValue("--heat-color"));
   expect(currentDayColor).toBe("#49a96d");
 });
