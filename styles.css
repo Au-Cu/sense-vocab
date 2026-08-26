@@ -747,6 +747,11 @@
   background: #0f766e;
 }
 
+/* Series colors supply the stroke; line charts must never inherit point fills. */
+.dashboard-svg .dashboard-line {
+  fill: none;
+}
+
 .dashboard-sankey-flow {
   opacity: 0.46;
 }

@@ -213,6 +213,29 @@ test("dashboard uses status colors and interactive chart tooltips when data exis
   await expect(page.locator(".dashboard-card-detail").first()).toHaveCSS("text-overflow", "clip");
   await expect(page.locator(".dashboard-card-detail").first()).toHaveCSS("white-space", "normal");
   await expect(page.locator(".dashboard-bar.dashboard-new").first()).toHaveCSS("fill", "rgb(104, 114, 125)");
+  const lineFills = await page.evaluate(() => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "dashboard-svg");
+    document.body.append(svg);
+    const fills = [
+      "dashboard-reinforce",
+      "dashboard-review",
+      "dashboard-hold-reinforce",
+      "dashboard-hold-review",
+    ].map((seriesClass) => {
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      line.setAttribute("class", `dashboard-line ${seriesClass}`);
+      line.setAttribute("points", "0,10 10,0 20,10");
+      line.setAttribute("fill", "none");
+      svg.append(line);
+      const fill = getComputedStyle(line).fill;
+      line.remove();
+      return fill;
+    });
+    svg.remove();
+    return fills;
+  });
+  expect(lineFills).toEqual(["none", "none", "none", "none"]);
   const dailyAxisLabels = await page.locator("#dashboardDailyChart .dashboard-axis-left span").allTextContents();
   expect(Number(dailyAxisLabels[0])).toBeGreaterThanOrEqual(Number(dailyAxisLabels.at(-1)));
 
@@ -314,6 +337,43 @@ test("hierarchy pages cover and reveal the home navigation as one parent layer",
     .toBe("");
   await expect(page.locator("#mainAppNav")).toBeVisible();
   await expect(page.locator("#mainAppNav")).not.toHaveCSS("pointer-events", "none");
+});
+
+test("Huawei ArkWeb uses live surfaces instead of snapshot transitions", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, "userAgent", {
+      configurable: true,
+      get: () => "Mozilla/5.0 (Linux; HarmonyOS) AppleWebKit/537.36 ArkWeb/4.1 Mobile HuaweiBrowser/15.0",
+    });
+    const nativeStartViewTransition = document.startViewTransition?.bind(document);
+    window.__nativeTransitionCalls = 0;
+    if (nativeStartViewTransition) {
+      document.startViewTransition = (update) => {
+        window.__nativeTransitionCalls += 1;
+        return nativeStartViewTransition(update);
+      };
+    }
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+
+  await page.locator("#wordListButton").evaluate((button) => button.click());
+  await expect(page.locator("html")).toHaveAttribute("data-ui-transition-mode", "lightweight");
+  await expect(page.locator("#wordListPanel")).toBeVisible();
+  await expect(page.locator(".ui-transition-fallback-overlay")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition ?? ""))
+    .toBe("");
+
+  await page.locator("#wordListBackButton").evaluate((button) => button.click());
+  await expect(page.locator("html")).toHaveAttribute("data-ui-transition-mode", "lightweight");
+  await expect(page.locator("#homePanel")).toBeVisible();
+  await expect(page.locator(".ui-transition-fallback-overlay")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition ?? ""))
+    .toBe("");
+  expect(await page.evaluate(() => window.__nativeTransitionCalls)).toBe(0);
 });
 
 test("mobile Sankey heading and date range stay compact", async ({ page }) => {

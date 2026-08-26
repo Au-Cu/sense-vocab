@@ -427,6 +427,9 @@ let confusionGlobeLoader = null;
 let activeUiTransition = null;
 let commitActiveUiTransition = null;
 let cleanupActiveUiTransition = null;
+let deferredUiStateSavePending = false;
+let deferredUiStateSaveFrame = null;
+let deferredUiStateSaveTimer = null;
 let studyHierarchyOrigin = null;
 let wordListHierarchyOrigin = null;
 let membershipAccess = {
@@ -1199,6 +1202,42 @@ function saveState(options = {}) {
   }
   return persisted;
 }
+
+function runDeferredUiStateSave() {
+  deferredUiStateSaveFrame = null;
+  deferredUiStateSaveTimer = null;
+  if (!deferredUiStateSavePending) return;
+  deferredUiStateSavePending = false;
+  saveState();
+}
+
+function flushDeferredUiStateSave() {
+  if (deferredUiStateSaveFrame !== null) {
+    window.cancelAnimationFrame(deferredUiStateSaveFrame);
+    deferredUiStateSaveFrame = null;
+  }
+  if (deferredUiStateSaveTimer !== null) {
+    window.clearTimeout(deferredUiStateSaveTimer);
+    deferredUiStateSaveTimer = null;
+  }
+  runDeferredUiStateSave();
+}
+
+function saveStateAfterInteractionFrame() {
+  if (document.visibilityState === "hidden") return saveState();
+  deferredUiStateSavePending = true;
+  if (deferredUiStateSaveFrame !== null || deferredUiStateSaveTimer !== null) return true;
+  deferredUiStateSaveFrame = window.requestAnimationFrame(() => {
+    deferredUiStateSaveFrame = null;
+    deferredUiStateSaveTimer = window.setTimeout(runDeferredUiStateSave, 0);
+  });
+  return true;
+}
+
+window.addEventListener("pagehide", flushDeferredUiStateSave);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") flushDeferredUiStateSave();
+});
 
 function normalizeActivityEntry(entry = {}) {
   const uniqueKnownWords = (value) => {
@@ -2863,7 +2902,14 @@ function clearUiTransitionOrigin(root = document.documentElement) {
 
 function cloneUiTransitionSurface(surface, { includeNavigation = false } = {}) {
   if (!(surface instanceof Element)) return null;
-  const clone = surface.cloneNode(true);
+  const clone = surface === appShell
+    ? surface.cloneNode(false)
+    : surface.cloneNode(true);
+  if (surface === appShell) {
+    [...surface.children]
+      .filter((child) => !child.hidden)
+      .forEach((child) => clone.append(child.cloneNode(true)));
+  }
   clone.removeAttribute("id");
   clone.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
   clone.setAttribute("aria-hidden", "true");
@@ -2950,12 +2996,32 @@ function uiTransitionFrames(kind, scope, role = "incoming") {
   ];
 }
 
+function lightweightUiTransitionFrames(kind, scope) {
+  if (scope === "hierarchy") {
+    return [
+      {
+        opacity: 0.35,
+        transform: `translate3d(0, ${kind === "backward" ? -8 : 8}px, 0) scale(0.992)`,
+      },
+      { opacity: 1, transform: "translate3d(0, 0, 0) scale(1)" },
+    ];
+  }
+  return uiTransitionFrames(kind, scope, "incoming");
+}
+
 function commitUiTransition(kind, update, {
   after,
+  afterStart,
   scope = "page",
   origin = null,
 } = {}) {
   const root = document.documentElement;
+  let afterStartCalled = false;
+  const runAfterStart = () => {
+    if (afterStartCalled) return;
+    afterStartCalled = true;
+    afterStart?.();
+  };
   const hadActiveTransition = Boolean(activeUiTransition);
   if (activeUiTransition?.skipTransition) {
     try {
@@ -2981,16 +3047,20 @@ function commitUiTransition(kind, update, {
   commitActiveUiTransition = null;
   delete root.dataset.uiTransition;
   delete root.dataset.uiTransitionScope;
+  delete root.dataset.uiTransitionMode;
   clearUiTransitionOrigin(root);
 
   if (prefersReducedMotion()) {
     update();
+    runAfterStart();
     after?.();
     return null;
   }
 
   root.dataset.uiTransition = kind;
   root.dataset.uiTransitionScope = scope;
+  const lightweightMotion = prefersLightweightUiMotion();
+  if (lightweightMotion) root.dataset.uiTransitionMode = "lightweight";
   if (scope === "hierarchy" && origin) {
     root.style.setProperty("--ui-transition-x", origin.x);
     root.style.setProperty("--ui-transition-y", origin.y);
@@ -3000,8 +3070,10 @@ function commitUiTransition(kind, update, {
     if (activeUiTransition !== transition) return;
     activeUiTransition = null;
     commitActiveUiTransition = null;
+    if (lightweightMotion && transition?.cancel) transition.cancel();
     delete root.dataset.uiTransition;
     delete root.dataset.uiTransitionScope;
+    delete root.dataset.uiTransitionMode;
     clearUiTransitionOrigin(root);
     after?.();
   };
@@ -3009,13 +3081,14 @@ function commitUiTransition(kind, update, {
   // Card changes use the live viewport plus one outgoing snapshot below. Native
   // nested view-transition snapshots can briefly expose the freshly rendered
   // card on Safari and Chromium when a reveal transition has just finished.
-  if (scope !== "card" && !hadActiveTransition && typeof document.startViewTransition === "function") {
+  if (!lightweightMotion && scope !== "card" && !hadActiveTransition && typeof document.startViewTransition === "function") {
     let transition;
     let updateCommitted = false;
     const commitUpdate = () => {
       if (updateCommitted) return;
       updateCommitted = true;
       update();
+      runAfterStart();
     };
     try {
       transition = document.startViewTransition(commitUpdate);
@@ -3034,7 +3107,7 @@ function commitUiTransition(kind, update, {
   }
 
   const transitionSurface = scope === "card" ? studyCardViewport : appShell;
-  const outgoingSurface = ["hierarchy", "page", "card"].includes(scope)
+  const outgoingSurface = !lightweightMotion && ["hierarchy", "page", "card"].includes(scope)
     ? cloneUiTransitionSurface(transitionSurface, {
       includeNavigation: scope === "hierarchy",
     })
@@ -3088,22 +3161,33 @@ function commitUiTransition(kind, update, {
     }
   }
   let animation = null;
-  const animationDuration = scope === "hierarchy"
-    ? 460
-    : scope === "reveal"
-      ? 300
-      : scope === "card"
-        ? 400
-        : 340;
+  const animationDuration = lightweightMotion
+    ? scope === "hierarchy"
+      ? 240
+      : scope === "reveal"
+        ? 200
+        : scope === "card"
+          ? 220
+          : 240
+    : scope === "hierarchy"
+      ? 460
+      : scope === "reveal"
+        ? 300
+        : scope === "card"
+          ? 400
+          : 340;
   const animationEasing = scope === "card"
     ? "cubic-bezier(0.22, 0.61, 0.36, 1)"
     : "cubic-bezier(0.16, 1, 0.3, 1)";
   try {
-    animation = target?.animate?.(uiTransitionFrames(kind, scope, "incoming"), {
-      duration: animationDuration,
-      easing: animationEasing,
-      fill: "both",
-    }) ?? null;
+    animation = target?.animate?.(
+      lightweightMotion
+        ? lightweightUiTransitionFrames(kind, scope)
+        : uiTransitionFrames(kind, scope, "incoming"), {
+        duration: animationDuration,
+        easing: animationEasing,
+        fill: "both",
+      }) ?? null;
   } catch {
     animation = null;
   }
@@ -3120,12 +3204,15 @@ function commitUiTransition(kind, update, {
     }
   }
   if (!animation) {
+    runAfterStart();
     delete root.dataset.uiTransition;
     delete root.dataset.uiTransitionScope;
+    delete root.dataset.uiTransitionMode;
     after?.();
     return null;
   }
   activeUiTransition = animation;
+  runAfterStart();
   Promise.resolve(animation.finished).then(
     () => finish(animation),
     () => finish(animation),
@@ -5489,9 +5576,8 @@ async function startStudy(event) {
   studyHierarchyOrigin = transitionOrigin;
   commitUiTransition("forward", () => {
     state.view = "study";
-    saveState();
     render();
-  }, { scope: "hierarchy", origin: transitionOrigin });
+  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: saveState });
 }
 
 async function startAdvanceStudy(event) {
@@ -5522,9 +5608,8 @@ async function startAdvanceStudy(event) {
   studyHierarchyOrigin = transitionOrigin;
   commitUiTransition("forward", () => {
     state.view = "study";
-    saveState();
     render();
-  }, { scope: "hierarchy", origin: transitionOrigin });
+  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: saveState });
 }
 
 function mountFloatingDialogs() {
@@ -5656,7 +5741,6 @@ function openDashboard(event) {
   closeMoreDialog();
   commitUiTransition("forward", () => {
     state.view = "dashboard";
-    saveState();
     render();
   }, { scope: "page" });
 }
@@ -5665,7 +5749,6 @@ function closeDashboard() {
   if (!state || state.view === "home") return;
   commitUiTransition("backward", () => {
     state.view = "home";
-    saveState();
     render();
   }, { scope: "page" });
 }
@@ -5678,7 +5761,6 @@ function openWordList(event) {
     state.view = "word-list";
     wordListQuery = "";
     wordListFilter = "all";
-    saveState();
     render();
   }, { scope: "hierarchy", origin: transitionOrigin });
 }
@@ -5689,7 +5771,6 @@ function closeWordList(event) {
   commitUiTransition("backward", () => {
     state.wordBrowse = null;
     state.view = "home";
-    saveState();
     render();
   }, {
     scope: "hierarchy",
@@ -6233,8 +6314,8 @@ async function openWordCard(wordId, options = {}) {
       }
       : { wordId };
     state.view = "study";
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
@@ -6247,8 +6328,8 @@ function navigateWordCard(direction) {
   commitUiTransition(direction < 0 ? "backward" : "forward", () => {
     stopWordAudio();
     state.wordBrowse.wordId = wordId;
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, { scope: "card" });
 }
 
@@ -6264,8 +6345,8 @@ function closeWordCard(event) {
       : "word-list";
     clearWordDeepLink();
     wordDeepLinkReturnView = null;
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, {
     scope: "hierarchy",
     origin: transitionOrigin,
@@ -6290,11 +6371,11 @@ function exitStudy(transitionOrigin = null) {
     session.revealed = false;
     session.cardPhase = "hidden";
     state.view = "home";
-    saveState();
     render();
   }, {
     scope: "hierarchy",
     origin: returnOrigin,
+    afterStart: saveState,
     after: () => {
       studyHierarchyOrigin = null;
     },
@@ -6357,8 +6438,8 @@ function showPreviousWord() {
     session.cardPhase = "examples";
     clearStudyCompletionAnimation();
     closeReturnDialog();
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, { scope: "card" });
 }
 
@@ -6380,8 +6461,8 @@ function showNextHistoryWord() {
     }
     clearStudyCompletionAnimation();
     closeReturnDialog();
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, { scope: "card" });
 }
 
@@ -6396,8 +6477,8 @@ function returnToCurrentWord() {
     session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
     session.historyView = null;
     clearStudyCompletionAnimation();
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, { scope: "card" });
 }
 
@@ -6408,8 +6489,8 @@ function revealSenses() {
   commitUiTransition("reveal", () => {
     session.revealed = true;
     session.cardPhase = "select";
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, { scope: "reveal" });
 }
 
@@ -6552,6 +6633,15 @@ function speakCurrentWord() {
 function prefersReducedMotion() {
   return typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function prefersLightweightUiMotion() {
+  const brands = navigator.userAgentData?.brands
+    ?.map((brand) => brand.brand)
+    .join(" ") ?? "";
+  return /HarmonyOS|OpenHarmony|ArkWeb|HuaweiBrowser|HUAWEI/i.test(
+    `${navigator.userAgent ?? ""} ${brands}`,
+  );
 }
 
 function playSenseTapSound() {
@@ -6855,8 +6945,8 @@ function completeCurrentSelection() {
   commitUiTransition("reveal", () => {
     card.expandedMasteredKeys = [];
     session.cardPhase = "examples";
-    saveState();
     render();
+    saveStateAfterInteractionFrame();
   }, { scope: "reveal" });
 }
 
@@ -6949,10 +7039,9 @@ function nextWord() {
       finishStudyWindow("completed");
     }
 
-    saveState();
     render();
     if (!currentCard()) triggerStudyCompletionCue();
-  }, { scope: "card" });
+  }, { scope: "card", afterStart: saveState });
 }
 
 function handleProgressButton(event) {
