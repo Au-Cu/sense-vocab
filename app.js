@@ -5547,17 +5547,6 @@ function openFloatingDialog(dialog, originTarget = null) {
   const animation = [...(dialog.querySelector(".reset-dialog")?.getAnimations?.() ?? [])]
     .find((item) => item.animationName === "modal-drop-expand");
   if (animation) {
-    if (tutorialRuntime?.active) {
-      const trackTutorialTarget = () => {
-        if (
-          floatingDialogTokens.get(dialog) !== token ||
-          !dialog.classList.contains("is-modal-entering")
-        ) return;
-        positionTutorialOverlay({ force: true });
-        window.requestAnimationFrame(trackTutorialTarget);
-      };
-      window.requestAnimationFrame(trackTutorialTarget);
-    }
     Promise.resolve(animation.finished).then(done, done);
   } else {
     window.setTimeout(done, 470);
