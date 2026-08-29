@@ -332,6 +332,7 @@
       advanceShiftCommitted: false,
       reinforcementAdded: false,
       reinforcedKeys: [],
+      reviewPromotedKeys: [],
       activeLearningDay: 1,
       baseLearningDay: 1,
       historyView: null,
@@ -343,10 +344,7 @@
     render();
     if (revealed) {
       lastAutoPlayedCardKey = currentCardKey();
-      playWordAudio(
-        word.word,
-        word.senses.find((sense) => sense.audio)?.audio ?? "",
-      );
+      playWordAudio(word);
     }
     return true;
   }
@@ -601,6 +599,7 @@
       if (!tutorialRuntime?.active) return null;
       return cloneSerializable(tutorialRuntime.realRootState);
     },
+    positionOverlay: (options) => positionTutorialOverlay(options),
   });
 
   replayTutorialButton.addEventListener("click", () => {

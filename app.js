@@ -5542,7 +5542,7 @@ function openFloatingDialog(dialog, originTarget = null) {
     if (floatingDialogTokens.get(dialog) !== token || dialog.hidden) return;
     dialog.classList.remove("is-modal-entering");
     dialog.classList.add("is-modal-open");
-    positionTutorialOverlay({ force: true });
+    window.SenseVocabTutorial?.positionOverlay?.({ force: true });
   };
   const animation = [...(dialog.querySelector(".reset-dialog")?.getAnimations?.() ?? [])]
     .find((item) => item.animationName === "modal-drop-expand");
@@ -7478,6 +7478,9 @@ window.addEventListener("sensevocab:membership", (event) => {
     pending: Boolean(event.detail?.pending),
     expiresAt: event.detail?.expiresAt ?? null,
   };
+  if (state) render();
+});
+window.addEventListener("sensevocab:account-ready", () => {
   if (state) render();
 });
 
