@@ -1282,5 +1282,8 @@
     prepareIndependentMergeState,
     hasIndependentChanges,
     compareVectors,
+    // Single source of truth for the storage-format-v2 mirrored/flattened keys.
+    // app.js normalizeRootState() reads this via the fallback below.
+    mirroredScopeKeys: MIRRORED_SCOPE_KEYS,
   });
 })();
