@@ -34,3 +34,6 @@ CLAUDE.md
 .env
 .env.*
 !.env.example
+
+# JetBrains IDE
+.idea/
