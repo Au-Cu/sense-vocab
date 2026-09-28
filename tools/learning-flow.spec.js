@@ -102,7 +102,7 @@ async function completeAndAdvance(page) {
 }
 
 async function readState(page) {
-  return page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+  return page.evaluate((key) => window.SenseVocabApp.decodeStorageValue(localStorage.getItem(key)), STORAGE_KEY);
 }
 
 async function confirmEveryVisibleSense(page) {
@@ -613,6 +613,7 @@ test("advance learning shifts the remaining plan forward by one day", async ({ p
   await page.locator("#exitStudyButton").click();
   await page.locator("#returnHomeButton").click();
 
+  await expect(page.locator("#homePanel")).toBeVisible();
   const completionAfter = await page.locator("#homeCompletionDate").textContent();
   const dayShift = Math.round((new Date(completionBefore) - new Date(completionAfter)) / 86400000);
   expect(dayShift).toBe(1);
@@ -641,10 +642,10 @@ test("familiar senses move to the bottom and word-level resets restore the right
 
   const first = page.locator(".sense-item").first();
   const firstKey = await first.getAttribute("data-key");
-  await first.click();
-  await page.waitForTimeout(400);
-  const movingCards = await page.locator(".sense-item").evaluateAll((items) => {
-    return items.filter((item) => item.getAnimations().length > 0).length;
+  const movingCards = await first.evaluate((item) => {
+    item.click();
+    return [...document.querySelectorAll(".sense-item")].filter((entry) =>
+      entry.getAnimations().some((animation) => animation.effect.getTiming().duration === 260)).length;
   });
   expect(movingCards).toBeGreaterThanOrEqual(2);
   await page.screenshot({ path: "test-results/familiar-sense-reordering.png", fullPage: true });
@@ -1004,7 +1005,7 @@ test("a scrolled mobile study card returns to the top when the word changes", as
     window.__studyCardAnimations = [];
     const nativeAnimate = Element.prototype.animate;
     Element.prototype.animate = function traceStudyCardAnimation(frames, options) {
-      if (this.classList?.contains("study-card-viewport")) {
+      if (this.classList?.contains("study-card-viewport") || this.id === "senseArea") {
         window.__studyCardAnimations.push({
           live: this.id === "studyCardViewport",
           frames: Array.from(frames, (frame) => ({
@@ -1161,9 +1162,10 @@ test("major study navigation uses directional transitions with safe fallbacks", 
     window.__manualCardTransitions = [];
     const nativeAnimate = Element.prototype.animate;
     Element.prototype.animate = function traceManualCardTransition(frames, options) {
-      if (this.classList?.contains("study-card-viewport")) {
+      if (this.classList?.contains("study-card-viewport") || this.id === "senseArea") {
         window.__manualCardTransitions.push({
           scope: document.documentElement.dataset.uiTransitionScope || "",
+          kind: document.documentElement.dataset.uiTransition || "",
           live: this.id === "studyCardViewport",
           duration: options?.duration,
         });
@@ -1262,9 +1264,12 @@ test("major study navigation uses directional transitions with safe fallbacks", 
     .toBe("");
 
   const transitionKinds = await page.evaluate(() => window.__uiTransitionKinds);
-  expect(transitionKinds).toEqual(expect.arrayContaining(["forward", "reveal", "backward"]));
+  expect(transitionKinds).toEqual(expect.arrayContaining(["forward", "backward"]));
   const transitionScopes = await page.evaluate(() => window.__uiTransitionScopes);
   const manualCardTransitions = await page.evaluate(() => window.__manualCardTransitions);
+  expect(manualCardTransitions).toEqual(expect.arrayContaining([
+    expect.objectContaining({ scope: "reveal", kind: "reveal" }),
+  ]));
   expect([...transitionScopes, ...manualCardTransitions.map((entry) => entry.scope)])
     .toEqual(expect.arrayContaining(["hierarchy", "reveal", "card"]));
   expect(manualCardTransitions).toEqual(expect.arrayContaining([
@@ -1281,13 +1286,9 @@ test("major study navigation uses directional transitions with safe fallbacks", 
     .toContainEqual({ visibleBefore: "homePanel", visibleAfter: "wordListPanel" });
   expect(transitionCallbacks)
     .toContainEqual({ visibleBefore: "wordListPanel", visibleAfter: "homePanel" });
-  await expect.poll(() => page.evaluate(() => window.__uiTransitionStyles.some(
-    (entry) => entry.scope === "reveal" && entry.cardNew === "ui-card-in-reveal",
-  ))).toBe(true);
-  const revealTransitionStyle = await page.evaluate(() => window.__uiTransitionStyles.find(
-    (entry) => entry.scope === "reveal" && entry.cardNew === "ui-card-in-reveal",
-  ));
-  expect(revealTransitionStyle.appNew).toBe("none");
+  // Reveals animate the live content rather than waiting for a full-page snapshot.
+  expect(manualCardTransitions.filter((entry) => entry.scope === "reveal").length)
+    .toBeGreaterThan(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
     .toBe("");
 

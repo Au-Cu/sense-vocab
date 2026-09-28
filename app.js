@@ -1140,12 +1140,15 @@ function loadState(storageKey = activeStorageKey) {
   return normalized;
 }
 
+let persistedStateBaseline = null;
+
 function saveState(options = {}) {
   if (tutorialRuntime?.active) return;
   if (!isPersistenceSafe()) return;
   wordListIndexRevision += 1;
   wordListIndexCache = null;
   const notify = options.notify !== false;
+  if (notify) dashboardRecordSnapshot(activeBookId());
   let persisted = true;
   let attemptedCharacters = 0;
   let previousCharacters = 0;
@@ -1159,7 +1162,11 @@ function saveState(options = {}) {
         wordBrowse: null,
       };
     }
-    const previous = readStoredState(activeStorageKey);
+    const previousRaw = localStorage.getItem(activeStorageKey);
+    const previous = persistedStateBaseline?.key === activeStorageKey &&
+      persistedStateBaseline.raw === previousRaw
+      ? persistedStateBaseline
+      : readStoredState(activeStorageKey);
     const previousStoredState = previous.parsed;
     previousCharacters = previous.raw?.length ?? 0;
     if (window.SenseVocabSync) {
@@ -1181,6 +1188,7 @@ function saveState(options = {}) {
     const serialized = serializeLocalState(nextRootState);
     attemptedCharacters = serialized.length;
     writeStoredState(activeStorageKey, serialized);
+    persistedStateBaseline = { key: activeStorageKey, raw: serialized, parsed: nextRootState };
   } catch (error) {
     persisted = false;
     window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
@@ -1742,9 +1750,10 @@ function compressStorageText(input) {
     beginToken();
     if (bestPosition >= 0) {
       output.push(cursor - bestPosition - 1, bestLength - LZ_MIN_MATCH);
-      for (let offset = 0; offset < bestLength; offset += 1) {
-        addCandidate(cursor + offset);
-      }
+      // Index match boundaries rather than every copied character. The decoder
+      // is unchanged; bounded indexing avoids rescanning large history blocks.
+      addCandidate(cursor);
+      if (bestLength > 3) addCandidate(cursor + bestLength - 3);
       cursor += bestLength;
     } else {
       flags |= 1 << flagBit;
@@ -1926,10 +1935,13 @@ function decodeStorageValue(raw) {
 }
 
 function serializeLocalState(candidate) {
-  // Keep new writes as ordinary JSON so existing integrations and local
-  // recovery tools can continue to inspect the cache directly. The reader
-  // still accepts the legacy svlz1 representation for backward compatibility.
-  return JSON.stringify(encodeLocalStorageState(candidate));
+  const encoded = encodeLocalStorageState(candidate);
+  const json = JSON.stringify(encoded);
+  if (json.length < 256000) return json;
+  // The existing reader (including older deployed clients) supports svlz1.
+  // Replace atomically; quota failure leaves the previous complete value intact.
+  const packed = LOCAL_STORAGE_COMPRESSION_PREFIX + compressStorageText(json);
+  return packed.length < json.length ? packed : json;
 }
 
 function accountStorageKey(userId) {
@@ -3070,7 +3082,7 @@ function commitUiTransition(kind, update, {
     if (activeUiTransition !== transition) return;
     activeUiTransition = null;
     commitActiveUiTransition = null;
-    if (lightweightMotion && transition?.cancel) transition.cancel();
+    if ((lightweightMotion || scope === "reveal") && transition?.cancel) transition.cancel();
     delete root.dataset.uiTransition;
     delete root.dataset.uiTransitionScope;
     delete root.dataset.uiTransitionMode;
@@ -3081,7 +3093,7 @@ function commitUiTransition(kind, update, {
   // Card changes use the live viewport plus one outgoing snapshot below. Native
   // nested view-transition snapshots can briefly expose the freshly rendered
   // card on Safari and Chromium when a reveal transition has just finished.
-  if (!lightweightMotion && scope !== "card" && !hadActiveTransition && typeof document.startViewTransition === "function") {
+  if (!lightweightMotion && !["card", "reveal"].includes(scope) && !hadActiveTransition && typeof document.startViewTransition === "function") {
     let transition;
     let updateCommitted = false;
     const commitUpdate = () => {
@@ -3254,7 +3266,7 @@ if (state.view === "dashboard") {
 }
 appShell.classList.toggle("is-study-view", state.view === "study");
   confusionPanel.hidden = state.view !== "confusion";
-  renderHome();
+  if (state.view === "home" || state.view === "dashboard") renderHome();
   renderStudy();
   if (state.view !== "study") {
     clearStudyCompletionAnimation();
@@ -4672,7 +4684,7 @@ function renderHome() {
   if (dashboardSnapshotChanged && isPersistenceSafe()) {
     saveState({ notify: false });
   }
-  renderDashboard();
+  if (state.view === "dashboard") renderDashboard();
   startStudyButton.textContent = button.label;
   startStudyButton.disabled = button.disabled;
   advanceStudyButton.hidden = scheduleDeltaDays() > 0 ||
@@ -6867,10 +6879,8 @@ function animateSenseMastered(item) {
     revealButton.classList.add("is-mastered");
   }
 
-  window.setTimeout(() => {
-    render();
-    animateSenseReorder(previousLayout, key);
-  }, 180);
+  render();
+  animateSenseReorder(previousLayout, key);
 }
 
 function animateSenseReorder(previousLayout, selectedKey) {
@@ -6899,8 +6909,8 @@ function animateSenseReorder(previousLayout, selectedKey) {
           },
         ],
         {
-          duration: 560,
-          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          duration: 260,
+          easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
           fill: "both",
         },
       ),
@@ -6913,6 +6923,7 @@ function animateSenseReorder(previousLayout, selectedKey) {
   }
 
   Promise.allSettled(animations.map((animation) => animation.finished)).then(() => {
+    animations.forEach((animation) => animation.cancel());
     senseList.classList.remove("is-reordering");
   });
 }
@@ -7799,10 +7810,12 @@ function maybeStartAutomaticTutorial(delay = TUTORIAL_AUTO_START_DELAY_MS) {
   }, Math.max(0, delay));
 }
 
+const acceptedTutorialClicks = new WeakSet();
+
 function handleTutorialInteraction(event) {
   if (!tutorialRuntime?.active) return;
   const target = tutorialTargetForStep();
-  if (target && !target.contains(event.target)) return;
+  if (target && !target.contains(event.target) && !acceptedTutorialClicks.has(event)) return;
 
   const step = tutorialRuntime.step;
   if (step === "plan" && event.target.closest("#planButton")) {
@@ -7812,9 +7825,9 @@ function handleTutorialInteraction(event) {
   } else if (step === "reveal" && event.target.closest("#revealButton")) {
     window.setTimeout(() => setTutorialStep("act-performance"), 0);
   } else if (step === "act-performance" && event.target.closest('[data-key="act:v-1"]')) {
-    window.setTimeout(() => setTutorialStep("act-law"), 720);
+    window.setTimeout(() => setTutorialStep("act-law"), 0);
   } else if (step === "act-law" && event.target.closest('[data-key="act:n-3"]')) {
-    window.setTimeout(() => setTutorialStep("reset"), 720);
+    window.setTimeout(() => setTutorialStep("reset"), 0);
   } else if (step === "reset" && event.target.closest("#resetButton")) {
     window.setTimeout(() => setTutorialStep("reset-marking"), 0);
   } else if (step === "reset-marking" && event.target.closest("#resetMarkingButton")) {
@@ -7832,7 +7845,7 @@ function handleTutorialInteraction(event) {
     }, 0);
   } else if (step === "her-senses" && event.target.closest(".sense-item")) {
     if (tutorialCurrentWordIsFullyMarked()) {
-      window.setTimeout(() => setTutorialStep("her-next"), 720);
+      window.setTimeout(() => setTutorialStep("her-next"), 0);
     }
   } else if (step === "her-next" && event.target.closest("#nextButton")) {
     window.setTimeout(() => {
@@ -7870,7 +7883,11 @@ function blockNonTutorialClick(event) {
   if (
     target?.contains(event.target) &&
     !TUTORIAL_NON_INTERACTIVE_STEPS.has(tutorialRuntime.step)
-  ) return;
+  ) {
+    // A synchronous sense redraw can detach the accepted target before bubbling.
+    acceptedTutorialClicks.add(event);
+    return;
+  }
   event.preventDefault();
   event.stopImmediatePropagation();
 }

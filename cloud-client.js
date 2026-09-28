@@ -20081,6 +20081,19 @@ ${suffix}`;
   }
   if (shouldShowDeprecationWarning()) console.warn("\u26A0\uFE0F  Node.js 20 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 22 or later. For more information, visit: https://github.com/orgs/supabase/discussions/45715");
 
+  // tools/state-upload.mjs
+  function compactStateUpload(state) {
+    const active = state?.bookStates?.[state.activeBookId];
+    if (!active) return state;
+    const payload = { ...state };
+    for (const key of ["dashboardSnapshots", "dashboardEvents", "_sync", "confusionLinks"]) {
+      if (Object.hasOwn(active, key) && JSON.stringify(payload[key]) === JSON.stringify(active[key])) {
+        delete payload[key];
+      }
+    }
+    return payload;
+  }
+
   // tools/cloud-client-entry.js
   function assertResult(result) {
     if (result?.error) throw result.error;
@@ -20250,7 +20263,7 @@ ${suffix}`;
         },
         async saveState(state, expectedRevision = null, force = false) {
           return assertResult(await client.rpc("save_user_state", {
-            p_state: state,
+            p_state: compactStateUpload(state),
             p_expected_revision: expectedRevision,
             p_force: Boolean(force)
           }));

@@ -1378,15 +1378,17 @@
         refreshAccountProfile({ silent: true }),
         refreshNotifications({ silent: true }),
       ]);
+      if (currentUser?.id !== user.id) return;
       const remote = normalizedRemote(remoteResult);
-      const syncMeta = loadSyncMeta(user.id);
       const guestState = app.getGuestState();
-      const accountHasUnsyncedData = Boolean(syncMeta.dirty) &&
-        app.hasLearningData(accountCache);
+      // The dirty marker is a separate write and can be lost on quota failure
+      // or page termination. Learning evidence must not depend on that hint.
+      const liveAccountState = app.getState();
+      const accountHasUnsyncedData = app.hasLearningData(liveAccountState);
 
       if (remote.found) {
         const accountState = accountHasUnsyncedData
-          ? app.mergeStates(accountCache, remote.state)
+          ? app.mergeStates(liveAccountState, remote.state)
           : remote.state;
         const accountNeedsUpload = app.stateSignature(accountState) !==
           app.stateSignature(remote.state);
@@ -1428,7 +1430,7 @@
       }
 
       const localState = accountHasUnsyncedData
-        ? accountCache
+        ? liveAccountState
         : app.hasLearningData(guestState)
           ? guestState
           : accountCache;
@@ -1519,7 +1521,9 @@
         const initialSnapshot = app.getState();
         if (!app.hasLearningData(initialSnapshot)) {
           const remote = normalizedRemote(await cloud.loadState());
-          if (remote.found && app.hasLearningData(remote.state)) {
+          if (currentUser?.id !== syncUserId) return null;
+          if (remote.found && app.hasLearningData(remote.state) &&
+              !app.hasLearningData(app.getState())) {
             cloudRevision = remote.revision;
             if (replaceRemote) {
               queueRemoteConflict(remote, initialSnapshot, "empty-local-blocked");
@@ -1560,6 +1564,7 @@
 
           if (expectedRevision === null) {
             const remote = normalizedRemote(await cloud.loadState());
+            if (currentUser?.id !== syncUserId) return null;
             if (remote.found) {
               cloudRevision = remote.revision;
               expectedRevision = remote.revision;
@@ -1571,7 +1576,7 @@
                   revision: remote.revision,
                 };
               }
-              const merged = app.mergeStates(snapshot, remote.state);
+              const merged = app.mergeStates(app.getState(), remote.state);
               app.replaceActiveState(merged, {
                 notify: false,
                 stampSync: false,

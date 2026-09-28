@@ -266,6 +266,112 @@ async function login(page, email = "learner@example.com") {
   await page.locator("#accountSubmitButton").click();
 }
 
+test("account startup retains a learned tail even when the dirty flag was lost", async ({ page }) => {
+  const remote = makeState(20);
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = { status: "mastered" };
+  const local = JSON.parse(JSON.stringify(remote));
+  local.introducedWords.push("ability");
+  local.progress["ability:n-1"] = {
+    status: "mastered", lastSeenActual: "2026-09-03", lastLearningDay: 20,
+    updatedAt: "2026-09-03T12:00:00.000Z",
+  };
+  await installFakeCloud(page, { found: true, revision: 10, state: remote }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.addInitScript(({ key, local }) => {
+    localStorage.setItem(key, JSON.stringify(local));
+    localStorage.setItem("sense-vocab-cloud-sync-v1:user-1", JSON.stringify({ revision: 10, dirty: false }));
+  }, { key: ACCOUNT_KEY, local });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await expect.poll(() => page.evaluate(() => window.SenseVocabApp.getState().progress["ability:n-1"]?.status)).toBe("mastered");
+  await expect.poll(() => page.evaluate(() => window.__fakeCloud.remote.state.progress["ability:n-1"]?.status)).toBe("mastered");
+});
+
+test("large learning history remains durable under a local storage quota", async ({ page }) => {
+  const keys = require("../data/vocabulary-bundle.json").books.find((book) => book.id === "kaoyan")
+    .entries.flatMap((entry) => entry.senseIds.map((id) => `${entry.wordId}:${id}`)).slice(0, 4000);
+  await installFakeCloud(page);
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  const result = await page.evaluate((keys) => {
+    const app = window.SenseVocabApp;
+    const candidate = app.getState();
+    const scope = candidate.bookStates[candidate.activeBookId];
+    scope.progress = Object.fromEntries(keys.map((key) => [
+      key, { status: "mastered", firstSeen: "2026-09-03", lastSeen: "2026-09-18", updatedAt: "2026-09-18T12:00:00.000Z", hits: 3, misses: 0 },
+    ]));
+    Object.assign(candidate, scope);
+    const originalSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === app.getActiveStorageKey() && value.length > 600000) throw new DOMException("quota", "QuotaExceededError");
+      return originalSet.call(this, key, value);
+    };
+    try {
+      const persisted = app.replaceActiveState(candidate);
+      const restored = app.decodeStorageValue(localStorage.getItem(app.getActiveStorageKey()));
+      return { persisted, count: Object.keys(restored.progress).length, tail: restored.progress[keys.at(-1)], size: localStorage.getItem(app.getActiveStorageKey()).length };
+    } finally { Storage.prototype.setItem = originalSet; }
+  }, keys);
+  expect(result.persisted).toBe(true);
+  expect(result.count).toBe(4000);
+  expect(result.tail.status).toBe("mastered");
+  expect(result.size).toBeLessThan(600000);
+  await page.reload();
+  await waitForAccount(page);
+  expect(await page.evaluate((key) => window.SenseVocabApp.getState().progress[key]?.status, keys.at(-1)))
+    .toBe("mastered");
+});
+
+test("learning recorded during the startup cloud read survives reconciliation", async ({ page }) => {
+  const remote = makeState(20);
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = { status: "mastered" };
+  await installFakeCloud(page, { found: true, revision: 10, state: remote }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+    loadStateDelayMs: 1500,
+  });
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => window.__fakeCloud.loadStateCalls > 0);
+  await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const next = app.getState();
+    const scope = next.bookStates[next.activeBookId];
+    scope.introducedWords.push("ability");
+    scope.progress["ability:n-1"] = { status: "mastered", updatedAt: new Date().toISOString() };
+    Object.assign(next, scope);
+    app.replaceActiveState(next, { notify: false });
+  });
+  await waitForAccount(page);
+  await expect.poll(() => page.evaluate(() => window.__fakeCloud.remote.state.progress["ability:n-1"]?.status))
+    .toBe("mastered");
+  expect(await page.evaluate(() => window.SenseVocabApp.getState().progress["ability:n-1"]?.status))
+    .toBe("mastered");
+});
+
+test("cloud uploads omit identical supplemental mirrors without changing decoded state", async ({ page }) => {
+  const { compactStateUpload } = await import("./state-upload.mjs");
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  const original = await page.evaluate(() => {
+    const candidate = window.SenseVocabApp.getState();
+    const active = candidate.bookStates[candidate.activeBookId];
+    active.dashboardEvents = { event: { senseId: "act:v-1", from: "review", to: "mastered" } };
+    active.confusionLinks = { "act|action": { left: "act", right: "action" } };
+    Object.assign(candidate, active);
+    return candidate;
+  });
+  const payload = compactStateUpload(original);
+  expect(payload).not.toHaveProperty("dashboardEvents");
+  expect(payload).toHaveProperty("bookStates");
+  const signatures = await page.evaluate(({ original, payload }) => [
+    window.SenseVocabApp.stateSignature(original), window.SenseVocabApp.stateSignature(payload),
+  ], { original, payload });
+  expect(signatures[0]).toBe(signatures[1]);
+  expect(original).toHaveProperty("dashboardEvents");
+});
+
 test("a localStorage quota error does not abort an authenticated cloud sync", async ({ page }) => {
   await page.addInitScript(() => {
     const nativeSetItem = Storage.prototype.setItem;
@@ -292,6 +398,7 @@ test("a localStorage quota error does not abort an authenticated cloud sync", as
   await waitForAccount(page);
   await login(page);
   await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect(page.locator("#accountSyncStatus")).toHaveText("云端记录已同步");
   await page.locator("#closeAccountButton").click();
 
   await page.evaluate(() => {
@@ -301,10 +408,11 @@ test("a localStorage quota error does not abort an authenticated cloud sync", as
   await page.locator("#dailyTargetInput").fill("27");
   await page.locator("#savePlanButton").click();
 
+  await expect(page.locator("#todayNewCount")).toHaveText("27");
+  expect(await page.evaluate(() => window.SenseVocabApp.isActiveStatePersisted())).toBe(false);
   await expect.poll(() => page.evaluate(() => {
     return window.__fakeCloud.remote?.state?.plan?.dailyTarget ?? null;
   })).toBe(27);
-  await expect(page.locator("#todayNewCount")).toHaveText("27");
   await expect.poll(() => page.evaluate(() => {
     return window.__fakeCloud.saves.at(-1)?.state?.plan?.dailyTarget ?? null;
   })).toBe(27);
@@ -1649,7 +1757,9 @@ test("blank guest mode cannot overwrite a non-empty account after logout and log
   expect(result.introducedWords).toContain("ability");
   expect(result.remoteTarget).toBe(55);
   expect(result.remoteWords).toContain("ability");
-  expect(result.saves).toBe(savesBeforeLogin);
+  expect(result.saves).toBeGreaterThanOrEqual(savesBeforeLogin);
+  expect(await page.evaluate(() => window.__fakeCloud.saves.every((save) =>
+    save.state.introducedWords.includes("ability") && save.state.plan.dailyTarget === 55))).toBe(true);
 });
 
 test("automatic sync restores cloud data instead of uploading an empty account cache", async ({ page }) => {

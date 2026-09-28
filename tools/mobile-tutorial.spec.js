@@ -58,11 +58,21 @@ async function expectSpotlightContains(page, targetSelector) {
     const spotlight = document.querySelector("#tutorialSpotlight")?.getBoundingClientRect();
     const target = document.querySelector(selector)?.getBoundingClientRect();
     if (!spotlight || !target) return false;
-    return spotlight.left <= target.left &&
-      spotlight.top <= target.top &&
-      spotlight.right >= Math.min(document.documentElement.clientWidth, target.right) &&
-      spotlight.bottom >= Math.min(document.documentElement.clientHeight, target.bottom);
-  }, targetSelector)).toBe(true);
+    // Long details may extend above the viewport after scrolling into view.
+    // The spotlight, like its masks, covers only the visible intersection.
+    const tolerance = 0.5;
+    return spotlight.left <= Math.max(0, target.left) + tolerance &&
+      spotlight.top <= Math.max(0, target.top) + tolerance &&
+      spotlight.right + tolerance >= Math.min(document.documentElement.clientWidth, target.right) &&
+      spotlight.bottom + tolerance >= Math.min(document.documentElement.clientHeight, target.bottom);
+  }, targetSelector)).toBe(true).catch(async (error) => {
+    error.message += "\nGeometry: " + JSON.stringify(await page.evaluate((selector) => ({
+      spotlight: document.querySelector("#tutorialSpotlight")?.getBoundingClientRect().toJSON(),
+      target: document.querySelector(selector)?.getBoundingClientRect().toJSON(),
+      step: window.tutorialRuntime?.step,
+    }), targetSelector));
+    throw error;
+  });
 }
 
 test("mobile home stays compact, searches words, and opens the heatmap at the latest date", async ({ page }) => {
@@ -205,7 +215,8 @@ test("tutorial plan cancellation stays covered and cannot strand the overlay", a
 
 test("the guided tutorial is complete and never mutates real learning data", async ({ page }) => {
   await page.addInitScript(() => {
-    window.__SENSE_VOCAB_TUTORIAL_WAIT_MS__ = 650;
+    // Leave a stable geometry observation window after the reveal animation.
+    window.__SENSE_VOCAB_TUTORIAL_WAIT_MS__ = 1800;
     window.__SENSE_VOCAB_TUTORIAL_HER_PROMPT_DELAY_MS__ = 450;
     window.__playedTutorialAudio = [];
     window.Audio = class TutorialAudio {

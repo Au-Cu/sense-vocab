@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { compactStateUpload } from "./state-upload.mjs";
 
 function assertResult(result) {
   if (result?.error) throw result.error;
@@ -216,7 +217,7 @@ window.SenseVocabCloud = {
 
       async saveState(state, expectedRevision = null, force = false) {
         return assertResult(await client.rpc("save_user_state", {
-          p_state: state,
+          p_state: compactStateUpload(state),
           p_expected_revision: expectedRevision,
           p_force: Boolean(force),
         }));
