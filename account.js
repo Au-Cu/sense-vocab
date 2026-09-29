@@ -120,6 +120,11 @@
   )
     ? Math.max(0, window.__SENSE_VOCAB_ACCOUNT_BOOTSTRAP_TIMEOUT_MS__)
     : 8000;
+  const ACCOUNT_REMOTE_STATE_TIMEOUT_MS = Number.isFinite(
+    window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_TIMEOUT_MS__,
+  )
+    ? Math.max(0, window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_TIMEOUT_MS__)
+    : 15000;
   const REFRESH_INTERVAL_MS = Number.isFinite(
     window.__SENSE_VOCAB_REFRESH_INTERVAL_MS__,
   )
@@ -129,6 +134,18 @@
   const factory = window.__SENSE_VOCAB_CLOUD_FACTORY__ ??
     window.SenseVocabCloud?.create;
   const cloud = typeof factory === "function" ? factory(config) : null;
+
+  function withAccountTimeout(task, timeoutMs, message) {
+    let timeoutId = null;
+    return Promise.race([
+      Promise.resolve(task),
+      new Promise((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]).finally(() => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+    });
+  }
 
   function showFloatingDialog(dialog, originTarget = null) {
     if (window.senseVocabModalMotion?.open) {
@@ -1331,7 +1348,11 @@
     }
 
     try {
-      const consent = await cloud.loadLegalConsents();
+      const consent = await withAccountTimeout(
+        cloud.loadLegalConsents(),
+        ACCOUNT_BOOTSTRAP_TIMEOUT_MS,
+        "账户隐私状态核验超时。",
+      );
       if (consent?.complete) {
         pendingConsentSession = null;
         return true;
@@ -1371,13 +1392,19 @@
     setSyncStatus("本机账户记录已加载，正在核对云端…", "pending");
     setMessage("正在读取云端记录……");
     showPrimaryAccountView();
+    // The authenticated local scope is safe to show immediately. Remote state,
+    // profile, and notifications continue independently instead of extending
+    // the startup screen when one endpoint is slow.
+    announceAccountReady();
+    refreshAccountProfile({ silent: true }).catch(() => {});
+    refreshNotifications({ silent: true }).catch(() => {});
 
     try {
-      const [remoteResult] = await Promise.all([
+      const remoteResult = await withAccountTimeout(
         cloud.loadState(),
-        refreshAccountProfile({ silent: true }),
-        refreshNotifications({ silent: true }),
-      ]);
+        ACCOUNT_REMOTE_STATE_TIMEOUT_MS,
+        "云端学习记录读取超时。",
+      );
       if (currentUser?.id !== user.id) return;
       const remote = normalizedRemote(remoteResult);
       const guestState = app.getGuestState();

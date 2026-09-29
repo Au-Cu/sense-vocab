@@ -289,6 +289,42 @@ test("account startup retains a learned tail even when the dirty flag was lost",
   await expect.poll(() => page.evaluate(() => window.__fakeCloud.remote.state.progress["ability:n-1"]?.status)).toBe("mastered");
 });
 
+test("account startup shows the authenticated local scope before a slow cloud read finishes", async ({ page }) => {
+  const remote = makeState(20);
+  const local = makeState(45);
+  local.introducedWords = ["act"];
+  local.progress["act:v-1"] = {
+    status: "mastered",
+    lastSeenActual: "2026-09-27",
+    updatedAt: "2026-09-27T12:00:00.000Z",
+  };
+  await installFakeCloud(page, { found: true, revision: 10, state: remote }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+    loadStateDelayMs: 5000,
+  });
+  await page.addInitScript(({ key, state }) => {
+    localStorage.setItem(key, JSON.stringify(state));
+    window.addEventListener("sensevocab:account-ready", () => {
+      window.__accountReadyElapsed = performance.now();
+    }, { once: true });
+  }, { key: ACCOUNT_KEY, state: local });
+
+  await page.goto(APP_URL);
+  await expect(page.locator("html")).toHaveAttribute("data-account-ready", "true", {
+    timeout: 3000,
+  });
+  const startup = await page.evaluate(() => ({
+    elapsed: window.__accountReadyElapsed,
+    target: window.SenseVocabApp.getState().plan.dailyTarget,
+    status: window.SenseVocabApp.getState().progress["act:v-1"]?.status,
+    cloudReads: window.__fakeCloud.loadStateCalls,
+  }));
+  expect(startup.elapsed).toBeLessThan(3000);
+  expect(startup.target).toBe(45);
+  expect(startup.status).toBe("mastered");
+  expect(startup.cloudReads).toBe(1);
+});
+
 test("large learning history remains durable under a local storage quota", async ({ page }) => {
   const keys = require("../data/vocabulary-bundle.json").books.find((book) => book.id === "kaoyan")
     .entries.flatMap((entry) => entry.senseIds.map((id) => `${entry.wordId}:${id}`)).slice(0, 4000);
@@ -1279,7 +1315,7 @@ test("guest conflict merge preserves account learning completed after the prompt
   expect(result.abandonStatus).toBe("mastered");
 });
 
-test("reload hides guest progress and restores the account cache before cloud convergence", async ({ page }) => {
+test("reload exposes only the account cache while cloud convergence continues", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const guestState = makeState(10);
   guestState.introducedWords = ["abandon"];
@@ -1324,23 +1360,18 @@ test("reload hides guest progress and restores the account cache before cloud co
     viewportWidth: document.documentElement.clientWidth,
     documentWidth: document.documentElement.scrollWidth,
   }));
-  expect(duringBootstrap.accountReady).toBeNull();
+  expect(duringBootstrap.accountReady).toBe("true");
   expect(duringBootstrap.activeWords.sort()).toEqual(["ability", "act"]);
-  expect(duringBootstrap.bootDisplay).not.toBe("none");
-  expect(duringBootstrap.appShellDisplay).toBe("none");
-  expect(duringBootstrap.planButtonExposed).toBe(false);
-  expect(duringBootstrap.planButtonDisabled).toBe(true);
-  expect(duringBootstrap.appShellHidden).toBe(true);
-  expect(duringBootstrap.appShellInert).toBe(true);
-  expect(duringBootstrap.appShellAriaHidden).toBe("true");
-  expect(duringBootstrap.studyPanelInert).toBe(true);
-  expect(duringBootstrap.homeBusy).toBe("true");
+  expect(duringBootstrap.bootDisplay).toBe("none");
+  expect(duringBootstrap.appShellDisplay).not.toBe("none");
+  expect(duringBootstrap.planButtonExposed).toBe(true);
+  expect(duringBootstrap.planButtonDisabled).toBe(false);
+  expect(duringBootstrap.appShellHidden).toBe(false);
+  expect(duringBootstrap.appShellInert).toBe(false);
+  expect(duringBootstrap.appShellAriaHidden).toBeNull();
+  expect(duringBootstrap.studyPanelInert).toBe(false);
+  expect(duringBootstrap.homeBusy).toBe("false");
   expect(duringBootstrap.documentWidth).toBeLessThanOrEqual(duringBootstrap.viewportWidth);
-  await expect(page.locator("#bootScreen .boot-brand")).toHaveAttribute(
-    "src",
-    "./assets/app-icon-zoomed.png",
-  );
-  await page.screenshot({ path: "test-results/boot-screen-mobile.png", fullPage: true });
 
   await waitForAccount(page);
   await expect(page.locator("#bootScreen")).toBeHidden();

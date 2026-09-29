@@ -94,15 +94,27 @@ async function reveal(page) {
 
 async function completeAndAdvance(page) {
   const button = page.locator("#nextButton");
-  if ((await button.textContent()) !== "下一词") {
+  const initialLabel = (await button.textContent()) ?? "";
+  if (!/^(下一词|返回主页)$/.test(initialLabel)) {
     await button.click();
-    await expect(button).toHaveText("下一词");
+    await expect(button).toHaveText(/^(下一词|返回主页)$/);
   }
-  await button.click();
+  if ((await button.textContent()) === "下一词") {
+    await button.click();
+  }
 }
 
 async function readState(page) {
   return page.evaluate((key) => window.SenseVocabApp.decodeStorageValue(localStorage.getItem(key)), STORAGE_KEY);
+}
+
+async function waitForState(page, predicate) {
+  let saved = null;
+  await expect.poll(async () => {
+    saved = await readState(page);
+    return Boolean(saved && predicate(saved));
+  }).toBe(true);
+  return saved;
 }
 
 async function confirmEveryVisibleSense(page) {
@@ -282,7 +294,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await reveal(page);
   await page.locator('[data-key="act:v-2"]').click();
   await completeAndAdvance(page);
-  let state = await readState(page);
+  let state = await waitForState(page, (saved) => saved.progress["act:v-2"]?.status === "review");
   expect(state.progress["act:v-1"].status).toBe("mastered");
   expect(state.progress["act:v-2"].status).toBe("review");
   expect(state.progress["act:n-3"].status).toBe("reinforce");
@@ -321,7 +333,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await page.locator('[data-key="act:n-4"]').click();
   await completeAndAdvance(page);
 
-  state = await readState(page);
+  state = await waitForState(page, (saved) => saved.progress["act:n-4"]?.status === "review");
   expect(state.progress["act:v-2"].status).toBe("mastered");
   expect(state.progress["act:n-3"].status).toBe("review");
   expect(state.progress["act:n-4"].status).toBe("review");
@@ -339,7 +351,10 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await page.locator('[data-key="act:n-3"]').click();
   await completeAndAdvance(page);
 
-  state = await readState(page);
+  state = await waitForState(page, (saved) => (
+    saved.progress["act:n-3"]?.status === "review" &&
+    saved.progress["act:n-4"]?.status === "mastered"
+  ));
   expect(state.progress["act:n-3"].status).toBe("review");
   expect(state.progress["act:n-4"].status).toBe("mastered");
 
@@ -350,7 +365,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   await page.locator('[data-key="act:n-3"]').click();
   await completeAndAdvance(page);
 
-  state = await readState(page);
+  state = await waitForState(page, (saved) => saved.progress["act:n-3"]?.status === "mastered");
   expect(state.progress["act:n-3"].status).toBe("mastered");
   expect(Object.values(state.progress).filter((item) => item.status !== "mastered")).toEqual([]);
 });
@@ -536,7 +551,7 @@ test("advance runs the full next plan day while incremental only adds new words"
   // Incremental learning must ignore words whose review is only due tomorrow.
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#cardMode")).toHaveText("增量");
-  let saved = await readState(page);
+  let saved = await waitForState(page, (state) => state.session?.queue?.length > 0);
   expect(saved.introducedWords).toContain("act");
   expect(saved.session.queue[0].wordId).not.toBe("act");
   await expect(page.locator("#wordText")).not.toHaveText("act");
@@ -569,7 +584,9 @@ test("advance runs the full next plan day while incremental only adds new words"
   await completeAndAdvance(page);
   await expect(page.locator("#cardMode")).toHaveText("提前学习完成");
 
-  saved = await readState(page);
+  saved = await waitForState(page, (state) => (
+    state.session?.activePlanDate === "2026-07-17" && state.plan?.advancedDays === 1
+  ));
   expect(saved.session.activePlanDate).toBe("2026-07-17");
   expect(saved.plan.advancedDays).toBe(1);
   expect(saved.progress["act:v-1"].status).toBe("review");
@@ -617,7 +634,7 @@ test("advance learning shifts the remaining plan forward by one day", async ({ p
   const completionAfter = await page.locator("#homeCompletionDate").textContent();
   const dayShift = Math.round((new Date(completionBefore) - new Date(completionAfter)) / 86400000);
   expect(dayShift).toBe(1);
-  const state = await readState(page);
+  const state = await waitForState(page, (saved) => saved.plan?.advancedDays === 1);
   expect(state.plan.advancedDays).toBe(1);
   expect(state.introducedWords.length).toBe(2);
   await expect(page.locator("#homePlanMeta")).toContainText("计划已提前 1 天");
@@ -642,12 +659,31 @@ test("familiar senses move to the bottom and word-level resets restore the right
 
   const first = page.locator(".sense-item").first();
   const firstKey = await first.getAttribute("data-key");
-  const movingCards = await first.evaluate((item) => {
-    item.click();
-    return [...document.querySelectorAll(".sense-item")].filter((entry) =>
-      entry.getAnimations().some((animation) => animation.effect.getTiming().duration === 260)).length;
+  await page.evaluate(() => {
+    window.__senseReorderDurations = [];
+    const nativeAnimate = Element.prototype.animate;
+    Element.prototype.animate = function trackSenseReorder(keyframes, options) {
+      const duration = typeof options === "number" ? options : options?.duration;
+      if (this.classList?.contains("sense-item")) {
+        window.__senseReorderDurations.push(duration);
+      }
+      return nativeAnimate.call(this, keyframes, options);
+    };
   });
-  expect(movingCards).toBeGreaterThanOrEqual(2);
+  const tapFeedback = await first.evaluate((item) => {
+    item.click();
+    const animation = item.getAnimations().find((entry) => entry.effect.getTiming().duration === 64);
+    return {
+      confirming: item.classList.contains("is-confirming"),
+      duration: animation?.effect.getTiming().duration ?? null,
+    };
+  });
+  expect(tapFeedback).toEqual({ confirming: true, duration: 64 });
+  await expect.poll(() => page.evaluate(() => (
+    window.__senseReorderDurations.filter((duration) => duration === 220).length
+  ))).toBeGreaterThanOrEqual(2);
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  expect((await readState(page)).progress[firstKey].status).toBe("mastered");
   await page.screenshot({ path: "test-results/familiar-sense-reordering.png", fullPage: true });
   await page.waitForTimeout(550);
   await expect(page.locator(`.sense-item[data-key="${firstKey}"]`)).toHaveClass(/is-mastered/);
@@ -766,7 +802,9 @@ test("reinforcement reset preserves senses promoted during the morning review", 
   await expect(page.locator('[data-key="act:v-2"]')).toBeEnabled();
 
   await page.locator('[data-key="act:v-2"]').click();
-  let saved = await readState(page);
+  let saved = await waitForState(page, (state) => (
+    Array.isArray(state.session?.queue?.[0]?.encounterSnapshot?.confirmedKeys)
+  ));
   expect(saved.session.queue[0].encounterSnapshot.confirmedKeys).toEqual(["act:v-1"]);
 
   // Simulate a card snapshot persisted by the previous release.
@@ -1390,7 +1428,9 @@ test("partial new learning advances the sliding word window only by completed wo
   await expect(page.locator("#progressCompare")).toHaveText("进度 0.5 天 / 实际 2 天");
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#wordText")).toHaveText(firstWords[1]);
-  saved = await readState(page);
+  saved = await waitForState(page, (state) => (
+    state.session?.queue?.filter((card) => card.type === "new").length === 2
+  ));
   expect(saved.session.queue.filter((card) => card.type === "new").map((card) => card.wordId))
     .toEqual(["action", "activate"]);
 });
@@ -1942,7 +1982,9 @@ test("approved feedback senses initialize for previously introduced words", asyn
     document.documentElement.scrollWidth <= document.documentElement.clientWidth
   ))).toBe(true);
   await page.locator('.sense-item[data-key="versatile:adj-3"]').click();
-  expect((await readState(page)).progress["versatile:adj-3"].status).toBe("mastered");
+  expect((await waitForState(page, (state) => (
+    state.progress["versatile:adj-3"]?.status === "mastered"
+  ))).progress["versatile:adj-3"].status).toBe("mastered");
 });
 
 test("current approved senses initialize and enter the queue for historical users", async ({ page }) => {

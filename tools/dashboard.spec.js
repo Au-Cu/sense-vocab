@@ -597,6 +597,194 @@ test("dashboard keeps sense and word status counts isolated", async ({ page }) =
   await expect(conversionDetail).not.toContainText("new");
 });
 
+test("dashboard carries state pools across idle days and uses reliable conversion outcomes", async ({ page }) => {
+  await page.goto(APP_URL);
+  const day = (offset) => {
+    const value = new Date();
+    value.setHours(12, 0, 0, 0);
+    value.setDate(value.getDate() + offset);
+    return [
+      value.getFullYear(),
+      String(value.getMonth() + 1).padStart(2, "0"),
+      String(value.getDate()).padStart(2, "0"),
+    ].join("-");
+  };
+  const today = day(0);
+  const yesterday = day(-1);
+  const prior = day(-2);
+  const entered = `${day(-12)}T08:00:00.000Z`;
+  await page.evaluate(({ today, yesterday, prior, entered }) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-mvp-kaoyan-plan-v1", JSON.stringify({
+      schemaVersion: 2,
+      activeBookId: "kaoyan",
+      bookStates: {
+        kaoyan: {
+          view: "home",
+          plan: { dailyTarget: 45, startedOn: prior },
+          introducedWords: ["act", "action"],
+          progress: {
+            "act:n-3": { status: "reinforce", statusEnteredAt: entered, lastSeenActual: prior },
+            "action:n-2": { status: "review", statusEnteredAt: entered, lastSeenActual: prior },
+          },
+          activityLog: {
+            [yesterday]: {
+              newWords: [],
+              reviewWords: [],
+              newCount: 45,
+              reviewCount: 57,
+              target: 45,
+              baseCompleted: false,
+            },
+          },
+          studyWindows: [{
+            id: "completed-window",
+            activityDate: yesterday,
+            startedAt: `${yesterday}T08:00:00.000Z`,
+            endedAt: `${yesterday}T10:00:00.000Z`,
+            endedDate: yesterday,
+            endedReason: "completed",
+          }],
+          dashboardSnapshots: {
+            [`kaoyan:${prior}`]: {
+              id: `kaoyan:${prior}`,
+              bookId: "kaoyan",
+              date: prior,
+              observedAt: `${prior}T12:00:00.000Z`,
+              statuses: { "act:n-3": "reinforce", "action:n-2": "review" },
+              enteredAt: { "act:n-3": entered, "action:n-2": entered },
+            },
+          },
+          dashboardEvents: {
+            success: {
+              id: "success", date: today, senseId: "act:n-4",
+              from: "reinforce", to: "review", source: "reinforcement",
+              observedAt: `${today}T08:00:00.000Z`, outcome: true,
+            },
+            retry: {
+              id: "retry", date: today, senseId: "action:n-2",
+              from: "reinforce", to: "reinforce", source: "reinforcement",
+              observedAt: `${today}T08:01:00.000Z`, outcome: true,
+            },
+            newMastered: {
+              id: "new-mastered", date: today, senseId: "act:v-1",
+              from: "new", to: "mastered", source: "new",
+              observedAt: `${today}T08:02:00.000Z`, outcome: true,
+            },
+            reviewMastered: {
+              id: "review-mastered", date: today, senseId: "action:n-1",
+              from: "review", to: "mastered", source: "review",
+              observedAt: `${today}T08:03:00.000Z`, outcome: true,
+            },
+          },
+        },
+      },
+    }));
+  }, { today, yesterday, prior, entered });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+
+  const completedDayColor = await page.locator(`#heatmapGrid [data-date="${yesterday}"]`)
+    .evaluate((element) => element.style.getPropertyValue("--heat-color").trim());
+  expect(completedDayColor).toBe("#49a96d");
+
+  await page.locator("#globalDashboardNavButton").click();
+  await expect(page.locator("#dashboardPoolChart .dashboard-point.dashboard-reinforce"))
+    .toHaveCount(3);
+  await expect(page.locator("#dashboardPoolChart .dashboard-point.dashboard-review"))
+    .toHaveCount(3);
+  await expect(page.locator("#dashboardHoldChart .dashboard-point.dashboard-hold-reinforce"))
+    .toHaveCount(3);
+  const reinforceConversionPoints = page.locator("#dashboardConversionChart .dashboard-point.dashboard-reinforce-review");
+  expect(await reinforceConversionPoints.count()).toBeGreaterThan(3);
+  await expect(reinforceConversionPoints.first())
+    .toHaveAttribute("data-dashboard-tooltip", /0\/0（按 0% 计）/);
+  await expect(reinforceConversionPoints.last())
+    .toHaveAttribute("data-dashboard-tooltip", /1\/2（50%）/);
+
+  const colors = await page.evaluate(() => {
+    const pointColor = (selector) => getComputedStyle(document.querySelector(selector)).stroke;
+    const dotColor = (selector) => getComputedStyle(document.querySelector(selector)).backgroundColor;
+    return {
+      newMastered: pointColor("#dashboardConversionChart .dashboard-new-mastered"),
+      reinforceReview: pointColor("#dashboardConversionChart .dashboard-reinforce-review"),
+      reviewMastered: pointColor("#dashboardConversionChart .dashboard-review-mastered"),
+      reinforceLegend: dotColor("#dashboardConversionSummary .dashboard-reinforce-review"),
+    };
+  });
+  expect(colors.newMastered).not.toBe(colors.reviewMastered);
+  expect(colors.reinforceReview).toBe(colors.reinforceLegend);
+});
+
+test("time-series axes follow the visible horizontal window", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(APP_URL);
+  const day = (offset) => {
+    const value = new Date();
+    value.setHours(12, 0, 0, 0);
+    value.setDate(value.getDate() + offset);
+    return [
+      value.getFullYear(),
+      String(value.getMonth() + 1).padStart(2, "0"),
+      String(value.getDate()).padStart(2, "0"),
+    ].join("-");
+  };
+  const today = day(0);
+  const oldest = day(-89);
+  await page.evaluate(({ today, oldest }) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-mvp-kaoyan-plan-v1", JSON.stringify({
+      schemaVersion: 2,
+      activeBookId: "kaoyan",
+      bookStates: {
+        kaoyan: {
+          view: "home",
+          plan: { dailyTarget: 45, startedOn: oldest },
+          introducedWords: ["act", "action"],
+          activityLog: {
+            [oldest]: { newWords: ["act"], reviewWords: [], target: 500 },
+            [today]: { newWords: ["action"], reviewWords: [], target: 45 },
+          },
+          dashboardEvents: {
+            oldestSuccess: {
+              id: "oldest-success", date: oldest, senseId: "act:n-3",
+              from: "reinforce", to: "review", source: "reinforcement",
+              observedAt: `${oldest}T08:00:00.000Z`, outcome: true,
+            },
+            recentSuccess: {
+              id: "recent-success", date: today, senseId: "act:n-3",
+              from: "reinforce", to: "review", source: "reinforcement",
+              observedAt: `${today}T08:00:00.000Z`, outcome: true,
+            },
+            recentRetry: {
+              id: "recent-retry", date: today, senseId: "action:n-2",
+              from: "reinforce", to: "reinforce", source: "reinforcement",
+              observedAt: `${today}T08:01:00.000Z`, outcome: true,
+            },
+          },
+        },
+      },
+    }));
+  }, { today, oldest });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#globalDashboardNavButton").click();
+  await page.locator("#dashboardRangeSelect").selectOption("90");
+  await page.locator("#dashboardUnitSelect").selectOption("word");
+
+  const dailyPlot = page.locator("#dashboardDailyChart .dashboard-plot-scroll");
+  const conversionPlot = page.locator("#dashboardConversionChart .dashboard-plot-scroll");
+  const dailyTop = page.locator("#dashboardDailyChart .dashboard-axis-left span").first();
+  const conversionTop = page.locator("#dashboardConversionChart .dashboard-axis-left span").first();
+  await expect(dailyTop).toHaveText("45");
+  await expect(conversionTop).toHaveText("50");
+
+  await dailyPlot.evaluate((element) => { element.scrollLeft = 0; });
+  await conversionPlot.evaluate((element) => { element.scrollLeft = 0; });
+  await expect(dailyTop).toHaveText("500");
+  await expect(conversionTop).toHaveText("100");
+});
+
 test("study surface clips card content and keeps navigation outside study view", async ({ page }) => {
   await openFreshApp(page);
   await page.locator("#globalHomeNavButton").click();

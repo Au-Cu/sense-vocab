@@ -727,23 +727,35 @@
 }
 
 .dashboard-line.dashboard-new-mastered,
-.dashboard-point.dashboard-new-mastered,
-.dashboard-line.dashboard-review-mastered,
-.dashboard-point.dashboard-review-mastered {
+.dashboard-point.dashboard-new-mastered {
   fill: #16a34a;
   stroke: #16a34a;
   background: #16a34a;
 }
 
-.dashboard-dot.dashboard-new-mastered,
-.dashboard-dot.dashboard-review-mastered {
+.dashboard-dot.dashboard-new-mastered {
   background: #16a34a;
 }
 
 .dashboard-line.dashboard-reinforce-review,
 .dashboard-point.dashboard-reinforce-review {
+  fill: #c77d2d;
+  stroke: #c77d2d;
+  background: #c77d2d;
+}
+
+.dashboard-dot.dashboard-reinforce-review {
+  background: #c77d2d;
+}
+
+.dashboard-line.dashboard-review-mastered,
+.dashboard-point.dashboard-review-mastered {
   fill: #0f766e;
   stroke: #0f766e;
+  background: #0f766e;
+}
+
+.dashboard-dot.dashboard-review-mastered {
   background: #0f766e;
 }
 
@@ -1163,6 +1175,8 @@ body {
 button {
   border: 0;
   font: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .boot-screen {
@@ -1419,11 +1433,14 @@ button {
 
 .study-sense-progress-bar span {
   display: block;
-  width: 0;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: var(--accent);
-  transition: width 220ms ease;
+  transform: scaleX(var(--study-progress, 0));
+  transform-origin: left center;
+  transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
 }
 
 .stats-grid {
@@ -2294,6 +2311,9 @@ button {
   width: 100%;
   overflow: hidden;
   background: var(--paper);
+  backface-visibility: hidden;
+  contain: layout paint;
+  will-change: transform, opacity, clip-path;
   view-transition-name: none;
 }
 
@@ -2930,7 +2950,8 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
 
 .sense-item.is-confirming {
   pointer-events: none;
-  animation: senseConfirm 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: senseConfirm 64ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform;
 }
 
 @keyframes senseConfirm {
@@ -2939,7 +2960,7 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
   }
 
   100% {
-    transform: translate3d(0, 2px, 0) scale(0.972);
+    transform: translate3d(0, 1px, 0) scale(0.972);
   }
 }
 
@@ -3084,6 +3105,14 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
   border-radius: 8px;
   cursor: pointer;
   font-weight: 720;
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.primary-button:active:not(:disabled),
+.secondary-button:active:not(:disabled),
+.danger-button:active:not(:disabled),
+.plain-button:active:not(:disabled) {
+  transform: scale(0.985);
 }
 
 .primary-button {

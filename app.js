@@ -1242,6 +1242,20 @@ function saveStateAfterInteractionFrame() {
   return true;
 }
 
+function saveStateAfterMotion(delay = 380) {
+  if (document.visibilityState === "hidden") return saveState();
+  deferredUiStateSavePending = true;
+  if (deferredUiStateSaveFrame !== null) {
+    window.cancelAnimationFrame(deferredUiStateSaveFrame);
+    deferredUiStateSaveFrame = null;
+  }
+  if (deferredUiStateSaveTimer !== null) {
+    window.clearTimeout(deferredUiStateSaveTimer);
+  }
+  deferredUiStateSaveTimer = window.setTimeout(runDeferredUiStateSave, delay);
+  return true;
+}
+
 window.addEventListener("pagehide", flushDeferredUiStateSave);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") flushDeferredUiStateSave();
@@ -3349,7 +3363,8 @@ function dashboardEventEntries(bookState, bookWords = dashboardWords()) {
 }
 
 function dashboardRecordTransition(bookState, key, from, to, options = {}) {
-  if (!bookState || !isKnownSenseKey(key) || from === to) return false;
+  const outcome = options.outcome === true;
+  if (!bookState || !isKnownSenseKey(key) || (from === to && !outcome)) return false;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(options.date ?? "")
     ? options.date
     : currentActivityDate();
@@ -3365,12 +3380,23 @@ function dashboardRecordTransition(bookState, key, from, to, options = {}) {
     to,
     source: options.source ?? null,
     learningDay: Number.isFinite(options.learningDay) ? options.learningDay : null,
+    outcome,
   };
   return true;
 }
 
 function dashboardSnapshotKey(bookId, date) {
   return `${bookId}:${date}`;
+}
+
+function dashboardProgressEnteredAt(progress) {
+  const exact = Date.parse(progress?.statusEnteredAt ?? "");
+  if (Number.isFinite(exact)) return new Date(exact).toISOString();
+  const date = progress?.status === SENSE_STATUS.MASTERED
+    ? progress.masteredOnActual ?? progress.masteredOn
+    : progress?.lastSeenActual ?? progress?.lastSeen ?? progress?.firstSeenActual ?? progress?.firstSeen;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) return null;
+  return parseDate(date).toISOString();
 }
 
 function dashboardRecordSnapshot(bookId = activeBookId(), date = currentDate()) {
@@ -3392,7 +3418,8 @@ function dashboardRecordSnapshot(bookId = activeBookId(), date = currentDate()) 
     if (progress?.status && progress.status !== SENSE_STATUS.NEW) {
       statuses[key] = dashboardStatusForKey(bookState, key);
     }
-    if (progress?.statusEnteredAt) enteredAt[key] = progress.statusEnteredAt;
+    const statusEnteredAt = dashboardProgressEnteredAt(progress);
+    if (statusEnteredAt) enteredAt[key] = statusEnteredAt;
   });
   const id = dashboardSnapshotKey(bookId, date);
   const previous = bookState.dashboardSnapshots?.[id];
@@ -3495,6 +3522,8 @@ function dashboardChartEmpty(message = "暂无数据") {
 
 function dashboardSetMarkup(container, markup) {
   if (!container) return;
+  container.__dashboardChartCleanup?.();
+  container.__dashboardChartCleanup = null;
   const range = document.createRange();
   range.selectNode(container);
   container.replaceChildren(range.createContextualFragment(markup));
@@ -3698,6 +3727,79 @@ function dashboardBindTimeSeriesInteractions(frame, svg, groups, plotTop, plotBo
   });
 }
 
+function dashboardScaleLabel(value) {
+  const rounded = Number(Number(value).toFixed(1));
+  return Number.isFinite(rounded) ? String(rounded) : "0";
+}
+
+function dashboardSetAxisScale(frame, min, max) {
+  const labels = [max, min + (max - min) / 2, min].map(dashboardScaleLabel);
+  frame.querySelectorAll(".dashboard-axis-rail").forEach((rail) => {
+    [...rail.children].forEach((label, index) => {
+      label.textContent = labels[index] ?? "";
+    });
+  });
+}
+
+function dashboardVisibleIndexes(plotScroll, groups) {
+  const ordered = [...groups].sort((left, right) => left.x - right.x);
+  if (!ordered.length) return [];
+  const gaps = ordered.slice(1).map((group, index) => group.x - ordered[index].x).filter((gap) => gap > 0);
+  const margin = gaps.length ? gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length / 2 : 24;
+  const start = plotScroll.scrollLeft - margin;
+  const end = plotScroll.scrollLeft + plotScroll.clientWidth + margin;
+  const visible = ordered.filter((group) => group.x >= start && group.x <= end);
+  if (visible.length) return visible.map((group) => group.index);
+  const center = (start + end) / 2;
+  return [ordered.reduce((nearest, group) => (
+    Math.abs(group.x - center) < Math.abs(nearest.x - center) ? group : nearest
+  )).index];
+}
+
+function dashboardNormalizeScale(bounds) {
+  let min = Number(bounds?.min);
+  let max = Number(bounds?.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  if (max < min) [min, max] = [max, min];
+  if (max === min) {
+    if (max === 0) {
+      max = 1;
+    } else {
+      const padding = Math.max(1, Math.abs(max) * 0.08);
+      min = Math.max(0, min - padding);
+      max += padding;
+    }
+  }
+  return { min, max };
+}
+
+function dashboardBindVisibleScale(container, frame, svg, groups, visibleScale) {
+  const plotScroll = frame.querySelector(".dashboard-plot-scroll");
+  if (!plotScroll || !visibleScale?.resolve || !visibleScale?.apply) return null;
+  let animationFrame = 0;
+  const refresh = () => {
+    animationFrame = 0;
+    const indexes = dashboardVisibleIndexes(plotScroll, groups);
+    const scale = dashboardNormalizeScale(visibleScale.resolve(indexes));
+    if (!scale) return;
+    visibleScale.apply(svg, scale);
+    dashboardSetAxisScale(frame, scale.min, scale.max);
+  };
+  const schedule = () => {
+    if (animationFrame) return;
+    animationFrame = requestAnimationFrame(refresh);
+  };
+  plotScroll.addEventListener("scroll", schedule, { passive: true });
+  const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(schedule) : null;
+  resizeObserver?.observe(plotScroll);
+  container.__dashboardChartCleanup = () => {
+    if (animationFrame) cancelAnimationFrame(animationFrame);
+    plotScroll.removeEventListener("scroll", schedule);
+    resizeObserver?.disconnect();
+  };
+  return schedule;
+}
+
 function dashboardEnhanceChart(container, options = {}) {
   if (!container) return;
   const svg = container.querySelector("svg");
@@ -3739,8 +3841,12 @@ function dashboardEnhanceChart(container, options = {}) {
   } else {
     dashboardBindChartInteractions(frame);
   }
+  const refreshVisibleScale = options.groups?.length && options.visibleScale
+    ? dashboardBindVisibleScale(container, frame, svg, options.groups, options.visibleScale)
+    : null;
   requestAnimationFrame(() => {
     plotScroll.scrollLeft = plotScroll.scrollWidth;
+    refreshVisibleScale?.();
   });
 }
 
@@ -3839,7 +3945,42 @@ function dashboardRenderStackedBars(container, dates, rows, summary, targetByDat
   });
   markup += "</svg>";
   dashboardSetMarkup(container, markup);
-  dashboardEnhanceChart(container, { groups, plotTop: top, plotBottom: top + plotHeight });
+  dashboardEnhanceChart(container, {
+    groups,
+    plotTop: top,
+    plotBottom: top + plotHeight,
+    visibleScale: {
+      resolve(indexes) {
+        const values = indexes.flatMap((index) => [
+          rows.reduce((sum, row) => sum + Number(row.values[index] ?? 0), 0),
+          Number(targetByDate[dates[index]] ?? 0),
+        ]);
+        return { min: 0, max: Math.max(1, ...values) };
+      },
+      apply(svg, scale) {
+        const range = Math.max(1, scale.max - scale.min);
+        dates.forEach((date, index) => {
+          let cursor = top + plotHeight;
+          rows.forEach((row) => {
+            const value = Number(row.values[index] ?? 0);
+            const bar = svg.querySelector(`.dashboard-bar.dashboard-${row.key}[data-dashboard-index="${index}"]`);
+            if (!bar || value <= 0) return;
+            const height = value / range * plotHeight;
+            cursor -= height;
+            bar.setAttribute("y", cursor.toFixed(1));
+            bar.setAttribute("height", height.toFixed(1));
+          });
+          const target = Number(targetByDate[date] ?? 0);
+          const targetLine = svg.querySelector(`.dashboard-target-line[data-dashboard-index="${index}"]`);
+          if (targetLine && target > 0) {
+            const y = top + plotHeight - target / range * plotHeight;
+            targetLine.setAttribute("y1", y.toFixed(1));
+            targetLine.setAttribute("y2", y.toFixed(1));
+          }
+        });
+      },
+    },
+  });
   if (summary) {
     dashboardSetMarkup(summary, rows.map((row) => `<span class="dashboard-summary-item"><i class="dashboard-dot dashboard-${row.key}"></i>${dashboardEscape(row.label)}</span>`).join("") +
       (Object.keys(targetByDate).length ? `<span class="dashboard-summary-item"><i class="dashboard-target-dot"></i>计划新学</span>` : ""));
@@ -3883,12 +4024,12 @@ function dashboardRenderLineChart(container, dates, series, summary, options = {
     const value = max - ratio * (max - min);
     markup += `<line class="dashboard-grid-line" x1="${left}" y1="${y}" x2="${chartWidth - right}" y2="${y}" /><text class="dashboard-y-label" x="${left - 6}" y="${y + 4}" text-anchor="end">${dashboardEscape(Number(value.toFixed(1)))}</text>`;
   });
-  series.forEach((item) => {
+  series.forEach((item, seriesIndex) => {
     let segment = [];
     const segments = [];
     item.values.forEach((value, index) => {
       if (Number.isFinite(value)) {
-        segment.push(`${xFor(index).toFixed(1)},${yFor(value).toFixed(1)}`);
+        segment.push({ index, value });
       } else if (segment.length) {
         segments.push(segment);
         segment = [];
@@ -3896,12 +4037,14 @@ function dashboardRenderLineChart(container, dates, series, summary, options = {
     });
     if (segment.length) segments.push(segment);
     segments.filter((points) => points.length > 1).forEach((points) => {
-      markup += `<polyline class="dashboard-line dashboard-${item.key}" points="${points.join(" ")}" fill="none" />`;
+      const pointMarkup = points.map((point) => `${xFor(point.index).toFixed(1)},${yFor(point.value).toFixed(1)}`).join(" ");
+      const indexes = points.map((point) => point.index).join(",");
+      markup += `<polyline class="dashboard-line dashboard-${item.key}" points="${pointMarkup}" fill="none" data-dashboard-series-index="${seriesIndex}" data-dashboard-indexes="${indexes}" />`;
     });
     item.values.forEach((value, index) => {
       if (!Number.isFinite(value)) return;
       const title = item.tooltip?.[index] ?? `${dates[index]} ${dashboardDisplayLabel(item.key, item.label)} ${value}`;
-      markup += `<circle class="dashboard-point dashboard-${item.key}" cx="${xFor(index)}" cy="${yFor(value)}" r="3" data-dashboard-index="${index}" data-dashboard-hit="true" data-dashboard-tooltip="${dashboardEscape(title)}"></circle>`;
+      markup += `<circle class="dashboard-point dashboard-${item.key}" cx="${xFor(index)}" cy="${yFor(value)}" r="3" data-dashboard-series-index="${seriesIndex}" data-dashboard-index="${index}" data-dashboard-hit="true" data-dashboard-tooltip="${dashboardEscape(title)}"></circle>`;
     });
   });
   dates.forEach((date, index) => {
@@ -3910,7 +4053,39 @@ function dashboardRenderLineChart(container, dates, series, summary, options = {
   });
   markup += "</svg>";
   dashboardSetMarkup(container, markup);
-  dashboardEnhanceChart(container, { groups, plotTop: top, plotBottom: top + plotHeight });
+  dashboardEnhanceChart(container, {
+    groups,
+    plotTop: top,
+    plotBottom: top + plotHeight,
+    visibleScale: {
+      resolve(indexes) {
+        const values = indexes.flatMap((index) => series.map((item) => item.values[index]))
+          .filter(Number.isFinite);
+        if (!values.length) return null;
+        return { min: Math.min(...values), max: Math.max(...values) };
+      },
+      apply(svg, scale) {
+        const range = Math.max(Number.EPSILON, scale.max - scale.min);
+        const scaledY = (value) => top + plotHeight - (value - scale.min) / range * plotHeight;
+        series.forEach((item, seriesIndex) => {
+          svg.querySelectorAll(`polyline[data-dashboard-series-index="${seriesIndex}"]`).forEach((line) => {
+            const indexes = String(line.dataset.dashboardIndexes ?? "")
+              .split(",")
+              .map(Number)
+              .filter(Number.isInteger);
+            line.setAttribute("points", indexes.map((index) => (
+              `${xFor(index).toFixed(1)},${scaledY(item.values[index]).toFixed(1)}`
+            )).join(" "));
+          });
+          svg.querySelectorAll(`circle[data-dashboard-series-index="${seriesIndex}"]`).forEach((point) => {
+            const index = Number(point.dataset.dashboardIndex);
+            const value = item.values[index];
+            if (Number.isFinite(value)) point.setAttribute("cy", scaledY(value).toFixed(1));
+          });
+        });
+      },
+    },
+  });
   if (summary) dashboardSetMarkup(summary, series.map((item) => `<span class="dashboard-summary-item"><i class="dashboard-dot dashboard-${item.key}"></i>${dashboardEscape(dashboardDisplayLabel(item.key, item.label))}</span>`).join(""));
 }
 
@@ -4005,12 +4180,17 @@ function dashboardPlannedTargets(bookState, bookWords, dates, unit) {
 
 function dashboardPoolSeries(bookState, bookWords, dates, unit) {
   const snapshots = bookState.dashboardSnapshots ?? {};
+  const bookId = bookIdForState(bookState);
+  const snapshotHistory = Object.values(snapshots)
+    .filter((entry) => entry?.bookId === bookId && /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? ""))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
   const keys = dashboardSenseKeys(bookWords);
   return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].map((status) => ({
     key: status,
     label: status === SENSE_STATUS.REINFORCE ? "待强化" : "待复习",
     values: dates.map((date) => {
-      const snapshot = snapshots[dashboardSnapshotKey(bookIdForState(bookState), date)];
+      const snapshot = snapshots[dashboardSnapshotKey(bookId, date)] ??
+        [...snapshotHistory].reverse().find((entry) => entry.date <= date);
       if (!snapshot) return null;
       const statusKeys = keys.filter((key) => snapshot.statuses?.[key] === status);
       if (unit === "word") return new Set(statusKeys.map((key) => splitSenseKey(key).wordId)).size;
@@ -4025,6 +4205,9 @@ function bookIdForState(bookState) {
 
 function dashboardConversionSeries(bookState, dates) {
   const events = dashboardEventEntries(bookState, dashboardWords(bookIdForState(bookState)));
+  const isReliableOutcome = (event) => event.outcome === true ||
+    (event.from !== SENSE_STATUS.REINFORCE && !["reset", "relearn"].includes(event.source));
+  const hasReliableConversionEvidence = events.some(isReliableOutcome);
   const definitions = [
     ["new-mastered", "新学 → 掌握", SENSE_STATUS.NEW, SENSE_STATUS.MASTERED],
     ["reinforce-review", "强化 → 复习", SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW],
@@ -4033,11 +4216,17 @@ function dashboardConversionSeries(bookState, dates) {
   return definitions.map(([key, label, from, to]) => {
     const tooltip = [];
     const values = dates.map((date, index) => {
-      const source = new Set(events.filter((event) => event.date === date && event.from === from && event.to === to).map((event) => event.senseId));
-      const denominator = new Set(events.filter((event) => event.date === date && event.from === from).map((event) => event.senseId));
+      const reliableOutcomes = events.filter((event) => {
+        if (event.date !== date || event.from !== from) return false;
+        return isReliableOutcome(event);
+      });
+      const source = new Set(reliableOutcomes
+        .filter((event) => event.to === to)
+        .map((event) => event.senseId));
+      const denominator = new Set(reliableOutcomes.map((event) => event.senseId));
       if (denominator.size === 0) {
-        tooltip[index] = `${date} ${label}：无可靠分母`;
-        return null;
+        tooltip[index] = `${date} ${label}：0/0（按 0% 计）`;
+        return hasReliableConversionEvidence ? 0 : null;
       }
       tooltip[index] = `${date} ${label}：${source.size}/${denominator.size}（${Math.round(source.size / denominator.size * 100)}%）`;
       return source.size / denominator.size * 100;
@@ -4049,19 +4238,63 @@ function dashboardConversionSeries(bookState, dates) {
 function dashboardHoldSeries(bookState, bookWords, dates) {
   const snapshots = bookState.dashboardSnapshots ?? {};
   const bookId = bookIdForState(bookState);
+  const snapshotHistory = Object.values(snapshots)
+    .filter((entry) => entry?.bookId === bookId && /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? ""))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  const eventsBySense = new Map();
+  dashboardEventEntries(bookState, bookWords).forEach((event) => {
+    if (event.from === event.to || !event.observedAt) return;
+    const entries = eventsBySense.get(event.senseId) ?? [];
+    entries.push(event);
+    eventsBySense.set(event.senseId, entries);
+  });
+  eventsBySense.forEach((events) => {
+    events.sort((left, right) => String(left.observedAt).localeCompare(String(right.observedAt)));
+  });
+  const snapshotAtOrBefore = (date) => snapshots[dashboardSnapshotKey(bookId, date)] ??
+    [...snapshotHistory].reverse().find((entry) => entry.date <= date);
+  const endTimestamp = (date) => {
+    const end = parseDate(addDays(date, 1)).getTime() - 1;
+    return date === currentDate() ? Math.min(Date.now(), end) : end;
+  };
+  const enteredTimestamp = (key, status, date, snapshot) => {
+    const direct = Date.parse(snapshot.enteredAt?.[key] ?? "");
+    if (Number.isFinite(direct)) return direct;
+    const end = endTimestamp(date);
+    const event = [...(eventsBySense.get(key) ?? [])].reverse().find((entry) => {
+      const observedAt = Date.parse(entry.observedAt);
+      return entry.to === status && Number.isFinite(observedAt) && observedAt <= end;
+    });
+    if (event) return Date.parse(event.observedAt);
+
+    let earliestMatchingDate = null;
+    for (const entry of [...snapshotHistory].reverse()) {
+      if (entry.date > date) continue;
+      if (entry.statuses?.[key] !== status) break;
+      earliestMatchingDate = entry.date;
+      const historical = Date.parse(entry.enteredAt?.[key] ?? "");
+      if (Number.isFinite(historical)) return historical;
+    }
+
+    const progress = bookState.progress?.[key];
+    if (progress?.status === status) {
+      const fallback = Date.parse(dashboardProgressEnteredAt(progress) ?? "");
+      if (Number.isFinite(fallback) && fallback <= end) return fallback;
+    }
+    return earliestMatchingDate ? parseDate(earliestMatchingDate).getTime() : NaN;
+  };
   return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].map((status) => {
     const tooltip = [];
     const values = dates.map((date, index) => {
-      const snapshot = snapshots[dashboardSnapshotKey(bookId, date)];
+      const snapshot = snapshotAtOrBefore(date);
       if (!snapshot) {
         tooltip[index] = `${date}：暂无数据`;
         return null;
       }
       const keys = dashboardSenseKeys(bookWords).filter((key) => snapshot.statuses?.[key] === status);
       const durations = keys.map((key) => {
-        const entered = snapshot.enteredAt?.[key];
-        const time = entered ? Date.parse(entered) : NaN;
-        const end = Date.parse(snapshot.observedAt);
+        const time = enteredTimestamp(key, status, date, snapshot);
+        const end = endTimestamp(date);
         return Number.isFinite(time) && Number.isFinite(end) && end >= time ? (end - time) / DAY_MS : null;
       }).filter(Number.isFinite);
       if (!durations.length) {
@@ -4551,8 +4784,6 @@ function renderDashboard() {
   const conversion = dashboardConversionSeries(bookState, dates);
   dashboardRenderLineChart(dashboardConversionChart, dates, conversion, dashboardConversionSummary, {
     ariaLabel: "每日义项转化率",
-    min: 0,
-    max: 100,
     emptyMessage: "暂无数据",
   });
   dashboardConversionQuality.textContent = "";
@@ -4718,6 +4949,12 @@ function hasCompletedStudyWindowForDate(date) {
   });
 }
 
+function hasSuccessfulStudyWindowForDate(date) {
+  return state.studyWindows.some((studyWindow) => {
+    return studyWindow.activityDate === date && studyWindow.endedReason === "completed";
+  });
+}
+
 function heatmapDateIsReady(date) {
   if (date < currentDate()) return true;
   if (date > currentDate()) return false;
@@ -4738,7 +4975,10 @@ function heatmapColor(date, activity) {
   if (!hasActivity) return "#dc6a63";
 
   const target = activity?.target || state.plan?.dailyTarget || 1;
-  if (!activity?.baseCompleted) {
+  const baseCompleted = Boolean(activity?.baseCompleted) ||
+    (newCountValue >= target && hasSuccessfulStudyWindowForDate(date)) ||
+    (state.session?.date === date && state.session.baseCompleted);
+  if (!baseCompleted) {
     const ratio = Math.min(1, (newCountValue + reviewCountValue) / Math.max(1, target));
     const lightness = Math.round(78 - ratio * 24);
     return `hsl(42 78% ${lightness}%)`;
@@ -5202,7 +5442,7 @@ function renderStudy() {
     senseProgressBar.hidden = browsing;
     senseProgressBar.setAttribute("aria-valuemax", "0");
     senseProgressBar.setAttribute("aria-valuenow", "0");
-    senseProgressBar.firstElementChild.style.width = "0%";
+    senseProgressBar.firstElementChild.style.setProperty("--study-progress", "0");
     senseList.replaceChildren();
     morphologyPanel.replaceChildren();
     senseArea.hidden = true;
@@ -5258,9 +5498,10 @@ function renderStudy() {
   senseProgressBar.hidden = browsing;
   senseProgressBar.setAttribute("aria-valuemax", String(senseProgress.total));
   senseProgressBar.setAttribute("aria-valuenow", String(senseProgress.completed));
-  senseProgressBar.firstElementChild.style.width = senseProgress.total > 0
-    ? `${Math.round(senseProgress.completed / senseProgress.total * 100)}%`
-    : "0%";
+  senseProgressBar.firstElementChild.style.setProperty(
+    "--study-progress",
+    senseProgress.total > 0 ? String(senseProgress.completed / senseProgress.total) : "0",
+  );
 
   senseList.replaceChildren();
   morphologyPanel.replaceChildren();
@@ -5589,7 +5830,7 @@ async function startStudy(event) {
   commitUiTransition("forward", () => {
     state.view = "study";
     render();
-  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: saveState });
+  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: () => saveStateAfterMotion(520) });
 }
 
 async function startAdvanceStudy(event) {
@@ -5621,7 +5862,7 @@ async function startAdvanceStudy(event) {
   commitUiTransition("forward", () => {
     state.view = "study";
     render();
-  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: saveState });
+  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: () => saveStateAfterMotion(520) });
 }
 
 function mountFloatingDialogs() {
@@ -6327,7 +6568,7 @@ async function openWordCard(wordId, options = {}) {
       : { wordId };
     state.view = "study";
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(520);
   }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
@@ -6341,7 +6582,7 @@ function navigateWordCard(direction) {
     stopWordAudio();
     state.wordBrowse.wordId = wordId;
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(460);
   }, { scope: "card" });
 }
 
@@ -6358,7 +6599,7 @@ function closeWordCard(event) {
     clearWordDeepLink();
     wordDeepLinkReturnView = null;
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(520);
   }, {
     scope: "hierarchy",
     origin: transitionOrigin,
@@ -6387,7 +6628,7 @@ function exitStudy(transitionOrigin = null) {
   }, {
     scope: "hierarchy",
     origin: returnOrigin,
-    afterStart: saveState,
+    afterStart: () => saveStateAfterMotion(520),
     after: () => {
       studyHierarchyOrigin = null;
     },
@@ -6451,7 +6692,7 @@ function showPreviousWord() {
     clearStudyCompletionAnimation();
     closeReturnDialog();
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(460);
   }, { scope: "card" });
 }
 
@@ -6474,7 +6715,7 @@ function showNextHistoryWord() {
     clearStudyCompletionAnimation();
     closeReturnDialog();
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(460);
   }, { scope: "card" });
 }
 
@@ -6490,7 +6731,7 @@ function returnToCurrentWord() {
     session.historyView = null;
     clearStudyCompletionAnimation();
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(460);
   }, { scope: "card" });
 }
 
@@ -6502,7 +6743,7 @@ function revealSenses() {
     session.revealed = true;
     session.cardPhase = "select";
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(340);
   }, { scope: "reveal" });
 }
 
@@ -6740,6 +6981,7 @@ function setProgressMastered(progress, date, learningDay = activeLearningDay(), 
     observedAt: enteredAt,
     source,
     learningDay,
+    outcome: true,
   });
   progress.status = SENSE_STATUS.MASTERED;
   progress.firstSeen = progress.firstSeen ?? date;
@@ -6773,6 +7015,7 @@ function setProgressPending(
     observedAt: enteredAt,
     source,
     learningDay: dueLearningDay,
+    outcome: true,
   });
   progress.status = status;
   progress.firstSeen = progress.firstSeen ?? date;
@@ -6838,7 +7081,8 @@ function markSenseFamiliar(key, options = {}) {
     card.expandedMasteredKeys = [];
     session.cardPhase = "examples";
   }
-  saveState();
+  if (options.deferSave) saveStateAfterMotion();
+  else saveState();
   if (!options.skipRender) {
     render();
   }
@@ -6862,25 +7106,50 @@ function animateSenseMastered(item) {
   if (item.classList.contains("is-confirming")) return;
 
   const key = item.dataset.key;
-  const previousLayout = new Map(
-    [...senseList.querySelectorAll(".sense-item[data-key]")].map((senseItem) => [
-      senseItem.dataset.key,
-      senseItem.getBoundingClientRect(),
-    ]),
-  );
-  playSenseTapSound();
+  const reducedMotion = prefersReducedMotion();
+  const startedAt = performance.now();
   senseList.classList.add("is-reordering");
   item.classList.add("is-confirming");
   item.disabled = true;
-  markSenseFamiliar(key, { skipSound: true, skipRender: true });
-  if (ensureTodaySession().cardPhase === "examples") {
-    nextButton.textContent = "下一词";
-    nextButton.disabled = true;
-    revealButton.classList.add("is-mastered");
+  const commit = (previousLayout) => {
+    playSenseTapSound();
+    markSenseFamiliar(key, { skipSound: true, skipRender: true, deferSave: true });
+    if (ensureTodaySession().cardPhase === "examples") {
+      nextButton.textContent = "下一词";
+      nextButton.disabled = true;
+      revealButton.classList.add("is-mastered");
+    }
+    const reorder = () => {
+      render();
+      animateSenseReorder(previousLayout, key);
+    };
+    if (reducedMotion) {
+      reorder();
+      return;
+    }
+    window.setTimeout(reorder, Math.max(0, 150 - (performance.now() - startedAt)));
+  };
+  if (reducedMotion) {
+    const previousLayout = new Map(
+      [...senseList.querySelectorAll(".sense-item[data-key]")].map((senseItem) => [
+        senseItem.dataset.key,
+        senseItem.getBoundingClientRect(),
+      ]),
+    );
+    commit(previousLayout);
+    return;
   }
-
-  render();
-  animateSenseReorder(previousLayout, key);
+  // Paint the pressed state before forcing layout for FLIP. This keeps the tap
+  // response immediate even on slower mobile browsers.
+  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+    const previousLayout = new Map(
+      [...senseList.querySelectorAll(".sense-item[data-key]")].map((senseItem) => [
+        senseItem.dataset.key,
+        senseItem.getBoundingClientRect(),
+      ]),
+    );
+    commit(previousLayout);
+  }));
 }
 
 function animateSenseReorder(previousLayout, selectedKey) {
@@ -6909,8 +7178,8 @@ function animateSenseReorder(previousLayout, selectedKey) {
           },
         ],
         {
-          duration: 260,
-          easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
+          duration: 220,
+          easing: "cubic-bezier(0.16, 1, 0.3, 1)",
           fill: "both",
         },
       ),
@@ -6957,7 +7226,7 @@ function completeCurrentSelection() {
     card.expandedMasteredKeys = [];
     session.cardPhase = "examples";
     render();
-    saveStateAfterInteractionFrame();
+    saveStateAfterMotion(340);
   }, { scope: "reveal" });
 }
 
@@ -7052,7 +7321,7 @@ function nextWord() {
 
     render();
     if (!currentCard()) triggerStudyCompletionCue();
-  }, { scope: "card", afterStart: saveState });
+  }, { scope: "card", afterStart: () => saveStateAfterMotion(460) });
 }
 
 function handleProgressButton(event) {
@@ -7844,9 +8113,17 @@ function handleTutorialInteraction(event) {
       );
     }, 0);
   } else if (step === "her-senses" && event.target.closest(".sense-item")) {
-    if (tutorialCurrentWordIsFullyMarked()) {
-      window.setTimeout(() => setTutorialStep("her-next"), 0);
-    }
+    // Sense confirmation commits after the immediate press frame so slower
+    // browsers can paint feedback before the FLIP layout work. Recheck after
+    // that commit window instead of reading the pre-animation state here.
+    window.setTimeout(() => {
+      if (
+        tutorialRuntime?.step === "her-senses" &&
+        tutorialCurrentWordIsFullyMarked()
+      ) {
+        setTutorialStep("her-next");
+      }
+    }, 180);
   } else if (step === "her-next" && event.target.closest("#nextButton")) {
     window.setTimeout(() => {
       tutorialSessionForWord("abandon");
@@ -7955,7 +8232,6 @@ async function initializeApp() {
 
   renderBookOptions();
   rootState = loadState();
-  compactKnownStateCaches();
   initialGuestHadLearningData = stateHasLearningData(rootState);
   activateBookScope(rootState.activeBookId);
   applyWordDeepLink();
