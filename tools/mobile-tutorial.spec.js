@@ -103,7 +103,7 @@ test("mobile home stays compact, searches words, and opens the heatmap at the la
   expect(actionBoxes[0].x).toBeLessThanOrEqual(homeActionsBox.x + 1);
   expect(actionBoxes[2].x + actionBoxes[2].width)
     .toBeGreaterThanOrEqual(homeActionsBox.x + homeActionsBox.width - 1);
-  const moreBox = await page.locator("#moreButton").boundingBox();
+  const moreBox = await page.locator("#globalSettingsNavButton").boundingBox();
   const progressBox = await page.locator(".progress-card").boundingBox();
   expect(moreBox.y).toBeGreaterThan(progressBox.y + progressBox.height);
 
@@ -188,8 +188,10 @@ test("tutorial plan cancellation stays covered and cannot strand the overlay", a
   });
   await page.goto(APP_URL);
   await waitForApp(page);
-  await page.locator("#moreButton").click();
+  await page.locator("#globalSettingsNavButton").click();
   await page.locator("#replayTutorialButton").click();
+  await expect(page.locator("#tutorialReplayConfirmDialog")).toBeVisible();
+  await page.locator("#confirmReplayTutorialButton").click();
   await page.locator("#planButton").click();
   await expectHint(page, "选择词书和每日计划");
   await expect(page.locator("#planDialog")).toBeVisible();
@@ -258,8 +260,10 @@ test("the guided tutorial is complete and never mutates real learning data", asy
   await waitForApp(page);
   const before = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
 
-  await page.locator("#moreButton").click();
+  await page.locator("#globalSettingsNavButton").click();
   await page.locator("#replayTutorialButton").click();
+  await expect(page.locator("#tutorialReplayConfirmDialog")).toBeVisible();
+  await page.locator("#confirmReplayTutorialButton").click();
   await expectHint(page, "点击这里选择词书和每日计划");
   await page.locator("#planButton").evaluate((element) => {
     element.style.transform = "translateY(72px)";
@@ -334,7 +338,7 @@ test("the guided tutorial is complete and never mutates real learning data", asy
   await expectHint(page, "点击这里返回主页");
   await page.locator("#returnHomeButton").click();
   await expectHint(page, "点击这里注册/登录/退出账户");
-  await page.locator("#moreButton").click();
+  await page.locator("#globalSettingsNavButton").click();
   await expectHint(page, "请尽快注册账户");
   await page.screenshot({
     path: "test-results/tutorial-account-mobile.png",

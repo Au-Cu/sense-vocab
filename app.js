@@ -217,11 +217,20 @@ const FALLBACK_WORDS = [
 const homePanel = document.querySelector("#homePanel");
 const studyPanel = document.querySelector("#studyPanel");
 const dashboardPanel = document.querySelector("#dashboardPanel");
+const settingsPanel = document.querySelector("#settingsPanel");
+const dataPanel = document.querySelector("#dataPanel");
 const mainAppNav = document.querySelector("#mainAppNav");
 const modalLayer = document.querySelector("#modalLayer");
 const appShellElement = document.querySelector("#appShell");
 const globalHomeNavButton = document.querySelector("#globalHomeNavButton");
 const globalDashboardNavButton = document.querySelector("#globalDashboardNavButton");
+const globalSettingsNavButton = document.querySelector("#globalSettingsNavButton");
+const dataButton = document.querySelector("#dataButton");
+const dataBackButton = document.querySelector("#dataBackButton");
+const bootProgress = document.querySelector("#bootProgress");
+const bootProgressValue = document.querySelector("#bootProgressValue");
+const bootProgressText = document.querySelector("#bootProgressText");
+const bootProgressLabel = document.querySelector("#bootProgressLabel");
 const dashboardHost = document.querySelector("#dashboardHost");
 const dashboardBackButton = document.querySelector("#dashboardBackButton");
 const dashboardRoot = document.querySelector("#learningDashboard");
@@ -269,9 +278,6 @@ const planButton = document.querySelector("#planButton");
 const advanceStudyButton = document.querySelector("#advanceStudyButton");
 const wordListButton = document.querySelector("#wordListButton");
 const startStudyButton = document.querySelector("#startStudyButton");
-const moreButton = document.querySelector("#moreButton");
-const moreDialog = document.querySelector("#moreDialog");
-const closeMoreButton = document.querySelector("#closeMoreButton");
 const dashboardButton = document.querySelector("#dashboardButton");
 const homeFeedbackButton = document.querySelector("#homeFeedbackButton");
 const replayTutorialButton = document.querySelector("#replayTutorialButton");
@@ -371,6 +377,9 @@ const tutorialMasks = Object.fromEntries(
 );
 const tutorialDoneDialog = document.querySelector("#tutorialDoneDialog");
 const finishTutorialButton = document.querySelector("#finishTutorialButton");
+const tutorialReplayConfirmDialog = document.querySelector("#tutorialReplayConfirmDialog");
+const confirmReplayTutorialButton = document.querySelector("#confirmReplayTutorialButton");
+const cancelReplayTutorialButton = document.querySelector("#cancelReplayTutorialButton");
 
 let words = [];
 let wordById = new Map();
@@ -430,6 +439,7 @@ let cleanupActiveUiTransition = null;
 let deferredUiStateSavePending = false;
 let deferredUiStateSaveFrame = null;
 let deferredUiStateSaveTimer = null;
+let deferredUiStateSaveIdle = null;
 let studyHierarchyOrigin = null;
 let wordListHierarchyOrigin = null;
 let membershipAccess = {
@@ -439,6 +449,101 @@ let membershipAccess = {
   expiresAt: null,
 };
 
+const RESOURCE_TIMEOUT_MS = 24000;
+
+function setBootProgress(value, label = "") {
+  const numericValue = Number(value);
+  const determinate = value !== null && value !== undefined &&
+    Number.isFinite(numericValue);
+  if (bootProgress) {
+    // A missing Content-Length is not a percentage. Keep the track still and
+    // show an explicit unknown value rather than animating a misleading bar.
+    bootProgress.classList.remove("is-indeterminate");
+    bootProgress.dataset.mode = determinate ? "determinate" : "unknown";
+    if (determinate) {
+      const normalized = Math.max(
+        0,
+        Math.min(100, Math.round(numericValue * 100) / 100),
+      );
+      bootProgress.setAttribute("aria-valuenow", normalized.toFixed(2));
+      bootProgress.setAttribute("aria-valuetext", `${label} ${normalized.toFixed(2)}%`);
+      if (bootProgressValue) bootProgressValue.style.width = `${normalized}%`;
+      if (bootProgressText) bootProgressText.textContent = `${normalized.toFixed(2)}%`;
+    } else {
+      bootProgress.removeAttribute("aria-valuenow");
+      bootProgress.setAttribute("aria-valuetext", `${label || "正在载入"}，总量未知`);
+      if (bootProgressValue) bootProgressValue.style.width = "0%";
+      if (bootProgressText) bootProgressText.textContent = "--";
+    }
+  }
+  if (label && bootProgressLabel) bootProgressLabel.textContent = label;
+}
+
+window.addEventListener("sensevocab:boot-progress", (event) => {
+  setBootProgress(event.detail?.value, event.detail?.label);
+});
+
+async function fetchWithTimeout(input, init = {}, timeoutMs = RESOURCE_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("资源载入超时，请检查网络后重试。");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+async function readJsonResponse(response, {
+  label = "正在载入",
+  background = false,
+} = {}) {
+  const total = Number(response.headers.get("content-length"));
+  if (!response.body?.getReader) {
+    setBootProgress(0, label);
+    const data = await response.json();
+    setBootProgress(100, `${label} 100.00%`);
+    return data;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    const hasKnownTotal = Number.isFinite(total) && total > 0;
+    const percent = hasKnownTotal
+      ? Math.round(Math.min(1, received / total) * 10000) / 100
+      : null;
+    const progressCopy = hasKnownTotal
+      ? `${label} ${percent.toFixed(2)}%`
+      : `${label}，已接收 ${(received / 1024 / 1024).toFixed(2)} MB`;
+    if (background && document.documentElement.dataset.appReady === "true") {
+      setVocabularyStatus(progressCopy);
+    } else {
+      setBootProgress(percent, progressCopy);
+    }
+  }
+  const bytes = new Uint8Array(received);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  });
+  const text = new TextDecoder().decode(bytes);
+  if (!background || document.documentElement.dataset.appReady !== "true") {
+    setBootProgress(100, `${label} 100.00%`);
+  }
+  return JSON.parse(text);
+}
+
 function validateVocabularyData(data, label) {
   if (!Array.isArray(data?.words) || !Array.isArray(data?.books)) {
     throw new Error(`${label} has an invalid schema.`);
@@ -447,12 +552,16 @@ function validateVocabularyData(data, label) {
 }
 
 async function loadVocabularyIndex() {
-  const response = await fetch(VOCABULARY_INDEX_URL, { cache: "no-cache" });
+  const response = await fetchWithTimeout(VOCABULARY_INDEX_URL, {
+    cache: "no-cache",
+  });
   if (!response.ok) {
     throw new Error(`Vocabulary index failed to load: ${response.status}`);
   }
   const data = validateVocabularyData(
-    await response.json(),
+    await readJsonResponse(response, {
+      label: "正在载入词库索引",
+    }),
     "Vocabulary index",
   );
   if (typeof data.bundleVersion !== "string" || !data.bundleVersion) {
@@ -504,7 +613,7 @@ async function loadVocabularyBundle(index, { forceNetwork = false } = {}) {
     }
   }
 
-  const response = await fetch(request, {
+  const response = await fetchWithTimeout(request, {
     cache: forceNetwork ? "reload" : "default",
   });
   if (!response.ok) {
@@ -512,7 +621,10 @@ async function loadVocabularyBundle(index, { forceNetwork = false } = {}) {
   }
   const cacheCopy = response.clone();
   const data = validateVocabularyData(
-    await response.json(),
+    await readJsonResponse(response, {
+      label: "正在载入完整学习内容",
+      background: true,
+    }),
     "Vocabulary bundle",
   );
 
@@ -1214,9 +1326,22 @@ function saveState(options = {}) {
 function runDeferredUiStateSave() {
   deferredUiStateSaveFrame = null;
   deferredUiStateSaveTimer = null;
+  deferredUiStateSaveIdle = null;
   if (!deferredUiStateSavePending) return;
   deferredUiStateSavePending = false;
   saveState();
+}
+
+function scheduleIdleUiStateSave(timeout = 700) {
+  if (deferredUiStateSaveIdle !== null) return;
+  if (typeof window.requestIdleCallback === "function") {
+    deferredUiStateSaveIdle = window.requestIdleCallback(
+      () => runDeferredUiStateSave(),
+      { timeout },
+    );
+    return;
+  }
+  deferredUiStateSaveTimer = window.setTimeout(runDeferredUiStateSave, 160);
 }
 
 function flushDeferredUiStateSave() {
@@ -1228,6 +1353,10 @@ function flushDeferredUiStateSave() {
     window.clearTimeout(deferredUiStateSaveTimer);
     deferredUiStateSaveTimer = null;
   }
+  if (deferredUiStateSaveIdle !== null && typeof window.cancelIdleCallback === "function") {
+    window.cancelIdleCallback(deferredUiStateSaveIdle);
+    deferredUiStateSaveIdle = null;
+  }
   runDeferredUiStateSave();
 }
 
@@ -1237,7 +1366,10 @@ function saveStateAfterInteractionFrame() {
   if (deferredUiStateSaveFrame !== null || deferredUiStateSaveTimer !== null) return true;
   deferredUiStateSaveFrame = window.requestAnimationFrame(() => {
     deferredUiStateSaveFrame = null;
-    deferredUiStateSaveTimer = window.setTimeout(runDeferredUiStateSave, 0);
+    // Let the input frame and its compositor animation render first. The
+    // compact clone/compression path is synchronous and can otherwise steal
+    // the very next frame on mobile browsers.
+    scheduleIdleUiStateSave();
   });
   return true;
 }
@@ -1251,8 +1383,16 @@ function saveStateAfterMotion(delay = 380) {
   }
   if (deferredUiStateSaveTimer !== null) {
     window.clearTimeout(deferredUiStateSaveTimer);
+    deferredUiStateSaveTimer = null;
   }
-  deferredUiStateSaveTimer = window.setTimeout(runDeferredUiStateSave, delay);
+  if (deferredUiStateSaveIdle !== null && typeof window.cancelIdleCallback === "function") {
+    window.cancelIdleCallback(deferredUiStateSaveIdle);
+    deferredUiStateSaveIdle = null;
+  }
+  deferredUiStateSaveTimer = window.setTimeout(() => {
+    deferredUiStateSaveTimer = null;
+    scheduleIdleUiStateSave(500);
+  }, delay);
   return true;
 }
 
@@ -2100,7 +2240,7 @@ function captureActiveNavigation() {
   if (!state || !rootState) return null;
   return {
     bookId: activeBookId(),
-    view: ["home", "study", "word-list", "dashboard"].includes(state.view)
+    view: ["home", "study", "word-list", "dashboard", "settings", "data"].includes(state.view)
       ? state.view
       : "home",
     wordBrowse: state.wordBrowse
@@ -2138,8 +2278,15 @@ window.SenseVocabApp = {
   recoveryStateSignature,
   mergeStates: (localState, remoteState) => {
     if (!window.SenseVocabSync) return cloneSerializable(remoteState);
-    return window.SenseVocabSync.mergeStates(localState, remoteState);
+    const merged = window.SenseVocabSync.mergeStates(localState, remoteState);
+    const referenceState = normalizeRootState(cloneSerializable(localState ?? {}));
+    const repaired = repairDerivedRootState(merged, { referenceState }).state;
+    if (stableStateStringify(merged) !== stableStateStringify(repaired)) {
+      window.SenseVocabSync.stampChanges(repaired, merged);
+    }
+    return repaired;
   },
+  repairDerivedData: repairActiveDerivedData,
   prepareIndependentMergeState: (candidate, baseline = null) => {
     if (!window.SenseVocabSync) return cloneSerializable(candidate);
     return window.SenseVocabSync.prepareIndependentMergeState(candidate, baseline);
@@ -2217,7 +2364,8 @@ function currentPlanDate(dayOffset = 0) {
 
 function ensureTodaySession() {
   const date = currentDate();
-  const keepOpenCrossDaySession = state.view === "study" &&
+  const keepOpenCrossDaySession = ["study", "confusion"].includes(state.view) &&
+    Boolean(activeStudyWindow()) &&
     state.session &&
     state.session.date !== date;
 
@@ -3264,21 +3412,21 @@ function render() {
   studyPanel.hidden = state.view !== "study";
   wordListPanel.hidden = state.view !== "word-list";
   dashboardPanel.hidden = state.view !== "dashboard";
-  const mainNavigationVisible = state.view === "home" || state.view === "dashboard";
+  settingsPanel.hidden = state.view !== "settings";
+  dataPanel.hidden = state.view !== "data";
+  const mainNavigationVisible = ["home", "dashboard", "settings"].includes(state.view);
   mainAppNav.hidden = !mainNavigationVisible;
-globalHomeNavButton.classList.toggle("is-active", state.view === "home");
-globalDashboardNavButton.classList.toggle("is-active", state.view === "dashboard");
-if (state.view === "home") {
-  globalHomeNavButton.setAttribute("aria-current", "page");
-} else {
-  globalHomeNavButton.removeAttribute("aria-current");
-}
-if (state.view === "dashboard") {
-  globalDashboardNavButton.setAttribute("aria-current", "page");
-} else {
-  globalDashboardNavButton.removeAttribute("aria-current");
-}
-appShell.classList.toggle("is-study-view", state.view === "study");
+  [
+    [globalHomeNavButton, "home"],
+    [globalDashboardNavButton, "dashboard"],
+    [globalSettingsNavButton, "settings"],
+  ].forEach(([button, view]) => {
+    const active = state.view === view;
+    button?.classList.toggle("is-active", active);
+    if (active) button?.setAttribute("aria-current", "page");
+    else button?.removeAttribute("aria-current");
+  });
+  appShell.classList.toggle("is-study-view", state.view === "study");
   confusionPanel.hidden = state.view !== "confusion";
   if (state.view === "home" || state.view === "dashboard") renderHome();
   renderStudy();
@@ -3370,7 +3518,13 @@ function dashboardRecordTransition(bookState, key, from, to, options = {}) {
     : currentActivityDate();
   const observedAt = options.observedAt ?? new Date().toISOString();
   const id = `${date}|${key}|${from}|${to}|${observedAt}`;
-  bookState.dashboardEvents = normalizeDashboardMap(bookState.dashboardEvents);
+  if (
+    !bookState.dashboardEvents ||
+    typeof bookState.dashboardEvents !== "object" ||
+    Array.isArray(bookState.dashboardEvents)
+  ) {
+    bookState.dashboardEvents = {};
+  }
   bookState.dashboardEvents[id] = {
     id,
     date,
@@ -3401,8 +3555,7 @@ function dashboardProgressEnteredAt(progress) {
 
 function dashboardRecordSnapshot(bookId = activeBookId(), date = currentDate()) {
   const bookState = dashboardBookState(bookId);
-  const bookWords = dashboardWords(bookId);
-  if (!bookState || !bookWords.length || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (!bookState || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const hasLearningEvidence = (bookState.introducedWords?.length ?? 0) > 0 ||
     Object.keys(bookState.progress ?? {}).length > 0 ||
     Object.values(bookState.activityLog ?? {}).some((entry) => {
@@ -3413,8 +3566,12 @@ function dashboardRecordSnapshot(bookId = activeBookId(), date = currentDate()) 
   if (!hasLearningEvidence) return false;
   const statuses = {};
   const enteredAt = {};
-  dashboardSenseKeys(bookWords).forEach((key) => {
-    const progress = bookState.progress?.[key];
+  // A snapshot treats an omitted progress entry as NEW. Walking the complete
+  // 10k-sense vocabulary on every tap made serialization compete with the
+  // learning animation; only persisted progress entries can contribute a
+  // non-new status or an entered-at timestamp.
+  Object.entries(bookState.progress ?? {}).forEach(([key, progress]) => {
+    if (!isKnownSenseKey(key)) return;
     if (progress?.status && progress.status !== SENSE_STATUS.NEW) {
       statuses[key] = dashboardStatusForKey(bookState, key);
     }
@@ -3446,6 +3603,435 @@ function dashboardRecordSnapshot(bookId = activeBookId(), date = currentDate()) 
     delete bookState.dashboardSnapshots[entry.id];
   });
   return true;
+}
+
+function repairDateKey(value) {
+  const match = String(value ?? "").match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] ?? null;
+}
+
+function firstRepairDate(...values) {
+  return values.map(repairDateKey).filter(Boolean).sort()[0] ?? null;
+}
+
+function lastRepairDate(...values) {
+  return values.map(repairDateKey).filter(Boolean).sort().at(-1) ?? null;
+}
+
+function preferredRepairDate(...values) {
+  return values.map(repairDateKey).find(Boolean) ?? null;
+}
+
+function repairObservedAt(date) {
+  return `${date}T23:59:59.999+08:00`;
+}
+
+function normalizeRepairActivity(entry, knownWordIds, defaultTarget) {
+  const uniqueWords = (value) => [...new Set(
+    (Array.isArray(value) ? value : [])
+      .map(String)
+      .filter((wordId) => knownWordIds.has(wordId)),
+  )];
+  const newWords = uniqueWords(entry?.newWords);
+  const reviewWords = uniqueWords(entry?.reviewWords);
+  const target = Number.isFinite(entry?.target)
+    ? Math.max(0, Number(entry.target))
+    : Math.max(0, Number(defaultTarget) || 0);
+  const locked = Boolean(entry?.newCountLocked) && Number.isFinite(entry?.newCount);
+  const newCount = locked
+    ? Math.max(0, Number(entry.newCount))
+    : Math.max(newWords.length, Number(entry?.newCount) || 0);
+  return {
+    newWords,
+    reviewWords,
+    newCount,
+    newCountLocked: locked,
+    reviewCount: Math.max(reviewWords.length, Number(entry?.reviewCount) || 0),
+    baseCompleted: Boolean(entry?.baseCompleted),
+    overtime: Boolean(entry?.overtime),
+    target,
+    learningDays: [...new Set(
+      (Array.isArray(entry?.learningDays) ? entry.learningDays : [])
+        .filter(Number.isFinite),
+    )].sort((left, right) => left - right),
+  };
+}
+
+function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
+  const session = bookState?.session;
+  const today = currentDate();
+  if (
+    !session ||
+    repairDateKey(session.date) !== today ||
+    !session.baseNewAdded ||
+    session.activeBatchType !== "planned"
+  ) {
+    return false;
+  }
+
+  const before = stableStateStringify(session);
+  const introduced = new Set((bookState.introducedWords ?? []).map(String));
+  const importance = new Map();
+  const keysByWord = new Map();
+  bookWords.forEach((word) => {
+    const keys = word.senses.map((sense) => {
+      const key = senseKey(word.id, sense.id);
+      importance.set(key, Number(sense.importance) || 0);
+      return key;
+    });
+    keysByWord.set(String(word.id), keys);
+  });
+  const sortKeys = (keys) => [...new Set(keys)].sort((left, right) => {
+    return (importance.get(right) ?? 0) - (importance.get(left) ?? 0) ||
+      left.localeCompare(right);
+  });
+  const progressForKey = (key) => bookState.progress?.[key];
+  const learningDay = Number.isFinite(session.activeLearningDay)
+    ? session.activeLearningDay
+    : Math.max(1, Number(bookState.learningDayCounter) || 1);
+  const isDue = (key) => {
+    const progress = progressForKey(key);
+    return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].includes(progress?.status) &&
+      (!Number.isFinite(progress.dueLearningDay) || progress.dueLearningDay <= learningDay);
+  };
+  const makeCard = (type, wordId, activeKeys, newKeys = []) => ({
+    type,
+    wordId,
+    activeSenseKeys: sortKeys(activeKeys),
+    newSenseKeys: sortKeys(newKeys),
+    senseKeys: sortKeys(keysByWord.get(String(wordId)) ?? activeKeys),
+    confirmedKeys: [],
+    expandedMasteredKeys: [],
+  });
+
+  const reviewByWord = new Map();
+  Object.keys(bookState.progress ?? {}).forEach((key) => {
+    if (!isDue(key)) return;
+    const { wordId } = splitSenseKey(key);
+    if (!keysByWord.has(String(wordId))) return;
+    const keys = reviewByWord.get(String(wordId)) ?? [];
+    keys.push(key);
+    reviewByWord.set(String(wordId), keys);
+  });
+
+  const todayActivity = activityLog[today] ?? normalizeRepairActivity(
+    {},
+    new Set(bookWords.map((word) => String(word.id))),
+    bookState.plan?.dailyTarget,
+  );
+  const remainingNew = Math.max(
+    0,
+    (Number(bookState.plan?.dailyTarget) || 0) - (Number(todayActivity.newCount) || 0),
+  );
+  const newCandidates = [
+    ...bookWords.filter((word) => {
+      return introduced.has(String(word.id)) &&
+        (keysByWord.get(String(word.id)) ?? []).some((key) => {
+          return (progressForKey(key)?.status ?? SENSE_STATUS.NEW) === SENSE_STATUS.NEW;
+        });
+    }),
+    ...bookWords.filter((word) => !introduced.has(String(word.id))),
+  ].slice(0, remainingNew);
+
+  const standaloneNew = [];
+  newCandidates.forEach((word) => {
+    const wordId = String(word.id);
+    const newKeys = (keysByWord.get(wordId) ?? []).filter((key) => {
+      return (progressForKey(key)?.status ?? SENSE_STATUS.NEW) === SENSE_STATUS.NEW;
+    });
+    if (!newKeys.length) return;
+    const reviewKeys = reviewByWord.get(wordId);
+    if (reviewKeys) {
+      reviewByWord.set(wordId, sortKeys([...reviewKeys, ...newKeys]));
+      return;
+    }
+    standaloneNew.push(makeCard("new", wordId, newKeys, newKeys));
+  });
+
+  const reviewCards = [...reviewByWord.entries()].map(([wordId, keys]) => {
+    const newKeys = keys.filter((key) => {
+      return (progressForKey(key)?.status ?? SENSE_STATUS.NEW) === SENSE_STATUS.NEW;
+    });
+    return makeCard("review", wordId, keys, newKeys);
+  });
+  session.queue = [...reviewCards, ...standaloneNew];
+  session.currentIndex = 0;
+  session.revealed = false;
+  session.cardPhase = "hidden";
+  session.historyView = null;
+  session.reinforcementAdded = false;
+  session.baseCompleted = session.queue.length === 0 &&
+    (Number(todayActivity.newCount) || 0) >= (Number(todayActivity.target) || 0);
+  if (session.baseCompleted) todayActivity.baseCompleted = true;
+  return stableStateStringify(session) !== before;
+}
+
+function repairDerivedBookState(bookId, bookState, options = {}) {
+  const today = currentDate();
+  const bookWords = wordsForBook(bookId);
+  const knownWordIds = new Set(bookWords.map((word) => String(word.id)));
+  const knownSenseKeys = new Set();
+  const wordIdBySenseKey = new Map();
+  bookWords.forEach((word) => {
+    word.senses.forEach((sense) => {
+      const key = senseKey(word.id, sense.id);
+      knownSenseKeys.add(key);
+      wordIdBySenseKey.set(key, String(word.id));
+    });
+  });
+  const defaultTarget = Number(bookState.plan?.dailyTarget) || 0;
+  const beforeActivity = stableStateStringify(bookState.activityLog ?? {});
+  const beforeSnapshots = stableStateStringify(bookState.dashboardSnapshots ?? {});
+  const activityLog = {};
+  Object.entries(bookState.activityLog ?? {}).forEach(([date, entry]) => {
+    if (!repairDateKey(date)) return;
+    activityLog[date] = normalizeRepairActivity(entry, knownWordIds, defaultTarget);
+  });
+  const activityForRepair = (date) => {
+    if (!date || date > today) return null;
+    activityLog[date] ??= normalizeRepairActivity({}, knownWordIds, defaultTarget);
+    return activityLog[date];
+  };
+  const addRepairWord = (date, field, wordId) => {
+    const activity = activityForRepair(date);
+    if (!activity || !knownWordIds.has(wordId)) return;
+    activity[field] = [...new Set([...activity[field], wordId])];
+  };
+
+  Object.entries(bookState.progress ?? {}).forEach(([key, progress]) => {
+    const wordId = wordIdBySenseKey.get(key);
+    if (!wordId) return;
+    const firstSeen = firstRepairDate(progress?.firstSeenActual, progress?.firstSeen);
+    const lastSeen = lastRepairDate(progress?.lastSeenActual, progress?.lastSeen);
+    if (firstSeen) addRepairWord(firstSeen, "newWords", wordId);
+    if (lastSeen && lastSeen !== firstSeen) addRepairWord(lastSeen, "reviewWords", wordId);
+  });
+
+  const completedWindowDates = new Set();
+  (Array.isArray(bookState.studyWindows) ? bookState.studyWindows : []).forEach((window) => {
+    const date = repairDateKey(window?.activityDate);
+    if (!date || date > today) return;
+    activityForRepair(date);
+    if (window.endedReason === "completed") completedWindowDates.add(date);
+  });
+  Object.entries(activityLog).forEach(([date, entry]) => {
+    entry.newWords = [...new Set(entry.newWords)];
+    entry.reviewWords = [...new Set(entry.reviewWords)];
+    if (!entry.newCountLocked) entry.newCount = Math.max(entry.newCount, entry.newWords.length);
+    entry.reviewCount = Math.max(entry.reviewCount, entry.reviewWords.length);
+    entry.baseCompleted = entry.baseCompleted || completedWindowDates.has(date);
+    entry.overtime = entry.overtime || Boolean(entry.target && entry.newCount > entry.target);
+  });
+  bookState.activityLog = activityLog;
+
+  const allSnapshots = normalizeDashboardMap(bookState.dashboardSnapshots);
+  const retainedSnapshots = Object.fromEntries(
+    Object.entries(allSnapshots).filter(([, snapshot]) => snapshot.quality !== "reconstructed"),
+  );
+  const exactByDate = new Map();
+  Object.values(retainedSnapshots).forEach((snapshot) => {
+    const date = repairDateKey(snapshot.date);
+    if (!date || (snapshot.bookId && snapshot.bookId !== bookId)) return;
+    exactByDate.set(date, snapshot);
+  });
+  const events = Object.values(normalizeDashboardMap(bookState.dashboardEvents))
+    .filter((event) => {
+      return knownSenseKeys.has(event?.senseId) &&
+        repairDateKey(event?.date) &&
+        Object.values(SENSE_STATUS).includes(event?.to);
+    })
+    .sort((left, right) => {
+      return String(left.date).localeCompare(String(right.date)) ||
+        String(left.observedAt ?? "").localeCompare(String(right.observedAt ?? ""));
+    });
+  const eventsByDate = new Map();
+  const latestEventByKey = new Map();
+  events.forEach((event) => {
+    const date = repairDateKey(event.date);
+    const entries = eventsByDate.get(date) ?? [];
+    entries.push(event);
+    eventsByDate.set(date, entries);
+    latestEventByKey.set(event.senseId, event);
+  });
+
+  const inferredByDate = new Map();
+  Object.entries(bookState.progress ?? {}).forEach(([key, progress]) => {
+    if (!knownSenseKeys.has(key) || !Object.values(SENSE_STATUS).includes(progress?.status)) return;
+    if (progress.status === SENSE_STATUS.NEW) return;
+    const statusDate = progress.status === SENSE_STATUS.MASTERED
+      ? preferredRepairDate(
+        progress.masteredOnActual,
+        progress.masteredOn,
+        progress.lastSeenActual,
+        progress.lastSeen,
+        progress.firstSeenActual,
+        progress.firstSeen,
+      )
+      : preferredRepairDate(
+        progress.lastSeenActual,
+        progress.lastSeen,
+        progress.firstSeenActual,
+        progress.firstSeen,
+      );
+    if (!statusDate || statusDate > today) return;
+    const latestEvent = latestEventByKey.get(key);
+    if (latestEvent && latestEvent.to === progress.status && latestEvent.date >= statusDate) return;
+    const entries = inferredByDate.get(statusDate) ?? [];
+    entries.push({
+      key,
+      status: progress.status,
+      enteredAt: dashboardProgressEnteredAt(progress) ?? `${statusDate}T00:00:00+08:00`,
+    });
+    inferredByDate.set(statusDate, entries);
+  });
+
+  const evidenceDates = new Set([today]);
+  Object.keys(activityLog).forEach((date) => evidenceDates.add(date));
+  exactByDate.forEach((_, date) => evidenceDates.add(date));
+  eventsByDate.forEach((_, date) => evidenceDates.add(date));
+  inferredByDate.forEach((_, date) => evidenceDates.add(date));
+  const validEvidenceDates = [...evidenceDates]
+    .filter((date) => date <= today)
+    .sort();
+  const earliest = validEvidenceDates[0];
+  if (earliest) {
+    const start = earliest < addDays(today, -179) ? addDays(today, -179) : earliest;
+    const statuses = {};
+    const enteredAt = {};
+    for (let date = start; date <= today; date = addDays(date, 1)) {
+      (inferredByDate.get(date) ?? []).forEach((entry) => {
+        statuses[entry.key] = entry.status;
+        enteredAt[entry.key] = entry.enteredAt;
+      });
+      const exact = exactByDate.get(date);
+      if (exact) {
+        Object.keys(statuses).forEach((key) => delete statuses[key]);
+        Object.keys(enteredAt).forEach((key) => delete enteredAt[key]);
+        Object.entries(exact.statuses ?? {}).forEach(([key, status]) => {
+          if (knownSenseKeys.has(key) && Object.values(SENSE_STATUS).includes(status)) {
+            statuses[key] = status;
+          }
+        });
+        Object.entries(exact.enteredAt ?? {}).forEach(([key, value]) => {
+          if (knownSenseKeys.has(key) && Number.isFinite(Date.parse(value))) {
+            enteredAt[key] = value;
+          }
+        });
+      }
+      (eventsByDate.get(date) ?? []).forEach((event) => {
+        if (exact && String(event.observedAt ?? "") <= String(exact.observedAt ?? "")) return;
+        if (event.to === SENSE_STATUS.NEW) {
+          delete statuses[event.senseId];
+          delete enteredAt[event.senseId];
+          return;
+        }
+        statuses[event.senseId] = event.to;
+        enteredAt[event.senseId] = event.observedAt ?? `${date}T00:00:00+08:00`;
+      });
+
+      if (date === today) {
+        Object.entries(bookState.progress ?? {}).forEach(([key, progress]) => {
+          if (!knownSenseKeys.has(key)) return;
+          if (!progress?.status || progress.status === SENSE_STATUS.NEW) {
+            delete statuses[key];
+            delete enteredAt[key];
+            return;
+          }
+          statuses[key] = progress.status;
+          const entered = dashboardProgressEnteredAt(progress);
+          if (entered) enteredAt[key] = entered;
+        });
+      }
+
+      if (!evidenceDates.has(date) || (exact && date !== today)) continue;
+      const id = dashboardSnapshotKey(bookId, date);
+      const nextSnapshot = {
+        id,
+        version: DASHBOARD_DATA_VERSION,
+        bookId,
+        date,
+        observedAt: date === today ? new Date().toISOString() : repairObservedAt(date),
+        statuses: cloneSerializable(statuses),
+        enteredAt: cloneSerializable(enteredAt),
+        quality: date === today ? "exact" : "reconstructed",
+      };
+      retainedSnapshots[id] = exact &&
+        stableStateStringify(exact.statuses ?? {}) === stableStateStringify(nextSnapshot.statuses) &&
+        stableStateStringify(exact.enteredAt ?? {}) === stableStateStringify(nextSnapshot.enteredAt)
+        ? exact
+        : nextSnapshot;
+    }
+  }
+  bookState.dashboardSnapshots = retainedSnapshots;
+
+  const sessionChanged = options.reconcileSession === true
+    ? rebuildMergedSession(bookId, bookState, bookWords, activityLog)
+    : false;
+  return {
+    activityChanged: stableStateStringify(bookState.activityLog) !== beforeActivity,
+    snapshotsChanged: stableStateStringify(bookState.dashboardSnapshots) !== beforeSnapshots,
+    activityDates: Object.keys(bookState.activityLog).length,
+    snapshotDates: Object.keys(bookState.dashboardSnapshots).length,
+    sessionChanged,
+  };
+}
+
+function repairDerivedRootState(candidate, options = {}) {
+  const repaired = cloneSerializable(candidate ?? {});
+  const reports = [];
+  Object.entries(repaired.bookStates ?? {}).forEach(([bookId, bookState]) => {
+    const referenceBook = options.referenceState?.bookStates?.[bookId];
+    const learningChanged = !referenceBook || stableStateStringify({
+      introducedWords: bookState.introducedWords,
+      progress: bookState.progress,
+      activityLog: bookState.activityLog,
+      studyWindows: bookState.studyWindows,
+    }) !== stableStateStringify({
+      introducedWords: referenceBook.introducedWords,
+      progress: referenceBook.progress,
+      activityLog: referenceBook.activityLog,
+      studyWindows: referenceBook.studyWindows,
+    });
+    reports.push({
+      bookId,
+      ...repairDerivedBookState(bookId, bookState, {
+        reconcileSession: options.reconcileSession === true || learningChanged,
+      }),
+    });
+  });
+  return { state: repaired, reports };
+}
+
+async function repairActiveDerivedData(onProgress = null) {
+  const navigation = captureActiveNavigation();
+  const previous = cloneSerializable(rootState);
+  const repaired = cloneSerializable(rootState);
+  const entries = Object.entries(repaired.bookStates ?? {});
+  const reports = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    const [bookId, bookState] = entries[index];
+    reports.push({
+      bookId,
+      ...repairDerivedBookState(bookId, bookState, { reconcileSession: true }),
+    });
+    onProgress?.((index + 1) / Math.max(1, entries.length) * 90, index + 1, entries.length);
+  }
+  if (window.SenseVocabSync) {
+    window.SenseVocabSync.stampChanges(repaired, previous);
+  }
+  rootState = normalizeRootState(repaired);
+  if (navigation && bookById.has(navigation.bookId)) rootState.activeBookId = navigation.bookId;
+  activateBookScope(rootState.activeBookId);
+  restoreActiveNavigation(navigation);
+  const persisted = saveState({ notify: false, stampSync: false });
+  render();
+  onProgress?.(100, entries.length, entries.length);
+  return {
+    persisted,
+    reports,
+    changed: stateSignature(previous) !== stateSignature(rootState),
+  };
 }
 
 function dashboardDateLabel(date) {
@@ -4338,8 +4924,13 @@ function dashboardSankeyData(bookState, bookWords, start, end) {
 
   const snapshots = bookState.dashboardSnapshots ?? {};
   const bookId = bookIdForState(bookState);
-  const startSnapshot = snapshots[dashboardSnapshotKey(bookId, start)];
-  const endSnapshot = snapshots[dashboardSnapshotKey(bookId, end)];
+  const snapshotHistory = Object.values(snapshots)
+    .filter((entry) => entry?.bookId === bookId && repairDateKey(entry.date))
+    .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  const snapshotAtOrBefore = (date) => snapshots[dashboardSnapshotKey(bookId, date)] ??
+    [...snapshotHistory].reverse().find((entry) => entry.date <= date);
+  const startSnapshot = snapshotAtOrBefore(start);
+  const endSnapshot = snapshotAtOrBefore(end);
   if (!startSnapshot || !endSnapshot) return { flows: [], insufficient: true };
   dashboardSenseKeys(bookWords).forEach((key) => {
     const from = startSnapshot.statuses?.[key] ?? SENSE_STATUS.NEW;
@@ -4802,7 +5393,8 @@ function renderDashboard() {
 
 function applyAccountBootstrapGate() {
   const pending = document.documentElement.dataset.accountReady !== "true";
-  [studyPanel, wordListPanel, dashboardPanel, confusionPanel].forEach((panel) => {
+  [studyPanel, wordListPanel, dashboardPanel, settingsPanel, dataPanel, confusionPanel]
+    .forEach((panel) => {
     panel.inert = pending;
   });
   if (!pending) {
@@ -4810,11 +5402,15 @@ function applyAccountBootstrapGate() {
     planButton.disabled = !persistenceSafe;
     wordListButton.disabled = !persistenceSafe;
     globalDashboardNavButton.disabled = !persistenceSafe;
+    globalSettingsNavButton.disabled = false;
+    dataButton.disabled = false;
     return;
   }
   planButton.disabled = true;
   wordListButton.disabled = true;
   globalDashboardNavButton.disabled = true;
+  globalSettingsNavButton.disabled = true;
+  dataButton.disabled = true;
   startStudyButton.disabled = true;
   advanceStudyButton.disabled = true;
 }
@@ -5910,38 +6506,47 @@ function openFloatingDialog(dialog, originTarget = null) {
   }
   dialog.hidden = false;
   updateFloatingDialogLayerState();
-  dialog.classList.remove("is-modal-closing", "is-modal-entering", "is-modal-open");
-  setFloatingDialogOrigin(dialog, originTarget);
+  dialog.classList.remove(
+    "is-modal-closing",
+    "is-modal-entering",
+    "is-modal-open",
+  );
   if (prefersReducedMotion()) {
+    setFloatingDialogOrigin(dialog, originTarget);
     dialog.classList.add("is-modal-open");
     return;
   }
-  void dialog.offsetWidth;
-  dialog.classList.add("is-modal-entering");
+  dialog.classList.add("is-modal-preparing");
   const done = () => {
     if (floatingDialogTokens.get(dialog) !== token || dialog.hidden) return;
-    dialog.classList.remove("is-modal-entering");
+    dialog.classList.remove("is-modal-preparing", "is-modal-entering");
     dialog.classList.add("is-modal-open");
     positionTutorialOverlay({ force: true });
   };
-  const animation = [...(dialog.querySelector(".reset-dialog")?.getAnimations?.() ?? [])]
-    .find((item) => item.animationName === "modal-drop-expand");
-  if (animation) {
-    if (tutorialRuntime?.active) {
-      const trackTutorialTarget = () => {
-        if (
-          floatingDialogTokens.get(dialog) !== token ||
-          !dialog.classList.contains("is-modal-entering")
-        ) return;
-        positionTutorialOverlay({ force: true });
+  window.requestAnimationFrame(() => {
+    if (floatingDialogTokens.get(dialog) !== token || dialog.hidden) return;
+    setFloatingDialogOrigin(dialog, originTarget);
+    dialog.classList.remove("is-modal-preparing");
+    dialog.classList.add("is-modal-entering");
+    const animation = [...(dialog.querySelector(".reset-dialog")?.getAnimations?.() ?? [])]
+      .find((item) => item.animationName === "modal-drop-expand");
+    if (animation) {
+      if (tutorialRuntime?.active) {
+        const trackTutorialTarget = () => {
+          if (
+            floatingDialogTokens.get(dialog) !== token ||
+            !dialog.classList.contains("is-modal-entering")
+          ) return;
+          positionTutorialOverlay({ force: true });
+          window.requestAnimationFrame(trackTutorialTarget);
+        };
         window.requestAnimationFrame(trackTutorialTarget);
-      };
-      window.requestAnimationFrame(trackTutorialTarget);
+      }
+      Promise.resolve(animation.finished).then(done, done);
+    } else {
+      window.setTimeout(done, 470);
     }
-    Promise.resolve(animation.finished).then(done, done);
-  } else {
-    window.setTimeout(done, 470);
-  }
+  });
 }
 
 function closeFloatingDialog(dialog, { force = false } = {}) {
@@ -5950,19 +6555,29 @@ function closeFloatingDialog(dialog, { force = false } = {}) {
   floatingDialogTokens.set(dialog, token);
   if (force || prefersReducedMotion()) {
     dialog.hidden = true;
-    dialog.classList.remove("is-modal-closing", "is-modal-entering", "is-modal-open");
+    dialog.classList.remove(
+      "is-modal-preparing",
+      "is-modal-closing",
+      "is-modal-entering",
+      "is-modal-open",
+    );
     const surface = dialog.querySelector(".reset-dialog");
     surface?.style.removeProperty("--modal-origin-x");
     surface?.style.removeProperty("--modal-origin-y");
     updateFloatingDialogLayerState();
     return;
   }
-  dialog.classList.remove("is-modal-entering", "is-modal-open");
+  dialog.classList.remove("is-modal-preparing", "is-modal-entering", "is-modal-open");
   dialog.classList.add("is-modal-closing");
   const done = () => {
     if (floatingDialogTokens.get(dialog) !== token) return;
     dialog.hidden = true;
-    dialog.classList.remove("is-modal-closing", "is-modal-entering", "is-modal-open");
+    dialog.classList.remove(
+      "is-modal-preparing",
+      "is-modal-closing",
+      "is-modal-entering",
+      "is-modal-open",
+    );
     const surface = dialog.querySelector(".reset-dialog");
     surface?.style.removeProperty("--modal-origin-x");
     surface?.style.removeProperty("--modal-origin-y");
@@ -5981,29 +6596,51 @@ window.senseVocabModalMotion = Object.freeze({
   close: closeFloatingDialog,
 });
 
-function openMoreDialog(event) {
-  openFloatingDialog(moreDialog, event?.currentTarget);
-}
+const MAIN_VIEW_ORDER = Object.freeze({ home: 0, dashboard: 1, settings: 2 });
 
-function closeMoreDialog() {
-  closeFloatingDialog(moreDialog);
-}
-
-function openDashboard(event) {
-  if (!state || state.view === "dashboard") return;
-  closeMoreDialog();
-  commitUiTransition("forward", () => {
-    state.view = "dashboard";
+function openMainView(nextView) {
+  if (!state || state.view === nextView || !(nextView in MAIN_VIEW_ORDER)) return;
+  const currentOrder = MAIN_VIEW_ORDER[state.view] ?? 0;
+  const nextOrder = MAIN_VIEW_ORDER[nextView];
+  commitUiTransition(nextOrder >= currentOrder ? "forward" : "backward", () => {
+    state.view = nextView;
     render();
   }, { scope: "page" });
+}
+
+function openDashboard() {
+  openMainView("dashboard");
 }
 
 function closeDashboard() {
-  if (!state || state.view === "home") return;
-  commitUiTransition("backward", () => {
-    state.view = "home";
+  openMainView("home");
+}
+
+function openSettings() {
+  openMainView("settings");
+}
+
+function openDataPage(event) {
+  if (!state || state.view === "data") return;
+  if (event?.detail?.immediate) {
+    state.view = "data";
     render();
-  }, { scope: "page" });
+    return;
+  }
+  const transitionOrigin = getUiTransitionOrigin(event?.currentTarget ?? dataButton);
+  commitUiTransition("forward", () => {
+    state.view = "data";
+    render();
+  }, { scope: "hierarchy", origin: transitionOrigin });
+}
+
+function closeDataPage(event) {
+  if (!state || state.view !== "data") return;
+  const transitionOrigin = getUiTransitionOrigin(event?.currentTarget ?? dataButton);
+  commitUiTransition("backward", () => {
+    state.view = "settings";
+    render();
+  }, { scope: "hierarchy", origin: transitionOrigin });
 }
 
 function openWordList(event) {
@@ -6968,15 +7605,17 @@ function triggerStudyCompletionCue() {
   triggerStudyCompletionHaptic();
 }
 
-function dashboardKeyForProgress(progress) {
-  return Object.entries(state?.progress ?? {}).find(([, value]) => value === progress)?.[0] ?? null;
-}
-
-function setProgressMastered(progress, date, learningDay = activeLearningDay(), source = "new") {
+function setProgressMastered(
+  key,
+  progress,
+  date,
+  learningDay = activeLearningDay(),
+  source = "new",
+) {
   const actualDate = currentActivityDate();
   const previousStatus = progress.status ?? SENSE_STATUS.NEW;
   const enteredAt = new Date().toISOString();
-  dashboardRecordTransition(state, dashboardKeyForProgress(progress), previousStatus, SENSE_STATUS.MASTERED, {
+  dashboardRecordTransition(state, key, previousStatus, SENSE_STATUS.MASTERED, {
     date: actualDate,
     observedAt: enteredAt,
     source,
@@ -7000,6 +7639,7 @@ function setProgressMastered(progress, date, learningDay = activeLearningDay(), 
 }
 
 function setProgressPending(
+  key,
   progress,
   status,
   date,
@@ -7010,7 +7650,7 @@ function setProgressPending(
   const actualDate = currentActivityDate();
   const previousStatus = progress.status ?? SENSE_STATUS.NEW;
   const enteredAt = new Date().toISOString();
-  dashboardRecordTransition(state, dashboardKeyForProgress(progress), previousStatus, status, {
+  dashboardRecordTransition(state, key, previousStatus, status, {
     date: actualDate,
     observedAt: enteredAt,
     source,
@@ -7048,9 +7688,10 @@ function markSenseFamiliar(key, options = {}) {
   const date = activeStudyDate();
   const learningDay = activeLearningDay();
   if (isNewLearningKey(card, key)) {
-    setProgressMastered(progress, date, learningDay, card.type ?? "new");
+    setProgressMastered(key, progress, date, learningDay, card.type ?? "new");
   } else if (card.type === "reinforcement") {
     setProgressPending(
+      key,
       progress,
       SENSE_STATUS.REVIEW,
       date,
@@ -7060,9 +7701,10 @@ function markSenseFamiliar(key, options = {}) {
     );
   } else if (card.type === "review") {
     if (progress.status === SENSE_STATUS.REVIEW) {
-      setProgressMastered(progress, date, learningDay);
+      setProgressMastered(key, progress, date, learningDay);
     } else {
       setProgressPending(
+        key,
         progress,
         SENSE_STATUS.REVIEW,
         date,
@@ -7081,11 +7723,13 @@ function markSenseFamiliar(key, options = {}) {
     card.expandedMasteredKeys = [];
     session.cardPhase = "examples";
   }
-  if (options.deferSave) saveStateAfterMotion();
-  else saveState();
   if (!options.skipRender) {
     render();
   }
+  // State mutation is complete before this point; never serialize/compress the
+  // full multi-book cache before the pressed state can paint.
+  if (options.deferSave) saveStateAfterMotion();
+  else saveStateAfterInteractionFrame();
 }
 
 function toggleGreenSenseDetails(key) {
@@ -7098,8 +7742,8 @@ function toggleGreenSenseDetails(key) {
     expanded.add(key);
   }
   card.expandedMasteredKeys = [...expanded];
-  saveState();
   render();
+  saveStateAfterInteractionFrame();
 }
 
 function animateSenseMastered(item) {
@@ -7139,9 +7783,9 @@ function animateSenseMastered(item) {
     commit(previousLayout);
     return;
   }
-  // Paint the pressed state before forcing layout for FLIP. This keeps the tap
-  // response immediate even on slower mobile browsers.
-  window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+  // One input frame is enough to paint the pressed state. A second frame made
+  // large histories feel as if the tap had stalled before the FLIP movement.
+  window.requestAnimationFrame(() => {
     const previousLayout = new Map(
       [...senseList.querySelectorAll(".sense-item[data-key]")].map((senseItem) => [
         senseItem.dataset.key,
@@ -7149,7 +7793,7 @@ function animateSenseMastered(item) {
       ]),
     );
     commit(previousLayout);
-  }));
+  });
 }
 
 function animateSenseReorder(previousLayout, selectedKey) {
@@ -7243,6 +7887,7 @@ function scheduleUnknownSenses() {
   unknownKeys.forEach((key) => {
     const progress = progressFor(key);
     setProgressPending(
+      key,
       progress,
       SENSE_STATUS.REINFORCE,
       date,
@@ -7315,10 +7960,6 @@ function nextWord() {
       session.advanceShiftCommitted = true;
       activityForDate().overtime = true;
     }
-    if (session.currentIndex >= session.queue.length) {
-      finishStudyWindow("completed");
-    }
-
     render();
     if (!currentCard()) triggerStudyCompletionCue();
   }, { scope: "card", afterStart: () => saveStateAfterMotion(460) });
@@ -7678,7 +8319,7 @@ function tutorialTargetForStep(step = tutorialRuntime?.step) {
     "her-next": "#nextButton",
     "abandon-return": "#exitStudyButton",
     "return-home": "#returnHomeButton",
-    more: "#moreButton",
+    more: "#globalSettingsNavButton",
     account: "#accountButton",
   };
   const selector = selectors[step];
@@ -7868,7 +8509,7 @@ function setTutorialStep(step, options = {}) {
   if (step === "plan-form" && planDialog.hidden) openPlanDialog();
   if (step === "reset-marking" && resetDialog.hidden) openResetDialog();
   if (step === "return-home" && returnDialog.hidden) openReturnDialog();
-  if (step === "account" && moreDialog.hidden) openMoreDialog();
+  if (step === "account" && settingsPanel.hidden) openSettings();
   tutorialOverlay.hidden = false;
   scheduleTutorialOverlayPosition({ scroll: options.scroll !== false });
 }
@@ -7945,7 +8586,6 @@ function closeTutorialSurfaces() {
   planDialog.hidden = true;
   resetDialog.hidden = true;
   returnDialog.hidden = true;
-  moreDialog.hidden = true;
   document.querySelector("#accountDialog").hidden = true;
 }
 
@@ -8133,15 +8773,13 @@ function handleTutorialInteraction(event) {
     window.setTimeout(() => setTutorialStep("return-home"), 0);
   } else if (step === "return-home" && event.target.closest("#returnHomeButton")) {
     window.setTimeout(() => setTutorialStep("more"), 0);
-  } else if (step === "more" && event.target.closest("#moreButton")) {
+  } else if (step === "more" && event.target.closest("#globalSettingsNavButton")) {
     if (tutorialScopeId() === "guest") {
       window.setTimeout(() => setTutorialStep("account"), 0);
     } else {
-      closeMoreDialog();
       window.setTimeout(showTutorialCompletedDialog, 0);
     }
   } else if (step === "account" && event.target.closest("#accountButton")) {
-    closeMoreDialog();
     window.setTimeout(showTutorialCompletedDialog, 0);
   }
 }
@@ -8170,18 +8808,21 @@ function blockNonTutorialClick(event) {
 }
 
 async function initializeApp() {
+  setBootProgress(0, "正在准备本机学习空间");
   wordText.textContent = "加载中";
   cardMode.textContent = "词汇学习";
   startStudyButton.disabled = true;
   planButton.disabled = true;
   wordListButton.disabled = true;
-  moreButton.disabled = true;
+  globalSettingsNavButton.disabled = true;
+  dataButton.disabled = true;
   nextButton.disabled = true;
   audioButton.hidden = true;
   document.documentElement.dataset.vocabularyReady = "loading";
   setVocabularyStatus("正在加载词库索引和本地学习记录…");
 
   try {
+    setBootProgress(0, "正在连接词库索引");
     vocabularyIndex = await loadVocabularyIndex();
     vocabularyCatalogAuthoritative = true;
     installVocabularyData(vocabularyIndex);
@@ -8231,6 +8872,11 @@ async function initializeApp() {
   }
 
   renderBookOptions();
+  // The network bar already reached 100% when the index body finished. Keep
+  // that truthful value while the synchronous local record is normalized;
+  // resetting to 0 here would make initialization look like a fake second
+  // download.
+  setBootProgress(100, "词库索引已载入，正在读取本机学习记录");
   rootState = loadState();
   initialGuestHadLearningData = stateHasLearningData(rootState);
   activateBookScope(rootState.activeBookId);
@@ -8239,6 +8885,7 @@ async function initializeApp() {
     saveState();
   }
   render();
+  setBootProgress(100, "本机记录已就绪，正在确认账户");
   scheduleMidnightRefresh();
   const persistenceSafe = isPersistenceSafe();
   planButton.disabled = !persistenceSafe;
@@ -8247,7 +8894,6 @@ async function initializeApp() {
     startStudyButton.disabled = true;
     advanceStudyButton.disabled = true;
   }
-  moreButton.disabled = false;
   applyAccountBootstrapGate();
   document.documentElement.dataset.appReady = "true";
   window.dispatchEvent(new CustomEvent("sensevocab:app-ready"));
@@ -8263,25 +8909,31 @@ planButton.addEventListener("click", openPlanDialog);
 advanceStudyButton.addEventListener("click", startAdvanceStudy);
 wordListButton.addEventListener("click", openWordList);
 startStudyButton.addEventListener("click", startStudy);
-moreButton.addEventListener("click", openMoreDialog);
-closeMoreButton.addEventListener("click", closeMoreDialog);
 dashboardButton?.addEventListener("click", openDashboard);
 dashboardBackButton?.addEventListener("click", closeDashboard);
 globalDashboardNavButton?.addEventListener("click", openDashboard);
-globalHomeNavButton?.addEventListener("click", (event) => {
-  if (state?.view === "dashboard") closeDashboard(event);
-});
-moreDialog.addEventListener("click", (event) => {
-  if (event.target === moreDialog) closeMoreDialog();
-});
-document.querySelector("#accountButton").addEventListener("click", closeMoreDialog);
+globalHomeNavButton?.addEventListener("click", () => openMainView("home"));
+globalSettingsNavButton?.addEventListener("click", openSettings);
+dataButton?.addEventListener("click", openDataPage);
+dataBackButton?.addEventListener("click", closeDataPage);
+window.addEventListener("sensevocab:open-data", (event) => openDataPage(event));
 homeFeedbackButton.addEventListener("click", () => {
-  closeMoreDialog();
   window.dispatchEvent(new CustomEvent("sensevocab:open-feedback"));
 });
 replayTutorialButton.addEventListener("click", () => {
-  closeMoreDialog();
-  startTutorial({ replay: true });
+  openFloatingDialog(tutorialReplayConfirmDialog, replayTutorialButton);
+});
+confirmReplayTutorialButton.addEventListener("click", () => {
+  closeFloatingDialog(tutorialReplayConfirmDialog, { force: true });
+  window.requestAnimationFrame(() => startTutorial({ replay: true }));
+});
+cancelReplayTutorialButton.addEventListener("click", () => {
+  closeFloatingDialog(tutorialReplayConfirmDialog);
+});
+tutorialReplayConfirmDialog.addEventListener("click", (event) => {
+  if (event.target === tutorialReplayConfirmDialog) {
+    closeFloatingDialog(tutorialReplayConfirmDialog);
+  }
 });
 savePlanButton.addEventListener("click", savePlan);
 cancelPlanButton.addEventListener("click", closePlanDialog);

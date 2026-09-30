@@ -823,7 +823,7 @@
 
 .app-bottom-nav {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   justify-content: stretch;
   padding-inline: max(0px, calc((100vw - 920px) / 2));
@@ -901,6 +901,22 @@ html.has-floating-dialog .app-main-nav {
 .app-bottom-nav .app-nav-item:disabled {
   cursor: wait;
   opacity: 0.46;
+}
+
+.app-bottom-nav .app-nav-item.has-sync-warning::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  right: calc(50% - 18px);
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--paper);
+  border-radius: 50%;
+  background: #b42318;
+}
+
+.app-bottom-nav .app-nav-item {
+  position: relative;
 }
 
 .word-list-bottom-nav,
@@ -1290,18 +1306,30 @@ button {
   background: rgba(15, 118, 110, 0.12);
 }
 
+.boot-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: min(260px, 86%);
+  margin-inline: auto;
+}
+
+.boot-progress-text {
+  min-width: 3.8em;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .boot-progress span {
-  width: 42%;
+  width: 4%;
   height: 100%;
   display: block;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--accent), var(--warm));
-  animation: boot-progress 1.55s ease-in-out infinite;
-}
-
-@keyframes boot-progress {
-  from { transform: translateX(-110%); }
-  to { transform: translateX(345%); }
+  transition: width 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes boot-drift {
@@ -1315,9 +1343,6 @@ button {
     animation: none;
   }
 
-  .boot-progress span {
-    width: 68%;
-  }
 }
 
 .app-shell {
@@ -3195,6 +3220,14 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
   animation: modal-backdrop-in 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+.modal-backdrop.is-modal-preparing {
+  background: rgba(29, 35, 40, 0);
+}
+
+.modal-backdrop.is-modal-preparing .reset-dialog {
+  opacity: 0;
+}
+
 .modal-backdrop.is-modal-entering .reset-dialog {
   transform-origin: var(--modal-origin-x, 50%) var(--modal-origin-y, 100%);
   animation: modal-drop-expand 360ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
@@ -3657,9 +3690,7 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
 }
 
 .feedback-image-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: block;
 }
 
 .feedback-context {
@@ -3694,10 +3725,12 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
 }
 
 .feedback-image-button {
-  min-height: 38px;
-  display: inline-flex;
+  width: 100%;
+  min-height: 44px;
+  display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 0 14px;
   cursor: pointer;
   font-size: 0.86rem;
@@ -3796,12 +3829,189 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
   gap: 10px;
 }
 
-.notification-entry-button {
-  position: relative;
+.settings-panel,
+.data-panel {
+  width: 100%;
+  min-height: 100%;
+  align-content: start;
+}
+
+.settings-page-header,
+.data-page-header {
+  align-items: center;
+}
+
+.settings-action-list,
+.data-action-list {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.settings-action {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  min-height: 72px;
+  padding: 15px 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--paper) 94%, var(--accent-soft));
+  color: var(--ink);
+  text-align: left;
+  text-decoration: none;
+  box-shadow: 0 8px 20px rgba(24, 35, 40, 0.04);
+  transition: border-color 180ms ease, background-color 180ms ease,
+    transform 180ms ease, box-shadow 180ms ease;
+}
+
+.settings-action:hover,
+.settings-action:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 34%, var(--paper));
+  box-shadow: 0 12px 26px rgba(24, 35, 40, 0.08);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.settings-action:active {
+  transform: scale(0.985);
+}
+
+.settings-action-primary {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 58%, var(--paper));
+}
+
+.settings-action-copy {
+  display: grid;
+  gap: 5px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-action-copy strong {
+  font-size: 1rem;
+}
+
+.settings-action-copy small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.settings-action-arrow {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 1.8rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.data-status-card,
+.data-comparison {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  max-width: 900px;
+  margin-inline: auto;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--paper) 96%, var(--accent-soft));
+}
+
+.data-status-heading,
+.data-comparison-heading,
+.operation-progress-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.data-scope-copy,
+.data-comparison-status,
+.data-guest-status {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.operation-progress {
+  display: grid;
+  gap: 7px;
+}
+
+.operation-progress-heading {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.operation-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 72%, var(--paper));
+}
+
+.operation-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--warm));
+  transition: width 180ms cubic-bezier(0.16, 1, 0.3, 1), background-color 180ms ease;
+}
+
+.operation-progress-track[data-mode="unknown"] span {
+  width: 0 !important;
+  animation: none;
+}
+
+.operation-progress[data-state="error"] .operation-progress-track span {
+  background: #b42318;
+}
+
+.operation-progress[data-state="success"] .operation-progress-track span {
+  background: #16845f;
+}
+
+.data-file-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.data-comparison .sync-record-comparison {
+  margin: 0;
+}
+
+.data-message {
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.notification-entry-button {
+  position: relative;
+  justify-content: flex-start;
+}
+
+.modal-return-button {
+  width: 100%;
+}
+
+.data-page-back-button {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
 }
 
 .notification-badge {
@@ -4162,6 +4372,21 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
 
   .app-bottom-nav .app-nav-item {
     min-height: 48px;
+  }
+
+  .settings-action,
+  .data-status-card,
+  .data-comparison {
+    border-radius: 14px;
+  }
+
+  .settings-action {
+    min-height: 64px;
+    padding: 13px 14px;
+  }
+
+  .data-file-actions {
+    grid-template-columns: 1fr;
   }
 
   .word-list-panel {

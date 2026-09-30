@@ -2375,10 +2375,18 @@ test("a study window crossing midnight stays on its start date and requires retu
   expect(saved.studyWindows[0].activityDate).toBe("2026-07-26");
   expect(saved.studyWindows[0].endedAt).toBeNull();
 
+  await reveal(page);
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#confusionPanel")).toBeVisible();
+  await expect(page.locator("#confusionPanel")).not.toHaveClass(/is-transitioning/);
   await page.evaluate(() => {
     localStorage.setItem("sense-vocab-test-clock", "2026-07-27T00:05:00+08:00");
   });
-  await reveal(page);
+  await page.locator("#confusionBackButton").click();
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  saved = await readState(page);
+  expect(saved.session.date).toBe("2026-07-26");
+  expect(saved.studyWindows[0].endedAt).toBeNull();
   await confirmEveryVisibleSense(page);
   await completeAndAdvance(page);
 
@@ -2389,9 +2397,7 @@ test("a study window crossing midnight stays on its start date and requires retu
   expect(saved.session.date).toBe("2026-07-26");
   expect(saved.activityLog["2026-07-26"].newCount).toBe(1);
   expect(saved.activityLog["2026-07-27"]).toBeUndefined();
-  expect(saved.studyWindows[0].endedReason).toBe("completed");
-  expect(saved.studyWindows[0].endedDate).toBe("2026-07-27");
-  expect(saved.studyWindows[0].crossedMidnight).toBe(true);
+  expect(saved.studyWindows[0].endedAt).toBeNull();
 
   await page.locator("#exitStudyButton").click();
   await page.locator("#returnHomeButton").click();
@@ -2401,6 +2407,13 @@ test("a study window crossing midnight stays on its start date and requires retu
   await expect(page.locator("#studyPanel")).toBeVisible();
   await page.locator("#returnHomeButton").click();
   await expect(page.locator("#homePanel")).toBeVisible();
+
+  saved = await waitForState(page, (candidate) => {
+    return candidate.studyWindows[0]?.endedReason === "return-home";
+  });
+  expect(saved.studyWindows[0].endedReason).toBe("return-home");
+  expect(saved.studyWindows[0].endedDate).toBe("2026-07-27");
+  expect(saved.studyWindows[0].crossedMidnight).toBe(true);
 
   const previousDayColor = await page.locator('.heatmap-day[data-date="2026-07-26"]')
     .evaluate((element) => element.style.getPropertyValue("--heat-color"));

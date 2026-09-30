@@ -48,11 +48,13 @@ async function waitForAccount(page) {
 }
 
 async function installFakeCloud(page, remote = null, options = {}) {
-  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs }) => {
+  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs, getSessionFailures, loadStateFailures }) => {
     window.__fakeCloud = {
       remote: initialRemote,
       session: persistedSession,
       loadStateDelayMs,
+      getSessionFailures,
+      loadStateFailures,
       saves: [],
       signOuts: 0,
       signUps: [],
@@ -65,6 +67,11 @@ async function installFakeCloud(page, remote = null, options = {}) {
       feedbacks: [],
       legalComplete: true,
       loadStateCalls: 0,
+      loadStateManifestCalls: 0,
+      loadStateExpectedBytes: [],
+      activeLoadStateCalls: 0,
+      maxActiveLoadStateCalls: 0,
+      abortedLoadStateCalls: 0,
       profile: {
         registrationNumber: 42,
         membershipExpiresAt: "2026-12-31T16:00:00.000Z",
@@ -95,6 +102,10 @@ async function installFakeCloud(page, remote = null, options = {}) {
     };
     window.__SENSE_VOCAB_CLOUD_FACTORY__ = () => ({
       async getSession() {
+        if (window.__fakeCloud.getSessionFailures > 0) {
+          window.__fakeCloud.getSessionFailures -= 1;
+          throw new Error("session temporarily unavailable");
+        }
         return window.__fakeCloud.session;
       },
       onAuthStateChange() {
@@ -178,20 +189,54 @@ async function installFakeCloud(page, remote = null, options = {}) {
         window.__fakeCloud.markedNotifications.push({ kind, id });
         return { ok: true };
       },
-      async loadState() {
-        window.__fakeCloud.loadStateCalls += 1;
-        if (window.__fakeCloud.loadStateDelayMs > 0) {
-          await new Promise((resolve) => {
-            setTimeout(resolve, window.__fakeCloud.loadStateDelayMs);
-          });
+      async loadStateManifest(signal) {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        window.__fakeCloud.loadStateManifestCalls += 1;
+        const remote = window.__fakeCloud.remote;
+        if (!remote?.found || !remote.state) {
+          return { found: false, revision: 0, bytes: 0 };
         }
-        return window.__fakeCloud.remote ?? {
-          found: false,
-          revision: 0,
-          state: null,
+        return {
+          found: true,
+          revision: remote.revision,
+          bytes: new TextEncoder().encode(JSON.stringify(remote)).byteLength,
         };
       },
-      async saveState(state, expectedRevision, force = false) {
+      async loadState(signal, expectedBytes = null) {
+        window.__fakeCloud.loadStateCalls += 1;
+        window.__fakeCloud.loadStateExpectedBytes.push(expectedBytes);
+        window.__fakeCloud.activeLoadStateCalls += 1;
+        window.__fakeCloud.maxActiveLoadStateCalls = Math.max(
+          window.__fakeCloud.maxActiveLoadStateCalls,
+          window.__fakeCloud.activeLoadStateCalls,
+        );
+        try {
+          if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+          if (window.__fakeCloud.loadStateFailures > 0) {
+            window.__fakeCloud.loadStateFailures -= 1;
+            throw new Error("cloud state temporarily unavailable");
+          }
+          if (window.__fakeCloud.loadStateDelayMs > 0) {
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(resolve, window.__fakeCloud.loadStateDelayMs);
+              signal?.addEventListener("abort", () => {
+                window.__fakeCloud.abortedLoadStateCalls += 1;
+                clearTimeout(timer);
+                reject(new DOMException("Aborted", "AbortError"));
+              }, { once: true });
+            });
+          }
+          return window.__fakeCloud.remote ?? {
+            found: false,
+            revision: 0,
+            state: null,
+          };
+        } finally {
+          window.__fakeCloud.activeLoadStateCalls -= 1;
+        }
+      },
+      async saveState(state, expectedRevision, force = false, signal) {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
         window.__fakeCloud.saves.push({
           state: JSON.parse(JSON.stringify(state)),
           expectedRevision,
@@ -250,13 +295,27 @@ async function installFakeCloud(page, remote = null, options = {}) {
     initialRemote: remote,
     persistedSession: options.session ?? null,
     loadStateDelayMs: options.loadStateDelayMs ?? 0,
+    getSessionFailures: options.getSessionFailures ?? 0,
+    loadStateFailures: options.loadStateFailures ?? 0,
   });
 }
 
 async function openAccount(page) {
   if (await page.locator("#accountDialog").isVisible()) return;
-  await page.locator("#moreButton").click();
+  if (await page.locator("#dataPanel").isVisible()) {
+    await page.locator("#dataBackButton").click();
+  }
+  await page.locator("#globalSettingsNavButton").click();
   await page.locator("#accountButton").click();
+}
+
+async function openData(page) {
+  if (await page.locator("#dataPanel").isVisible()) return;
+  if (await page.locator("#accountDialog").isVisible()) {
+    await page.locator("#closeAccountButton").click();
+  }
+  await page.locator("#globalSettingsNavButton").click();
+  await page.locator("#dataButton").click();
 }
 
 async function login(page, email = "learner@example.com") {
@@ -323,6 +382,154 @@ test("account startup shows the authenticated local scope before a slow cloud re
   expect(startup.target).toBe(45);
   expect(startup.status).toBe("mastered");
   expect(startup.cloudReads).toBe(1);
+});
+
+test("cloud state reads use the manifest byte count for determinate progress", async ({ page }) => {
+  const remote = makeState(20);
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = { status: "mastered" };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 12,
+    state: remote,
+  }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+
+  const progressInput = await page.evaluate(() => ({
+    manifestCalls: window.__fakeCloud.loadStateManifestCalls,
+    loadCalls: window.__fakeCloud.loadStateCalls,
+    expectedBytes: window.__fakeCloud.loadStateExpectedBytes,
+  }));
+  expect(progressInput.manifestCalls).toBeGreaterThan(0);
+  expect(progressInput.loadCalls).toBe(1);
+  expect(progressInput.expectedBytes).toHaveLength(1);
+  expect(progressInput.expectedBytes[0]).toBeGreaterThan(0);
+});
+
+test("timed-out cloud reads are aborted once without a blind retry", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_TIMEOUT_MS__ = 100;
+  });
+  await installFakeCloud(page, {
+    found: true,
+    revision: 4,
+    state: makeState(20),
+  }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+    loadStateDelayMs: 2_000,
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+
+  await expect.poll(async () => page.evaluate(() => {
+    return window.__fakeCloud.loadStateCalls;
+  })).toBe(1);
+  await expect.poll(async () => page.evaluate(() => {
+    return window.__fakeCloud.activeLoadStateCalls;
+  })).toBe(0);
+  const calls = await page.evaluate(() => ({
+    aborted: window.__fakeCloud.abortedLoadStateCalls,
+    maxActive: window.__fakeCloud.maxActiveLoadStateCalls,
+  }));
+  expect(calls).toEqual({ aborted: 1, maxActive: 1 });
+});
+
+test("a transient session read failure is retried without leaving the user in guest mode", async ({ page }) => {
+  const remote = makeState(28);
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = { status: "mastered" };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 4,
+    state: remote,
+  }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+    getSessionFailures: 1,
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+
+  expect(await page.evaluate(() => window.SenseVocabApp.getActiveStorageKey()))
+    .toBe(STORAGE_KEY);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect.poll(async () => (
+    page.evaluate((key) => window.SenseVocabApp.getActiveStorageKey() === key, ACCOUNT_KEY)
+  )).toBe(true);
+  await expect.poll(async () => (
+    page.evaluate(() => document.querySelector("#accountButton")?.getAttribute("aria-label"))
+  )).toBe("账户，已登录");
+  expect(await page.evaluate(() => window.__fakeCloud.getSessionFailures)).toBe(0);
+});
+
+test("a failed cloud read keeps guest progress and exposes a read-only comparison path", async ({ page }) => {
+  const remote = makeState(40);
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = {
+    status: "review",
+    lastSeenActual: "2026-09-28",
+    updatedAt: "2026-09-28T12:00:00.000Z",
+  };
+  const guest = makeState(45);
+  guest.introducedWords = ["act", "ability"];
+  guest.progress["act:v-1"] = {
+    status: "review",
+    lastSeenActual: "2026-09-28",
+    updatedAt: "2026-09-28T12:00:00.000Z",
+  };
+  guest.progress["ability:n-1"] = {
+    status: "mastered",
+    lastSeenActual: "2026-09-29",
+    updatedAt: "2026-09-29T12:00:00.000Z",
+  };
+  guest.activityLog["2026-09-29"] = {
+    newWords: ["ability"],
+    reviewWords: [],
+    newCount: 1,
+    reviewCount: 0,
+  };
+  await installFakeCloud(page, {
+    found: true,
+    revision: 6,
+    state: remote,
+  }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+    // The client now makes one authoritative request per read. Leave one
+    // failed request for the startup path, then let the explicit comparison
+    // verify the recovery path.
+    loadStateFailures: 1,
+  });
+  await page.addInitScript(({ key, state }) => {
+    localStorage.setItem(key, JSON.stringify(state));
+  }, { key: STORAGE_KEY, state: guest });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+
+  await expect(page.locator("#dataPanel")).toBeVisible();
+  await expect(page.locator("#dataMessage")).toContainText("云端暂不可读");
+  await expect(page.locator("#recoverGuestDataButton")).toBeEnabled();
+  expect(await page.evaluate(() => ({
+    activeKey: window.SenseVocabApp.getActiveStorageKey(),
+    guestRoot: window.SenseVocabApp.getGuestState(),
+    accountWords: window.SenseVocabApp.getState().introducedWords,
+  }))).toMatchObject({
+    activeKey: ACCOUNT_KEY,
+    guestRoot: {
+      bookStates: {
+        kaoyan: {
+          introducedWords: ["act", "ability"],
+        },
+      },
+    },
+    accountWords: [],
+  });
+
+  await page.locator("#compareDataButton").click();
+  await expect(page.locator("#dataComparison")).toBeVisible();
+  await expect(page.locator("#dataComparisonStatus")).toContainText("已学");
+  await expect(page.locator("#resolveDataDifferenceButton")).toBeVisible();
 });
 
 test("large learning history remains durable under a local storage quota", async ({ page }) => {
@@ -502,6 +709,7 @@ test("account page does not expose an unreliable local storage capacity estimate
 
   await openAccount(page);
   await expect(page.locator("#accountDialog")).toBeVisible();
+  await expect(page.locator("#accountDialog")).toHaveClass(/is-modal-open/);
   await expect(page.locator("#accountStorageCard")).toHaveCount(0);
   expect(await page.evaluate(() => window.__storageEstimateCalls)).toBe(0);
 
@@ -520,6 +728,76 @@ test("account page does not expose an unreliable local storage capacity estimate
     expect(layout.documentOverflow).toBe(false);
     expect(layout.dialogFitsViewport).toBe(true);
   }
+});
+
+test("data repair rebuilds derived history and keeps settings controls aligned", async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeDate = Date;
+    class TestDate extends NativeDate {
+      constructor(...args) {
+        super(...(args.length ? args : ["2026-09-30T12:00:00+08:00"]));
+      }
+
+      static now() {
+        return new TestDate().getTime();
+      }
+    }
+    window.Date = TestDate;
+    localStorage.clear();
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+
+  await page.evaluate(() => {
+    const next = window.SenseVocabApp.getState();
+    const scope = next.bookStates[next.activeBookId];
+    scope.introducedWords = ["ability"];
+    scope.progress["ability:n-1"] = {
+      status: "mastered",
+      firstSeenActual: "2026-09-29",
+      lastSeenActual: "2026-09-29",
+      masteredOnActual: "2026-09-29",
+      statusEnteredAt: "2026-09-29T12:00:00+08:00",
+      updatedAt: "2026-09-29T12:00:00+08:00",
+    };
+    scope.activityLog = {};
+    scope.dashboardEvents = {};
+    scope.dashboardSnapshots = {};
+    window.SenseVocabApp.replaceActiveState(next, {
+      notify: false,
+      stampSync: false,
+    });
+  });
+
+  await page.locator("#globalSettingsNavButton").click();
+  await expect(page.locator(".settings-action-copy small")).toHaveCount(0);
+  const settingAlignment = await page.evaluate(() => {
+    const account = document.querySelector("#accountButton strong").getBoundingClientRect();
+    const notifications = document.querySelector("#notificationsButton strong").getBoundingClientRect();
+    return Math.abs(account.left - notifications.left);
+  });
+  expect(settingAlignment).toBeLessThan(1);
+
+  await page.locator("#dataButton").click();
+  await page.locator("#repairDataButton").click();
+  await expect(page.locator("#dataMessage")).toContainText("已按当前学习记录重建");
+  const repaired = await page.evaluate(() => {
+    const root = window.SenseVocabApp.getState();
+    const scope = root.bookStates[root.activeBookId];
+    return {
+      activity: scope.activityLog["2026-09-29"],
+      snapshot: scope.dashboardSnapshots[`${root.activeBookId}:2026-09-29`],
+    };
+  });
+  expect(repaired.activity.newWords).toContain("ability");
+  expect(repaired.snapshot.statuses["ability:n-1"]).toBe("mastered");
+
+  const actionWidths = await page.evaluate(() => {
+    return ["syncNowButton", "repairDataButton", "dataBackButton"].map((id) => (
+      document.querySelector(`#${id}`).getBoundingClientRect().width
+    ));
+  });
+  expect(Math.max(...actionWidths) - Math.min(...actionWidths)).toBeLessThan(1);
 });
 
 test("registration uses one email, one password, and an emailed OTP", async ({ page }) => {
@@ -610,12 +888,12 @@ test("account membership, invite code, and two-way notifications are visible wit
   await expect(page.locator("#accountDataActions")).not.toContainText("条款");
   await page.locator("#closeAccountButton").click();
 
-  await expect(page.locator("#moreButton")).toHaveClass(/has-unread/);
-  await expect(page.locator("#moreButton")).toHaveAttribute(
+  await expect(page.locator("#globalSettingsNavButton")).toHaveClass(/has-unread/);
+  await expect(page.locator("#globalSettingsNavButton")).toHaveAttribute(
     "aria-label",
     /1 .*未读消息/,
   );
-  await page.locator("#moreButton").click();
+  await page.locator("#globalSettingsNavButton").click();
   await expect(page.locator("#notificationBadge")).toHaveText("1");
   await page.locator("#notificationsButton").click();
   await expect(page.locator("#notificationsDialog")).toBeVisible();
@@ -624,7 +902,7 @@ test("account membership, invite code, and two-way notifications are visible wit
   await expect.poll(async () => {
     return page.evaluate(() => window.__fakeCloud.markedNotifications);
   }).toEqual([{ kind: "direct", id: "notice-1" }]);
-  await expect(page.locator("#moreButton")).not.toHaveClass(/has-unread/);
+  await expect(page.locator("#globalSettingsNavButton")).not.toHaveClass(/has-unread/);
   await expect(page.locator("#notificationBadge")).toBeHidden();
 });
 
@@ -655,7 +933,7 @@ test("announcements show only title and date until explicitly expanded", async (
     };
   });
 
-  await page.locator("#moreButton").click();
+  await page.locator("#globalSettingsNavButton").click();
   await page.locator("#notificationsButton").click();
   const announcement = page.locator(".notification-item");
   await expect(announcement.locator(".notification-item-heading")).toContainText(
@@ -1087,7 +1365,8 @@ test("retained guest recovery survives same-device cloud vectors", async ({ page
     migrationKey: "sense-vocab-guest-migration-v1:user-1",
   });
   await login(page);
-  await expect(page.locator("#accountUserView")).toBeVisible();
+  await openData(page);
+  await expect(page.locator("#dataPanel")).toBeVisible();
   await expect(page.locator("#recoverGuestDataButton")).toBeVisible();
 
   await page.locator("#recoverGuestDataButton").click();
@@ -1188,9 +1467,10 @@ test("a stale guest archive does not interrupt account bootstrap", async ({ page
   await waitForAccount(page);
 
   await login(page);
-  await expect(page.locator("#accountUserView")).toBeVisible();
+  await openData(page);
+  await expect(page.locator("#dataPanel")).toBeVisible();
   await expect(page.locator("#accountConflictView")).toBeHidden();
-  await expect(page.locator("#recoverGuestDataButton")).toBeHidden();
+  await expect(page.locator("#recoverGuestDataButton")).toBeDisabled();
   expect(await page.evaluate(() => ({
     words: window.SenseVocabApp.getState().introducedWords,
     saves: window.__fakeCloud.saves.length,
@@ -1454,6 +1734,185 @@ test("a CAS conflict automatically merges independent device learning", async ({
   expect(result.conflictVisible).toBe(false);
 });
 
+test("guest history merge rebuilds charts and recomputes today's planned queue", async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeDate = Date;
+    class TestDate extends NativeDate {
+      constructor(...args) {
+        super(...(args.length ? args : ["2026-09-30T12:00:00+08:00"]));
+      }
+
+      static now() {
+        return new TestDate().getTime();
+      }
+    }
+    window.Date = TestDate;
+    localStorage.clear();
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+
+  const result = await page.evaluate(() => {
+    const base = window.SenseVocabApp.getState();
+    const activeBookId = base.activeBookId;
+    const mirroredKeys = [
+      "view", "plan", "session", "introducedWords", "progress",
+      "activityLog", "studyWindows", "dashboardEvents", "dashboardSnapshots",
+      "confusionLinks", "learningDayCounter", "wordListSort", "wordBrowse",
+      "dataVersion", "_sync",
+    ];
+    const rootWithScope = (scope) => {
+      const root = structuredClone(base);
+      root.bookStates[activeBookId] = scope;
+      mirroredKeys.forEach((key) => delete root[key]);
+      return root;
+    };
+    const accountScope = structuredClone(base.bookStates[activeBookId]);
+    delete accountScope._sync;
+    accountScope.plan = {
+      ...(accountScope.plan ?? {}),
+      dailyTarget: 2,
+      startedOn: "2026-09-29",
+    };
+    accountScope.introducedWords = ["act"];
+    accountScope.progress = {
+      "act:v-1": {
+        status: "mastered",
+        firstSeenActual: "2026-09-30",
+        lastSeenActual: "2026-09-30",
+        masteredOnActual: "2026-09-30",
+        statusEnteredAt: "2026-09-30T09:00:00+08:00",
+        updatedAt: "2026-09-30T09:00:00+08:00",
+      },
+    };
+    accountScope.activityLog = {
+      "2026-09-30": {
+        newWords: ["act"],
+        reviewWords: [],
+        newCount: 1,
+        reviewCount: 0,
+        target: 2,
+        learningDays: [2],
+      },
+    };
+    accountScope.studyWindows = [];
+    accountScope.dashboardEvents = {};
+    accountScope.dashboardSnapshots = {};
+    accountScope.learningDayCounter = 2;
+    accountScope.session = {
+      date: "2026-09-30",
+      queue: [
+        {
+          type: "new",
+          wordId: "ability",
+          activeSenseKeys: ["ability:n-1"],
+          newSenseKeys: ["ability:n-1"],
+          senseKeys: ["ability:n-1"],
+          confirmedKeys: [],
+          expandedMasteredKeys: [],
+        },
+        {
+          type: "new",
+          wordId: "abandon",
+          activeSenseKeys: ["abandon:v-1"],
+          newSenseKeys: ["abandon:v-1"],
+          senseKeys: ["abandon:v-1"],
+          confirmedKeys: [],
+          expandedMasteredKeys: [],
+        },
+      ],
+      currentIndex: 0,
+      revealed: false,
+      cardPhase: "hidden",
+      baseNewAdded: true,
+      baseCompleted: false,
+      activeBatchType: "planned",
+      activePlanDate: "2026-09-30",
+      activeLearningDay: 2,
+      baseLearningDay: 2,
+      reinforcementAdded: false,
+      reinforcedKeys: [],
+      reviewPromotedKeys: [],
+      historyView: null,
+    };
+
+    const guestScope = structuredClone(accountScope);
+    delete guestScope._sync;
+    guestScope.session = null;
+    guestScope.introducedWords = ["ability"];
+    guestScope.progress = {
+      "ability:n-1": {
+        status: "mastered",
+        firstSeenActual: "2026-09-29",
+        lastSeenActual: "2026-09-29",
+        masteredOnActual: "2026-09-29",
+        statusEnteredAt: "2026-09-29T20:00:00+08:00",
+        updatedAt: "2026-09-29T20:00:00+08:00",
+      },
+    };
+    guestScope.activityLog = {
+      "2026-09-29": {
+        newWords: ["ability"],
+        reviewWords: [],
+        newCount: 1,
+        reviewCount: 0,
+        target: 1,
+        baseCompleted: true,
+        learningDays: [1],
+      },
+    };
+    guestScope.studyWindows = [{
+      id: "guest-2026-09-29",
+      activityDate: "2026-09-29",
+      startedAt: "2026-09-29T19:55:00+08:00",
+      endedAt: "2026-09-29T20:05:00+08:00",
+      endedDate: "2026-09-29",
+      endedReason: "completed",
+    }];
+    guestScope.dashboardEvents = {};
+    guestScope.dashboardSnapshots = {};
+    guestScope.learningDayCounter = 1;
+
+    const merged = window.SenseVocabApp.mergeStates(
+      rootWithScope(accountScope),
+      rootWithScope(guestScope),
+    );
+    window.SenseVocabApp.replaceActiveState(merged, {
+      notify: false,
+      stampSync: false,
+    });
+    const mergedRoot = window.SenseVocabApp.getState();
+    const scope = mergedRoot.bookStates[activeBookId];
+    return {
+      activityDates: Object.keys(scope.activityLog).sort(),
+      yesterday: scope.activityLog["2026-09-29"],
+      yesterdaySnapshot: scope.dashboardSnapshots[`${activeBookId}:2026-09-29`],
+      todayQueue: scope.session.queue.map((card) => card.wordId),
+      todayQueueLength: scope.session.queue.length,
+      todayActivity: scope.activityLog["2026-09-30"],
+      dailyTarget: scope.plan.dailyTarget,
+      sessionMeta: {
+        activeBatchType: scope.session.activeBatchType,
+        baseNewAdded: scope.session.baseNewAdded,
+        baseCompleted: scope.session.baseCompleted,
+      },
+      abilityStatus: scope.progress["ability:n-1"]?.status,
+    };
+  });
+
+  expect(result.activityDates).toEqual(["2026-09-29", "2026-09-30"]);
+  expect(result.yesterday.newWords).toContain("ability");
+  expect(result.yesterday.baseCompleted).toBe(true);
+  expect(result.yesterdaySnapshot.statuses["ability:n-1"]).toBe("mastered");
+  expect(result.abilityStatus).toBe("mastered");
+  expect(result.todayQueue).not.toContain("ability");
+  expect(result).toMatchObject({ todayQueueLength: 1 });
+
+  const heatColor = await page.locator('.heatmap-day[data-date="2026-09-29"]')
+    .evaluate((element) => element.style.getPropertyValue("--heat-color"));
+  expect(heatColor).toBe("#49a96d");
+});
+
 test("confusing-word links follow the account to a fresh mobile device", async ({ page, browser }) => {
   test.setTimeout(45000);
   await installFakeCloud(page, {
@@ -1555,7 +2014,7 @@ test("backup import/export and account deletion preserve the separate guest reco
   await page.reload();
   await waitForAccount(page);
 
-  await openAccount(page);
+  await openData(page);
   const downloadPromise = page.waitForEvent("download");
   await page.locator("#exportDataButton").click();
   const download = await downloadPromise;
@@ -1610,7 +2069,7 @@ test("signed-in users can submit text and up to four private feedback images", a
 
   await login(page);
   await page.locator("#closeAccountButton").click();
-  await page.locator("#moreButton").click();
+  await page.locator("#globalSettingsNavButton").click();
   await page.locator("#homeFeedbackButton").click();
   await expect(page.locator("#accountFeedbackView")).toBeVisible();
   await page.locator("#feedbackMessage").fill("热力图日期显示不正确。");
@@ -1897,7 +2356,8 @@ test("clean visibility and online events do not rewrite the cloud snapshot", asy
   await page.reload();
   await waitForAccount(page);
   await login(page);
-  await expect(page.locator("#accountUserView")).toBeVisible();
+  await openData(page);
+  await expect(page.locator("#dataPanel")).toBeVisible();
 
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await page.locator("#syncNowButton").click();

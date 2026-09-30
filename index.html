@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260928-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260930-1" />
   </head>
   <body aria-busy="true">
     <div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-atomic="true">
@@ -23,8 +23,18 @@
         />
         <p class="boot-kicker">SENSE VOCAB</p>
         <h1 id="bootTitle">正在整理你的学习空间</h1>
-        <p class="boot-copy">载入词库，并核对本机与云端记录</p>
-        <div class="boot-progress" aria-hidden="true"><span></span></div>
+        <p class="boot-copy" id="bootProgressLabel">正在准备本机学习记录</p>
+        <div class="boot-progress-row">
+          <div
+            class="boot-progress"
+            id="bootProgress"
+            role="progressbar"
+            aria-label="初始化进度"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          ><span id="bootProgressValue"></span></div>
+          <strong class="boot-progress-text" id="bootProgressText">--</strong>
+        </div>
       </section>
     </div>
 
@@ -214,9 +224,6 @@
 
           <div class="home-utility-actions">
             <button class="secondary-button" id="advanceStudyButton" type="button" hidden>提前学习</button>
-            <button class="plain-button more-button" id="moreButton" type="button" aria-haspopup="dialog" disabled>
-              更多
-            </button>
           </div>
         </div>
       </section>
@@ -229,6 +236,139 @@
           </div>
         </header>
         <div id="dashboardHost"></div>
+      </section>
+
+      <section class="study-panel settings-panel" id="settingsPanel" aria-live="polite" hidden>
+        <header class="dashboard-page-header settings-page-header">
+          <div>
+            <p class="word-label">偏好与支持</p>
+            <h1>设置</h1>
+          </div>
+        </header>
+        <div class="settings-action-list">
+          <button class="settings-action settings-action-primary" id="dataButton" type="button">
+            <span class="settings-action-copy">
+              <strong>数据</strong>
+            </span>
+            <span class="settings-action-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="settings-action" id="accountButton" type="button">
+            <span class="settings-action-copy">
+              <strong>账户</strong>
+            </span>
+            <span class="settings-action-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="settings-action notification-entry-button" id="notificationsButton" type="button">
+            <span class="settings-action-copy">
+              <strong>消息通知</strong>
+            </span>
+            <span class="notification-badge" id="notificationBadge" hidden>0</span>
+            <span class="settings-action-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="settings-action" id="homeFeedbackButton" type="button">
+            <span class="settings-action-copy">
+              <strong>反馈问题</strong>
+            </span>
+            <span class="settings-action-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="settings-action" id="replayTutorialButton" type="button">
+            <span class="settings-action-copy">
+              <strong>重学教程</strong>
+            </span>
+            <span class="settings-action-arrow" aria-hidden="true">›</span>
+          </button>
+          <a class="settings-action legal-link-button" href="./legal.html" target="_blank" rel="noopener">
+            <span class="settings-action-copy">
+              <strong>条款、隐私与内容来源</strong>
+            </span>
+            <span class="settings-action-arrow" aria-hidden="true">›</span>
+          </a>
+        </div>
+      </section>
+
+      <section class="study-panel data-panel" id="dataPanel" aria-live="polite" hidden>
+        <header class="dashboard-page-header data-page-header">
+          <div>
+            <p class="word-label">本机与云端</p>
+            <h1>数据</h1>
+          </div>
+        </header>
+
+        <section class="data-status-card" aria-labelledby="dataStatusHeading">
+          <div class="data-status-heading">
+            <div>
+              <p class="home-card-title" id="dataStatusHeading">记录状态</p>
+              <p class="data-scope-copy" id="dataScopeStatus">正在确认账户与本机记录</p>
+            </div>
+            <span class="account-state-badge" id="dataAccountState">核对中</span>
+          </div>
+          <div class="operation-progress" id="syncProgress" aria-live="polite">
+            <div class="operation-progress-heading">
+              <span id="syncProgressLabel">等待操作</span>
+              <span id="syncProgressText">待开始</span>
+            </div>
+            <div
+              class="operation-progress-track"
+              id="syncProgressBar"
+              role="progressbar"
+              aria-label="数据操作进度"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            ><span></span></div>
+          </div>
+        </section>
+
+        <div class="data-action-list" id="accountDataActions">
+          <button class="primary-button" id="syncNowButton" type="button">立即同步</button>
+          <button class="secondary-button" id="compareDataButton" type="button">对比本地与云端数据</button>
+          <button class="secondary-button" id="repairDataButton" type="button">
+            修复热力图与统计数据
+          </button>
+          <button class="secondary-button" id="recoverGuestDataButton" type="button">
+            检查本机历史游客记录
+          </button>
+          <div class="data-file-actions">
+            <button class="secondary-button" id="exportDataButton" type="button">导出学习数据</button>
+            <button class="secondary-button" id="importDataButton" type="button">导入学习数据</button>
+          </div>
+          <input id="importDataInput" type="file" accept="application/json,.json" hidden />
+        </div>
+
+        <section class="data-comparison" id="dataComparison" aria-labelledby="dataComparisonHeading" hidden>
+          <div class="data-comparison-heading">
+            <div>
+              <p class="home-card-title" id="dataComparisonHeading">本机与云端对比</p>
+              <p class="data-comparison-status" id="dataComparisonStatus"></p>
+            </div>
+            <button class="plain-button" id="closeDataComparisonButton" type="button">收起</button>
+          </div>
+          <div class="sync-record-comparison">
+            <article class="sync-record-card">
+              <div class="sync-record-heading">
+                <strong>云端记录</strong>
+                <span id="dataCloudRecordLatest">尚未读取</span>
+              </div>
+              <div class="sync-record-stats" id="dataCloudRecordSummary"></div>
+              <p class="sync-record-plan" id="dataCloudRecordPlan"></p>
+            </article>
+            <article class="sync-record-card">
+              <div class="sync-record-heading">
+                <strong>本机账户记录</strong>
+                <span id="dataLocalRecordLatest">尚未读取</span>
+              </div>
+              <div class="sync-record-stats" id="dataLocalRecordSummary"></div>
+              <p class="sync-record-plan" id="dataLocalRecordPlan"></p>
+            </article>
+          </div>
+          <p class="data-guest-status" id="dataGuestStatus"></p>
+          <button class="primary-button" id="resolveDataDifferenceButton" type="button" hidden>
+            查看并处理差异
+          </button>
+        </section>
+        <p class="account-message data-message" id="dataMessage" aria-live="polite"></p>
+        <button class="secondary-button data-page-back-button" id="dataBackButton" type="button">
+          返回
+        </button>
       </section>
 
       <section class="study-panel word-list-panel" id="wordListPanel" aria-live="polite" hidden>
@@ -473,25 +613,6 @@
         </section>
       </div>
 
-      <div class="modal-backdrop" id="moreDialog" hidden>
-        <section class="reset-dialog more-dialog" role="dialog" aria-modal="true" aria-labelledby="moreTitle">
-          <h2 id="moreTitle">更多</h2>
-          <div class="more-action-list">
-            <button class="secondary-button" id="accountButton" type="button">账户</button>
-            <button class="secondary-button notification-entry-button" id="notificationsButton" type="button">
-              <span>消息通知</span>
-              <span class="notification-badge" id="notificationBadge" hidden>0</span>
-            </button>
-            <button class="secondary-button" id="homeFeedbackButton" type="button">反馈问题</button>
-            <button class="secondary-button" id="replayTutorialButton" type="button">重学教程</button>
-            <a class="secondary-button legal-link-button" href="./legal.html" target="_blank" rel="noopener">
-              条款、隐私与内容来源
-            </a>
-          </div>
-          <button class="plain-button" id="closeMoreButton" type="button">关闭</button>
-        </section>
-      </div>
-
       <div class="modal-backdrop" id="accountDialog" hidden>
         <section
           class="reset-dialog account-dialog"
@@ -676,7 +797,6 @@
               </div>
             </div>
             <div class="account-action-list">
-              <button class="secondary-button" id="syncNowButton" type="button">立即同步</button>
               <button class="secondary-button" id="logoutButton" type="button">退出账户</button>
               <button class="danger-button" id="deleteAccountButton" type="button">删除账户</button>
             </div>
@@ -825,9 +945,9 @@
             </label>
             <div class="feedback-image-row">
               <label class="secondary-button feedback-image-button" for="feedbackImageInput">
-                添加图片
+                <span>添加图片</span>
+                <span class="feedback-image-count" id="feedbackImageCount">0 / 4</span>
               </label>
-              <span class="feedback-image-count" id="feedbackImageCount">0 / 4</span>
               <input
                 id="feedbackImageInput"
                 type="file"
@@ -856,23 +976,12 @@
               <button class="primary-button" id="submitFeedbackButton" type="button" disabled>
                 提交反馈
               </button>
-              <button class="secondary-button" id="cancelFeedbackButton" type="button">
-                返回
-              </button>
             </div>
           </div>
 
           <p class="account-message" id="accountMessage" aria-live="polite"></p>
 
-          <div class="account-data-actions" id="accountDataActions">
-            <button class="plain-button" id="exportDataButton" type="button">导出学习数据</button>
-            <button class="plain-button" id="importDataButton" type="button">导入学习数据</button>
-            <button class="plain-button" id="recoverGuestDataButton" type="button" hidden>
-              检查本机历史游客记录
-            </button>
-            <input id="importDataInput" type="file" accept="application/json,.json" hidden />
-          </div>
-          <button class="plain-button" id="closeAccountButton" type="button">关闭</button>
+          <button class="secondary-button modal-return-button" id="closeAccountButton" type="button">返回</button>
         </section>
       </div>
 
@@ -892,7 +1001,7 @@
           </p>
           <div class="notifications-list" id="notificationsList"></div>
           <p class="account-message" id="notificationsMessage" aria-live="polite"></p>
-          <button class="plain-button" id="closeNotificationsButton" type="button">关闭</button>
+          <button class="secondary-button modal-return-button" id="closeNotificationsButton" type="button">返回</button>
         </section>
       </div>
 
@@ -909,6 +1018,22 @@
           <button class="primary-button" id="closeRegistrationWelcomeButton" type="button">
             确认
           </button>
+        </section>
+      </div>
+
+      <div class="modal-backdrop" id="tutorialReplayConfirmDialog" hidden>
+        <section
+          class="reset-dialog tutorial-replay-confirm-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="tutorialReplayConfirmTitle"
+        >
+          <h2 id="tutorialReplayConfirmTitle">重新学习教程？</h2>
+          <p class="confirm-copy">教程会临时进入演示流程，完成后自动返回当前学习记录。</p>
+          <div class="confirm-actions">
+            <button class="primary-button" id="confirmReplayTutorialButton" type="button">开始教程</button>
+            <button class="secondary-button" id="cancelReplayTutorialButton" type="button">返回</button>
+          </div>
         </section>
       </div>
 
@@ -944,15 +1069,21 @@
         </span>
         <span>统计数据</span>
       </button>
+      <button class="app-nav-item" id="globalSettingsNavButton" type="button">
+        <span class="nav-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08H10l-.04-.08a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1L3.92 14v-4L4 9.96a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.04-.08h3.92L14 4a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.1.4.31.74.6 1l.08.04v3.92L20 14c-.29.26-.5.6-.6 1Z"></path></svg>
+        </span>
+        <span>设置</span>
+      </button>
     </nav>
 
     <div class="modal-layer" id="modalLayer"></div>
 
     <script src="./cloud-config.js?v=20260728-2"></script>
     <script src="./legal-config.js?v=20260809-1"></script>
-    <script src="./cloud-client.js?v=20260920-1"></script>
+    <script src="./cloud-client.js?v=20260930-1"></script>
     <script src="./sync-state.js?v=20260824-2"></script>
-    <script src="./app.js?v=20260928-1"></script>
-    <script src="./account.js?v=20260928-1"></script>
+    <script src="./app.js?v=20260930-1"></script>
+    <script src="./account.js?v=20260930-1"></script>
   </body>
 </html>

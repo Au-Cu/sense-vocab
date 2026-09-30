@@ -109,7 +109,7 @@ test("public source directory is searchable without login on desktop and mobile"
   await page.waitForFunction(() => (
     document.documentElement.dataset.accountReady === "true"
   ));
-  await page.locator("#moreButton").click();
+  await page.locator("#globalSettingsNavButton").click();
   await expect(page.locator(".legal-link-button")).toHaveAttribute(
     "href",
     "./legal.html",

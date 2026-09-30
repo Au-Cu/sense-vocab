@@ -213,9 +213,10 @@ test("accounts require explicit terms, cross-border, and age consent", async () 
   );
   expect(legal).toContain("个人信息跨境处理单独告知");
   expect(legal).toContain("当前项目区域位于新加坡");
-  expect(account.indexOf("loadLegalConsents")).toBeLessThan(
-    account.indexOf("cloud.loadState()"),
-  );
+  const legalConsentIndex = account.indexOf("loadLegalConsents");
+  const cloudStateIndex = account.indexOf("cloud.loadState");
+  expect(legalConsentIndex).toBeGreaterThanOrEqual(0);
+  expect(cloudStateIndex).toBeGreaterThan(legalConsentIndex);
   expect(migration).toContain("create table if not exists public.user_legal_consents");
   expect(migration).toContain("create table if not exists public.admin_audit_log");
   expect(migration).toContain("expires_at");

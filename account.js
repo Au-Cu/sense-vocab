@@ -13,6 +13,29 @@
   const accountDeleteConfirm = document.querySelector("#accountDeleteConfirm");
   const accountFeedbackView = document.querySelector("#accountFeedbackView");
   const accountDataActions = document.querySelector("#accountDataActions");
+  const dataPanel = document.querySelector("#dataPanel");
+  const dataAccountState = document.querySelector("#dataAccountState");
+  const dataScopeStatus = document.querySelector("#dataScopeStatus");
+  const dataMessage = document.querySelector("#dataMessage");
+  const syncProgress = document.querySelector("#syncProgress");
+  const syncProgressLabel = document.querySelector("#syncProgressLabel");
+  const syncProgressText = document.querySelector("#syncProgressText");
+  const syncProgressBar = document.querySelector("#syncProgressBar");
+  const compareDataButton = document.querySelector("#compareDataButton");
+  const repairDataButton = document.querySelector("#repairDataButton");
+  const dataComparison = document.querySelector("#dataComparison");
+  const closeDataComparisonButton = document.querySelector("#closeDataComparisonButton");
+  const dataComparisonStatus = document.querySelector("#dataComparisonStatus");
+  const dataCloudRecordLatest = document.querySelector("#dataCloudRecordLatest");
+  const dataCloudRecordSummary = document.querySelector("#dataCloudRecordSummary");
+  const dataCloudRecordPlan = document.querySelector("#dataCloudRecordPlan");
+  const dataLocalRecordLatest = document.querySelector("#dataLocalRecordLatest");
+  const dataLocalRecordSummary = document.querySelector("#dataLocalRecordSummary");
+  const dataLocalRecordPlan = document.querySelector("#dataLocalRecordPlan");
+  const dataGuestStatus = document.querySelector("#dataGuestStatus");
+  const resolveDataDifferenceButton = document.querySelector(
+    "#resolveDataDifferenceButton",
+  );
   const accountLoginTab = document.querySelector("#accountLoginTab");
   const accountRegisterTab = document.querySelector("#accountRegisterTab");
   const accountForm = document.querySelector("#accountForm");
@@ -92,10 +115,8 @@
     "#feedbackAttachmentAiDisclosure",
   );
   const submitFeedbackButton = document.querySelector("#submitFeedbackButton");
-  const cancelFeedbackButton = document.querySelector("#cancelFeedbackButton");
   const closeAccountButton = document.querySelector("#closeAccountButton");
-  const moreButton = document.querySelector("#moreButton");
-  const moreDialog = document.querySelector("#moreDialog");
+  const globalSettingsNavButton = document.querySelector("#globalSettingsNavButton");
   const notificationsButton = document.querySelector("#notificationsButton");
   const notificationBadge = document.querySelector("#notificationBadge");
   const notificationsDialog = document.querySelector("#notificationsDialog");
@@ -112,7 +133,10 @@
 
   const SYNC_META_PREFIX = "sense-vocab-cloud-sync-v1:";
   const GUEST_MIGRATION_PREFIX = "sense-vocab-guest-migration-v1:";
-  const MAX_SYNC_RETRIES = 5;
+  // A retry is only safe after the server explicitly reports a revision
+  // conflict. Network failures and timeouts must not silently fan out into a
+  // second (or third) full state download.
+  const MAX_SYNC_RETRIES = 3;
   const MISSING_SENSE_ISSUE = "missing-sense";
   const OTHER_FEEDBACK_ISSUE = "other";
   const ACCOUNT_BOOTSTRAP_TIMEOUT_MS = Number.isFinite(
@@ -125,6 +149,9 @@
   )
     ? Math.max(0, window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_TIMEOUT_MS__)
     : 15000;
+  const ACCOUNT_OPERATION_TIMEOUT_MS = 30000;
+  const CLOUD_LOAD_CACHE_MS = 4000;
+  const CLOUD_LOAD_MANIFEST_TIMEOUT_MS = 2500;
   const REFRESH_INTERVAL_MS = Number.isFinite(
     window.__SENSE_VOCAB_REFRESH_INTERVAL_MS__,
   )
@@ -135,12 +162,15 @@
     window.SenseVocabCloud?.create;
   const cloud = typeof factory === "function" ? factory(config) : null;
 
-  function withAccountTimeout(task, timeoutMs, message) {
+  function withAccountTimeout(task, timeoutMs, message, onTimeout = null) {
     let timeoutId = null;
     return Promise.race([
       Promise.resolve(task),
       new Promise((_, reject) => {
-        timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+        timeoutId = window.setTimeout(() => {
+          reject(new Error(message));
+          onTimeout?.();
+        }, timeoutMs);
       }),
     ]).finally(() => {
       if (timeoutId !== null) window.clearTimeout(timeoutId);
@@ -177,6 +207,10 @@
   let syncTimer = null;
   let syncPromise = null;
   let refreshPromise = null;
+  let cloudLoadPromise = null;
+  let cloudLoadUserId = null;
+  let cloudLoadCache = null;
+  let activeCloudOperation = null;
   let refreshTimer = null;
   let authBusy = false;
   let deleting = false;
@@ -190,8 +224,19 @@
   let notificationsBusy = false;
   let notificationSnapshot = { authenticated: false, unreadCount: 0, items: [] };
   let localQuotaWarning = false;
+  let sessionResolvePromise = null;
+  let establishSessionPromise = null;
+  let establishingUserId = null;
+  let accountResolutionPending = false;
+  let sessionResolutionUncertain = false;
+  let dataComparePromise = null;
+  let lastDataComparison = null;
   const volatileSyncMeta = new Map();
   const volatileGuestDecisions = new Map();
+
+  function clearCloudLoadCache() {
+    cloudLoadCache = null;
+  }
 
   function syncMetaKey(userId) {
     return `${SYNC_META_PREFIX}${userId}`;
@@ -262,7 +307,9 @@
   }
 
   function isGuestConflictSource(source) {
-    return source === "guest" || source === "guest-recovery";
+    return source === "guest" ||
+      source === "guest-recovery" ||
+      source === "guest-offline";
   }
 
   function hasBlockingConflict() {
@@ -281,6 +328,99 @@
   function setMessage(message = "", type = "") {
     accountMessage.textContent = message;
     accountMessage.classList.toggle("is-error", type === "error");
+  }
+
+  function setDataMessage(message = "", type = "") {
+    dataMessage.textContent = message;
+    dataMessage.classList.toggle("is-error", type === "error");
+  }
+
+  function setOperationProgress(value, label, state = "active") {
+    const numericValue = Number(value);
+    const determinate = value !== null && value !== undefined &&
+      Number.isFinite(numericValue);
+    syncProgressLabel.textContent = label;
+    syncProgress.dataset.state = state;
+    syncProgressBar.classList.remove("is-indeterminate");
+    syncProgressBar.dataset.mode = determinate ? "determinate" : "unknown";
+
+    if (determinate) {
+      const normalized = Math.max(
+        0,
+        Math.min(100, Math.round(numericValue * 100) / 100),
+      );
+      const formatted = normalized.toFixed(2);
+      syncProgressText.textContent = `${formatted}%`;
+      syncProgressBar.setAttribute("aria-valuenow", formatted);
+      syncProgressBar.setAttribute("aria-valuetext", `${label} ${formatted}%`);
+      syncProgressBar.querySelector("span").style.width = `${normalized}%`;
+      return;
+    }
+
+    syncProgressBar.removeAttribute("aria-valuenow");
+    syncProgressBar.setAttribute("aria-valuetext", `${label}，总量未知`);
+    if (state !== "active") {
+      syncProgressText.textContent = state === "error" ? "未完成" : "已完成";
+      syncProgressBar.querySelector("span").style.width = "0%";
+      return;
+    }
+    // A chunked response has no truthful denominator. Keep the bar static and
+    // expose the limitation instead of showing a fake animated percentage.
+    syncProgressText.textContent = "总量未知";
+    syncProgressBar.querySelector("span").style.width = "0%";
+  }
+
+  window.addEventListener("sensevocab:cloud-progress", (event) => {
+    const detail = event.detail ?? {};
+    const operation = activeCloudOperation;
+    if (!operation || detail.operation !== operation.kind) return;
+    const received = Number(detail.received);
+    const total = Number(detail.total);
+    if (Number.isFinite(total) && total > 0 && Number.isFinite(received)) {
+      const percent = Math.min(100, Math.max(0, received / total * 100));
+      setOperationProgress(percent, `${operation.label} ${percent.toFixed(2)}%`);
+      return;
+    }
+    if (Number.isFinite(received) && received > 0) {
+      setOperationProgress(
+        null,
+        `${operation.label}，已接收 ${(received / 1024 / 1024).toFixed(2)} MB`,
+      );
+    }
+  });
+
+  function announceBootProgress(value, label) {
+    window.dispatchEvent(new CustomEvent("sensevocab:boot-progress", {
+      detail: { value, label },
+    }));
+  }
+
+  function requestDataPage() {
+    window.dispatchEvent(new CustomEvent("sensevocab:open-data", {
+      detail: { immediate: true, reason: "account-recovery" },
+    }));
+  }
+
+  function updateDataScopeStatus() {
+    const hasGuestRecovery = hasRecoverableGuestState();
+    dataAccountState.textContent = accountResolutionPending
+      ? "核对中"
+      : sessionResolutionUncertain
+        ? "待重试"
+      : currentUser
+        ? "已登录"
+        : "游客";
+    dataAccountState.classList.toggle("is-online", Boolean(currentUser));
+    dataScopeStatus.textContent = accountResolutionPending
+      ? "正在重新确认浏览器中保存的账户会话"
+      : sessionResolutionUncertain
+        ? "账户服务暂不可用；当前游客记录会原样保留，恢复网络后自动重试"
+      : currentUser
+        ? hasGuestRecovery
+          ? "账户记录已启用，并发现一份独立的本机游客记录"
+          : "当前使用本机账户记录，并可与云端双向同步"
+        : "当前使用游客记录；登录后才能读取和对比云端记录";
+    recoverGuestDataButton.disabled = !currentUser || !hasGuestRecovery;
   }
 
   function setNotificationsMessage(message = "", type = "") {
@@ -462,6 +602,75 @@
     }
   }
 
+  function renderDataStateCard(summary, latest, stats, plan) {
+    renderStateSummary(stats, summary);
+    plan.textContent = summary.planCopy;
+    latest.textContent = summary.latestStudyDate
+      ? `最近学习 ${formatStudyDate(summary.latestStudyDate)}`
+      : summary.fallbackUpdatedAt
+        ? `更新于 ${formatAccountDate(summary.fallbackUpdatedAt)}`
+        : "暂无学习日期";
+  }
+
+  function renderDataComparisonSnapshot({ remote, localState, guestState }) {
+    const normalized = normalizedRemote(remote);
+    const remoteState = normalized.state ?? {};
+    const cloudSummary = stateSummary(remoteState, normalized.updatedAt);
+    const localSummary = stateSummary(localState);
+    renderDataStateCard(
+      cloudSummary,
+      dataCloudRecordLatest,
+      dataCloudRecordSummary,
+      dataCloudRecordPlan,
+    );
+    renderDataStateCard(
+      localSummary,
+      dataLocalRecordLatest,
+      dataLocalRecordSummary,
+      dataLocalRecordPlan,
+    );
+
+    const localDiffers = cloudStateSignature(localState) !==
+      cloudStateSignature(remoteState);
+    const guestDiffers = app.hasLearningData(guestState) &&
+      app.hasIndependentChanges(guestState, app.mergeStates(localState, remoteState));
+    const statusDifferences = countStatusDifferences(localState, remoteState);
+    const localOnly = [...localSummary.learnedWords]
+      .filter((key) => !cloudSummary.learnedWords.has(key)).length;
+    const cloudOnly = [...cloudSummary.learnedWords]
+      .filter((key) => !localSummary.learnedWords.has(key)).length;
+
+    if (!normalized.found && !app.hasLearningData(remoteState)) {
+      dataComparisonStatus.textContent = app.hasLearningData(localState)
+        ? "云端暂时没有学习记录；本机记录尚未上传。"
+        : "本机与云端都没有学习记录。";
+    } else if (!localDiffers) {
+      dataComparisonStatus.textContent = "本机账户记录与云端记录一致。";
+    } else if (localOnly || cloudOnly) {
+      dataComparisonStatus.textContent =
+        `本机独有 ${localOnly} 个已学单词，云端独有 ${cloudOnly} 个。`;
+    } else if (statusDifferences) {
+      dataComparisonStatus.textContent =
+        `已学范围相同，但有 ${statusDifferences} 个义项状态不同。`;
+    } else {
+      dataComparisonStatus.textContent = "两端存在计划、活动或学习窗口差异。";
+    }
+    dataGuestStatus.textContent = guestDiffers
+      ? "另检测到一份包含独立进度的本机游客记录，处理差异时会单独保留并参与安全合并。"
+      : app.hasLearningData(guestState)
+        ? "本机游客副本没有当前账户缺少的新进度。"
+        : "本机没有历史游客学习记录。";
+    resolveDataDifferenceButton.hidden = !localDiffers && !guestDiffers;
+    dataComparison.hidden = false;
+    lastDataComparison = {
+      remote: normalized,
+      localState,
+      guestState,
+      localDiffers,
+      guestDiffers,
+    };
+  }
+
   function setConflictBusy(busy) {
     conflictBusy = busy;
     [
@@ -557,10 +766,10 @@
     notificationBadge.textContent = unreadCount > 99 ? "99+" : String(unreadCount);
     notificationBadge.hidden = unreadCount === 0;
     notificationsButton.classList.toggle("has-unread", unreadCount > 0);
-    moreButton.classList.toggle("has-unread", unreadCount > 0);
-    moreButton.setAttribute(
+    globalSettingsNavButton.classList.toggle("has-unread", unreadCount > 0);
+    globalSettingsNavButton.setAttribute(
       "aria-label",
-      unreadCount > 0 ? `更多，${unreadCount} 条未读消息` : "更多",
+      unreadCount > 0 ? `设置，${unreadCount} 条未读消息` : "设置",
     );
   }
 
@@ -706,7 +915,6 @@
   }
 
   async function openNotificationsDialog(event) {
-    if (moreDialog) hideFloatingDialog(moreDialog, { force: true });
     showFloatingDialog(notificationsDialog, event?.currentTarget);
     await refreshNotifications();
     await markVisibleNotificationsRead();
@@ -721,6 +929,8 @@
     accountSyncStatus.textContent = message;
     accountSyncStatus.classList.toggle("is-error", type === "error");
     accountSyncStatus.classList.toggle("is-pending", type === "pending");
+    dataPanel.dataset.syncState = type || "synced";
+    if (message) setDataMessage(message, type);
     updateHomeStatus(type);
   }
 
@@ -735,6 +945,8 @@
     accountButton.title = `${stateLabel}${syncLabel}`;
     accountButton.classList.toggle("has-account", Boolean(currentUser));
     accountButton.classList.toggle("has-sync-warning", Boolean(syncType));
+    globalSettingsNavButton.classList.toggle("has-sync-warning", Boolean(syncType));
+    updateDataScopeStatus();
   }
 
   function announceAccountScope(user = null) {
@@ -749,6 +961,7 @@
   }
 
   function announceAccountReady() {
+    announceBootProgress(100, "学习空间已就绪");
     const appShell = document.querySelector("#appShell");
     appShell?.removeAttribute("hidden");
     appShell?.removeAttribute("inert");
@@ -1207,11 +1420,33 @@
     }
   }
 
-  function openFeedbackView(context = null) {
+  async function openFeedbackView(context = null) {
     activeFeedbackContext = normalizeFeedbackContext(context);
     pendingFeedbackRequest = true;
     renderFeedbackContext();
+    if (currentUser && !pendingConsentSession && !pendingConflict) {
+      pendingFeedbackRequest = false;
+      accountAuthView.hidden = true;
+      accountUserView.hidden = true;
+      accountConflictView.hidden = true;
+      accountConsentView.hidden = true;
+      accountDeleteConfirm.hidden = true;
+      accountFeedbackView.hidden = false;
+      closeAccountButton.hidden = false;
+      resetFeedbackForm();
+      setMessage();
+      showFloatingDialog(accountDialog);
+      window.requestAnimationFrame(() => feedbackMessage.focus());
+      return;
+    }
+
+    showPrimaryAccountView();
     showFloatingDialog(accountDialog);
+    if (!currentUser && cloud) {
+      setMessage("正在确认浏览器中保存的账户会话……");
+      await resolvePersistedSession({ reason: "feedback", silent: true, force: true });
+      showPrimaryAccountView();
+    }
     if (!currentUser) {
       showPrimaryAccountView();
       setMessage("登录账户后才能提交问题反馈。", "error");
@@ -1232,12 +1467,13 @@
     accountAuthView.hidden = true;
     accountUserView.hidden = true;
     accountConflictView.hidden = true;
+    accountConsentView.hidden = true;
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = false;
-    accountDataActions.hidden = true;
+    closeAccountButton.hidden = false;
     resetFeedbackForm();
     setMessage();
-    feedbackMessage.focus();
+    window.requestAnimationFrame(() => feedbackMessage.focus());
   }
 
   function resumePendingFeedback() {
@@ -1261,8 +1497,9 @@
     accountUserView.hidden = hasConflict || needsConsent || !currentUser;
     accountDeleteConfirm.hidden = true;
     accountFeedbackView.hidden = true;
-    accountDataActions.hidden = needsConsent || hasConflict;
-    recoverGuestDataButton.hidden = !hasRecoverableGuestState();
+    closeAccountButton.hidden = false;
+    accountDataActions.inert = needsConsent;
+    updateDataScopeStatus();
     if (!deleting) resetDeleteConfirmation();
     if (hasConflict) renderConflictComparison();
     if (!hasConflict && conflictBusy) setConflictBusy(false);
@@ -1291,21 +1528,29 @@
     );
   }
 
-  function openAccountDialog(event) {
+  async function openAccountDialog(event) {
     showPrimaryAccountView();
     showFloatingDialog(accountDialog, event?.currentTarget);
-    if (!currentUser && !pendingConsentSession && cloud) accountEmail.focus();
+    if (!currentUser && !pendingConsentSession && cloud) {
+      setMessage("正在确认浏览器中保存的账户会话……");
+      await resolvePersistedSession({ reason: "account", silent: true, force: true });
+      showPrimaryAccountView();
+      if (!currentUser) accountEmail.focus();
+    }
   }
 
-  function closeAccountDialog() {
+  function closeAccountDialog({ preserveMessage = false } = {}) {
     hideFloatingDialog(accountDialog, { force: true });
-    clearFeedbackFiles();
-    clearFeedbackRequest();
-    showPrimaryAccountView();
-    setMessage();
+    window.requestAnimationFrame(() => {
+      clearFeedbackFiles();
+      clearFeedbackRequest();
+      showPrimaryAccountView();
+      if (!preserveMessage) setMessage();
+    });
   }
 
   function activateAccountState(user, nextState, revision, dirty = false) {
+    if (currentUser?.id !== user.id) clearCloudLoadCache();
     currentUser = user;
     pendingConsentSession = null;
     const numericRevision = Number(revision);
@@ -1338,9 +1583,97 @@
     };
   }
 
+  function cloudStateSignature(candidate) {
+    const scope = candidate?.bookStates &&
+      typeof candidate.bookStates === "object" &&
+      !Array.isArray(candidate.bookStates)
+      ? candidate.bookStates[candidate.activeBookId ?? activeBookId()] ?? {}
+      : candidate ?? {};
+    const dateKey = (value) => String(value ?? "").match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? "";
+    const progressEvidenceDate = (progress) => {
+      const dates = [
+        progress?.updatedAt,
+        progress?.lastSeenActual,
+        progress?.lastSeen,
+        progress?.firstSeenActual,
+        progress?.firstSeen,
+      ].map(dateKey).filter(Boolean).sort();
+      return dates[dates.length - 1] ?? "";
+    };
+    const activityHasEvidence = (date, entry) => {
+      if (!entry || typeof entry !== "object") return false;
+      if (entry.newCountLocked || entry.baseCompleted || entry.overtime) return true;
+      const record = scope._sync?.records?.activityLog?.[date];
+      if (Object.keys(record?.vector ?? {}).length > 0) return true;
+      if ((entry.learningDays?.length ?? 0) > 0) return true;
+      const words = [
+        ...(Array.isArray(entry.newWords) ? entry.newWords : []),
+        ...(Array.isArray(entry.reviewWords) ? entry.reviewWords : []),
+      ];
+      if (words.some((wordId) => Object.entries(scope.progress ?? {}).some(([key, progress]) => {
+        return (key === wordId || key.startsWith(`${wordId}:`)) &&
+          progressEvidenceDate(progress) >= dateKey(date);
+      }))) return true;
+      if (dateKey(scope.session?.date) === dateKey(date) &&
+          Number(scope.session?.currentIndex) > 0) return true;
+      return (Array.isArray(scope.studyWindows) ? scope.studyWindows : [])
+        .some((studyWindow) => dateKey(studyWindow?.activityDate) === dateKey(date));
+    };
+    const activityLog = Object.fromEntries(
+      Object.entries(scope.activityLog ?? {}).filter(([date, entry]) => {
+        const meaningful = (Array.isArray(entry?.newWords) && entry.newWords.length > 0) ||
+          (Array.isArray(entry?.reviewWords) && entry.reviewWords.length > 0) ||
+          Number(entry?.newCount) > 0 || Number(entry?.reviewCount) > 0;
+        return meaningful && activityHasEvidence(date, entry);
+      }),
+    );
+    const plan = scope.plan && typeof scope.plan === "object"
+      ? { ...scope.plan, advancedDays: undefined }
+      : null;
+    // Compare durable learning sources only. Session/UI state and dashboard
+    // snapshots are reconstructed after a merge; schedule drift is derived
+    // from the plan and current date, so it must not trigger a full upload.
+    return app.stateSignature({
+      plan,
+      introducedWords: scope.introducedWords ?? [],
+      progress: scope.progress ?? {},
+      activityLog,
+      studyWindows: scope.studyWindows ?? [],
+      confusionLinks: scope.confusionLinks ?? {},
+      wordListSort: scope.wordListSort ?? "mastery",
+    });
+  }
+
+  async function runTransientCloudOperation(
+    operation,
+    label,
+    timeoutMs = ACCOUNT_REMOTE_STATE_TIMEOUT_MS,
+    kind = "cloud",
+  ) {
+    const controller = new AbortController();
+    const operationContext = { kind, label };
+    activeCloudOperation = operationContext;
+    setOperationProgress(null, label);
+    try {
+      const result = await withAccountTimeout(
+        operation(controller.signal),
+        timeoutMs,
+        `${label}超时，本机记录未改动。`,
+        () => controller.abort(),
+      );
+      setOperationProgress(100, `${label}完成`);
+      return result;
+    } finally {
+      if (activeCloudOperation === operationContext) {
+        activeCloudOperation = null;
+      }
+    }
+  }
+
   async function ensureLegalConsent(session) {
     const user = session?.user;
     if (!user?.id) return false;
+    if (currentUser?.id !== user.id) clearCloudLoadCache();
     currentUser = user;
     if (typeof cloud.loadLegalConsents !== "function") {
       pendingConsentSession = null;
@@ -1380,11 +1713,171 @@
     }
   }
 
-  async function establishAccountSession(session) {
+  async function loadCloudState(
+    label = "正在读取云端记录",
+    { force = false, maxAgeMs = CLOUD_LOAD_CACHE_MS } = {},
+  ) {
+    const userId = currentUser?.id ?? null;
+    if (!userId) throw new Error("当前账户尚未确认，无法读取云端记录。");
+    if (
+      !force &&
+      cloudLoadCache?.userId === userId &&
+      Date.now() - cloudLoadCache.completedAt <= maxAgeMs
+    ) {
+      setOperationProgress(100, `${label}已确认`, "success");
+      return cloudLoadCache.result;
+    }
+    if (cloudLoadPromise && cloudLoadUserId === userId) {
+      // A focus refresh and a manual sync may arrive together. Share the same
+      // response instead of stacking another 10 MB RPC behind it.
+      if (activeCloudOperation) {
+        activeCloudOperation.label = label;
+      }
+      return cloudLoadPromise;
+    }
+
+    cloudLoadUserId = userId;
+    const request = runTransientCloudOperation(
+      async (signal) => {
+        let expectedBytes = null;
+        if (typeof cloud.loadStateManifest === "function") {
+          const manifestController = new AbortController();
+          const relayAbort = () => manifestController.abort();
+          signal.addEventListener("abort", relayAbort, { once: true });
+          setOperationProgress(null, `${label}，正在计算云端记录总量`);
+          try {
+            const manifest = await withAccountTimeout(
+              cloud.loadStateManifest(manifestController.signal),
+              CLOUD_LOAD_MANIFEST_TIMEOUT_MS,
+              "云端记录总量读取超时。",
+              () => manifestController.abort(),
+            );
+            const bytes = Number(manifest?.bytes);
+            if (manifest?.found && Number.isFinite(bytes) && bytes > 0) {
+              expectedBytes = Math.round(bytes);
+              setOperationProgress(
+                0,
+                `${label} 0.00%（预计 ${(expectedBytes / 1024 / 1024).toFixed(2)} MB）`,
+              );
+            } else {
+              setOperationProgress(null, `${label}，总量未知，正在读取`);
+            }
+          } catch (error) {
+            if (signal.aborted) throw error;
+            // Older deployments may not have the manifest RPC yet. Continue
+            // with the state read and state the missing denominator honestly.
+            setOperationProgress(null, `${label}，总量未知，正在读取`);
+          } finally {
+            signal.removeEventListener("abort", relayAbort);
+          }
+        }
+        return cloud.loadState(signal, expectedBytes);
+      },
+      label,
+      ACCOUNT_REMOTE_STATE_TIMEOUT_MS,
+      "load-state",
+    );
+    cloudLoadPromise = request.then((result) => {
+      cloudLoadCache = {
+        userId,
+        completedAt: Date.now(),
+        result,
+      };
+      return result;
+    }).finally(() => {
+      if (cloudLoadUserId === userId) {
+        cloudLoadPromise = null;
+        cloudLoadUserId = null;
+      }
+    });
+    return cloudLoadPromise;
+  }
+
+  async function saveCloudState(state, revision, force = false) {
+    const result = await runTransientCloudOperation(
+      (signal) => cloud.saveState(state, revision, force, signal),
+      "云端写入",
+      ACCOUNT_OPERATION_TIMEOUT_MS,
+      "save-state",
+    );
+    cloudLoadCache = null;
+    return result;
+  }
+
+  async function compareLocalCloudData() {
+    if (dataComparePromise) return dataComparePromise;
+    dataComparePromise = (async () => {
+      compareDataButton.disabled = true;
+      setDataMessage();
+      setOperationProgress(null, "正在确认账户会话");
+      try {
+        if (!currentUser) {
+          await resolvePersistedSession({ reason: "data-compare", silent: true });
+        }
+        if (!currentUser) {
+          throw new Error("请先登录账户，再对比本机与云端记录。");
+        }
+        setOperationProgress(null, "本机账户记录已读取，正在准备对比");
+        const localState = app.getState();
+        const guestState = app.getGuestState();
+        setOperationProgress(null, "正在只读读取云端记录");
+        const remote = await loadCloudState("云端记录读取", { force: true });
+        if (!currentUser) return null;
+        setOperationProgress(null, "正在计算两端差异");
+        renderDataComparisonSnapshot({ remote, localState, guestState });
+        setOperationProgress(100, "数据对比完成", "success");
+        setDataMessage("本次对比只读取记录，尚未执行合并或覆盖。");
+        return lastDataComparison;
+      } catch (error) {
+        setOperationProgress(null, "数据对比未完成", "error");
+        setDataMessage(error?.message ?? "数据对比失败，本机记录未改动。", "error");
+        return null;
+      } finally {
+        compareDataButton.disabled = false;
+        dataComparePromise = null;
+      }
+    })();
+    return dataComparePromise;
+  }
+
+  function resolveDataDifference() {
+    if (!lastDataComparison || !currentUser) return;
+    const {
+      remote,
+      localState,
+      guestState,
+      localDiffers,
+      guestDiffers,
+    } = lastDataComparison;
+    if (guestDiffers) {
+      const accountBaseline = app.mergeStates(localState, remote.state ?? {});
+      pendingConflict = {
+        remote: { ...remote, state: accountBaseline },
+        remoteNeedsUpload: cloudStateSignature(accountBaseline) !==
+          cloudStateSignature(remote.state ?? {}),
+        localState: guestState,
+        localSource: "guest-recovery",
+      };
+    } else if (localDiffers) {
+      pendingConflict = {
+        remote,
+        localState,
+        localSource: "account-replace",
+      };
+    } else {
+      return;
+    }
+    showPrimaryAccountView();
+    showFloatingDialog(accountDialog, resolveDataDifferenceButton);
+  }
+
+  async function establishAccountSessionInternal(session) {
     const user = session?.user;
     if (!user?.id) return;
+    announceBootProgress(null, "账户已识别，正在核对本机记录");
     if (!await ensureLegalConsent(session)) return;
 
+    if (currentUser?.id !== user.id) clearCloudLoadCache();
     currentUser = user;
     const accountCache = app.getAccountState(user.id);
     app.activateAccount(user.id, accountCache);
@@ -1400,10 +1893,9 @@
     refreshNotifications({ silent: true }).catch(() => {});
 
     try {
-      const remoteResult = await withAccountTimeout(
-        cloud.loadState(),
-        ACCOUNT_REMOTE_STATE_TIMEOUT_MS,
-        "云端学习记录读取超时。",
+      const remoteResult = await loadCloudState(
+        "云端学习记录读取",
+        { force: true },
       );
       if (currentUser?.id !== user.id) return;
       const remote = normalizedRemote(remoteResult);
@@ -1417,8 +1909,8 @@
         const accountState = accountHasUnsyncedData
           ? app.mergeStates(liveAccountState, remote.state)
           : remote.state;
-        const accountNeedsUpload = app.stateSignature(accountState) !==
-          app.stateSignature(remote.state);
+        const accountNeedsUpload = cloudStateSignature(accountState) !==
+          cloudStateSignature(remote.state);
         const guestNeedsDecision = hasUnconsideredGuestState(
           user.id,
           guestState,
@@ -1467,18 +1959,52 @@
     } catch (error) {
       const accountCache = app.getAccountState(user.id);
       const guestState = app.getGuestState();
-      const fallbackState = app.hasLearningData(accountCache)
-        ? accountCache
-        : guestState;
+      const syncMeta = loadSyncMeta(user.id);
       activateAccountState(
         user,
-        fallbackState,
-        loadSyncMeta(user.id).revision,
-        true,
+        accountCache,
+        syncMeta.revision,
+        syncMeta.dirty,
       );
       setSyncStatus("云端暂不可用，本机记录会继续保存", "error");
+      if (hasUnconsideredGuestState(user.id, guestState, accountCache)) {
+        pendingConflict = {
+          remote: {
+            found: false,
+            revision: Number(syncMeta.revision) || 0,
+            state: accountCache,
+            updatedAt: null,
+            unavailable: true,
+          },
+          localState: guestState,
+          localSource: "guest-offline",
+        };
+        showPrimaryAccountView();
+        requestDataPage();
+        setDataMessage(
+          "云端暂不可读；已保留并识别本机游客进度，恢复连接后可继续对比和合并。",
+          "error",
+        );
+      }
       setMessage(error?.message ?? "读取云端记录失败。", "error");
     }
+  }
+
+  async function establishAccountSession(session) {
+    const userId = session?.user?.id;
+    if (!userId) return null;
+    if (establishSessionPromise && establishingUserId === userId) {
+      return establishSessionPromise;
+    }
+    establishingUserId = userId;
+    establishSessionPromise = establishAccountSessionInternal(session)
+      .finally(() => {
+        if (establishingUserId === userId) {
+          establishingUserId = null;
+          establishSessionPromise = null;
+        }
+      });
+    return establishSessionPromise;
   }
 
   function scheduleSync() {
@@ -1516,9 +2042,13 @@
     clearTimeout(syncTimer);
     const syncUserId = currentUser.id;
     const syncMeta = loadSyncMeta(syncUserId);
-    let expectedRevision = cloudRevision;
+    // A manual sync must re-read the authoritative remote revision even when
+    // the local dirty marker is clear. The old path trusted the marker and
+    // could leave guest progress out of the account while showing "synced".
+    let expectedRevision = options.refreshRemote ? null : cloudRevision;
     const replaceRemote = Boolean(options.replace);
-    if (!replaceRemote && !syncMeta.dirty) {
+    if (!replaceRemote && !syncMeta.dirty && !options.refreshRemote) {
+      setOperationProgress(100, "本机记录已确认");
       if (
         options.verifyPersistence &&
         typeof app.isActiveStatePersisted === "function" &&
@@ -1531,10 +2061,12 @@
         });
         if (persisted === false || !app.isActiveStatePersisted()) {
           setSyncStatus("本机记录写入失败，请保留当前页面并重试。", "error");
+          setOperationProgress(null, "本机记录确认失败", "error");
           return { ok: false, localPersistenceFailed: true };
         }
       }
       setSyncStatus("云端记录已同步");
+      setOperationProgress(100, "本机与云端记录已同步", "success");
       return {
         ok: true,
         skipped: true,
@@ -1542,12 +2074,15 @@
       };
     }
     setSyncStatus("正在同步……", "pending");
+    setOperationProgress(null, "正在准备本机记录");
 
     syncPromise = (async () => {
       try {
         const initialSnapshot = app.getState();
-        if (!app.hasLearningData(initialSnapshot)) {
-          const remote = normalizedRemote(await cloud.loadState());
+        setOperationProgress(null, "本机记录已准备，等待云端确认");
+        if (!app.hasLearningData(initialSnapshot) && expectedRevision !== null) {
+          setOperationProgress(null, "正在检查云端是否已有记录");
+          const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
           if (currentUser?.id !== syncUserId) return null;
           if (remote.found && app.hasLearningData(remote.state) &&
               !app.hasLearningData(app.getState())) {
@@ -1577,6 +2112,7 @@
               lastSyncedAt: new Date().toISOString(),
             });
             setSyncStatus("已从云端恢复学习记录");
+            setOperationProgress(100, "已从云端恢复学习记录", "success");
             return {
               ok: true,
               restoredRemote: true,
@@ -1590,7 +2126,8 @@
           let snapshot = app.getState();
 
           if (expectedRevision === null) {
-            const remote = normalizedRemote(await cloud.loadState());
+            setOperationProgress(null, "正在读取最新云端版本");
+            const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
             if (currentUser?.id !== syncUserId) return null;
             if (remote.found) {
               cloudRevision = remote.revision;
@@ -1604,13 +2141,38 @@
                 };
               }
               const merged = app.mergeStates(app.getState(), remote.state);
-              app.replaceActiveState(merged, {
-                notify: false,
-                stampSync: false,
-                preserveNavigation: true,
-              });
+              const localSignature = app.stateSignature(app.getState());
+              const mergedSignature = app.stateSignature(merged);
+              const mergedIsRemote = cloudStateSignature(merged) ===
+                cloudStateSignature(remote.state);
+              if (mergedSignature !== localSignature) {
+                const persisted = app.replaceActiveState(merged, {
+                  notify: false,
+                  stampSync: false,
+                  preserveNavigation: true,
+                });
+                if (persisted === false) {
+                  throw new Error("合并结果未能写入本机存储。");
+                }
+              }
               snapshot = app.getState();
+              if (mergedIsRemote) {
+                cloudRevision = remote.revision;
+                saveSyncMeta(syncUserId, {
+                  revision: remote.revision,
+                  dirty: false,
+                  lastSyncedAt: new Date().toISOString(),
+                });
+                setSyncStatus("云端记录已同步");
+                setOperationProgress(100, "同步完成", "success");
+                return {
+                  ok: true,
+                  refreshed: true,
+                  revision: remote.revision,
+                };
+              }
               setSyncStatus("正在合并另一台设备的记录……", "pending");
+              setOperationProgress(null, "两端记录已合并，准备写入");
             } else {
               expectedRevision = 0;
               cloudRevision = 0;
@@ -1618,13 +2180,15 @@
           }
 
           const snapshotSignature = app.stateSignature(snapshot);
-          const result = await cloud.saveState(
+          setOperationProgress(null, "正在上传合并后的记录");
+          const result = await saveCloudState(
             snapshot,
             expectedRevision,
             replaceRemote,
           );
           if (result?.conflict) {
-            const remote = normalizedRemote(await cloud.loadState());
+            setOperationProgress(null, "检测到其他设备更新，正在重新读取");
+            const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
             if (replaceRemote) {
               queueRemoteConflict(remote, app.getState());
               return result;
@@ -1647,17 +2211,19 @@
               dirty: true,
             });
             setSyncStatus("已合并另一台设备的更新，正在重试……", "pending");
+            setOperationProgress(null, "已合并其他设备更新，准备重试");
             continue;
           }
 
           if (result?.destructiveBlocked) {
-            const remote = normalizedRemote(await cloud.loadState());
+            setOperationProgress(null, "检测到异常缩减，正在恢复云端记录");
+            const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
             if (!remote.found) {
               throw new Error("云端拒绝了异常缩减，但未能重新读取原记录。");
             }
             const merged = app.mergeStates(app.getState(), remote.state);
-            const needsUpload = app.stateSignature(merged) !==
-              app.stateSignature(remote.state);
+            const needsUpload = cloudStateSignature(merged) !==
+              cloudStateSignature(remote.state);
             app.replaceActiveState(merged, {
               notify: false,
               stampSync: false,
@@ -1680,6 +2246,11 @@
             );
             setMessage("检测到本机记录异常缩减，已自动恢复云端学习数据。");
             if (needsUpload) scheduleSync();
+            setOperationProgress(
+              needsUpload ? null : 100,
+              needsUpload ? "已恢复记录，新增进度等待上传" : "异常缩减已拦截",
+              needsUpload ? "active" : "success",
+            );
             return {
               ...result,
               restoredRemote: true,
@@ -1698,13 +2269,14 @@
             if (!accountDialog.hidden) renderConflictComparison();
           }
           if (options.verifyPersistence) {
-            const verifiedRemote = normalizedRemote(await cloud.loadState());
+            setOperationProgress(null, "正在回读云端并核验完整性");
+            const verifiedRemote = normalizedRemote(await loadCloudState(undefined, { force: true }));
             if (!verifiedRemote.found || verifiedRemote.revision < cloudRevision) {
               throw new Error("云端回读未确认刚刚保存的学习记录。");
             }
             const converged = app.mergeStates(app.getState(), verifiedRemote.state);
-            const needsAnotherUpload = app.stateSignature(converged) !==
-              app.stateSignature(verifiedRemote.state);
+            const needsAnotherUpload = cloudStateSignature(converged) !==
+              cloudStateSignature(verifiedRemote.state);
             const persisted = app.replaceActiveState(converged, {
               notify: false,
               stampSync: false,
@@ -1745,6 +2317,11 @@
             setMessage();
           }
           if (changedDuringSync) scheduleSync();
+          setOperationProgress(
+            changedDuringSync ? null : 100,
+            changedDuringSync ? "同步期间产生了新记录，正在继续上传" : "同步完成",
+            changedDuringSync ? "active" : "success",
+          );
           return result;
         }
         throw new Error("多台设备更新过于频繁，请稍后再次同步。");
@@ -1757,6 +2334,7 @@
           "error",
         );
         setMessage(error?.message ?? "同步失败，请稍后重试。", "error");
+        setOperationProgress(null, "同步失败，本机记录已保留", "error");
         return null;
       } finally {
         syncPromise = null;
@@ -1781,26 +2359,32 @@
           hasBlockingConflict() ||
           pendingConsentSession
         ) return null;
-        const remote = normalizedRemote(await cloud.loadState());
+        const remote = normalizedRemote(await loadCloudState(undefined, {
+          force: Boolean(options.force),
+        }));
         if (!remote.found || remote.revision <= (cloudRevision ?? -1)) {
           return remote;
         }
 
         const localState = app.getState();
         const merged = app.mergeStates(localState, remote.state);
-        const needsUpload = app.stateSignature(merged) !==
-          app.stateSignature(remote.state);
-        const persisted = app.replaceActiveState(merged, {
-          notify: false,
-          stampSync: false,
-          preserveNavigation: true,
-        });
-        if (
-          persisted === false ||
-          (typeof app.isActiveStatePersisted === "function" &&
-            !app.isActiveStatePersisted())
-        ) {
-          throw new Error("合并结果未能写入本机存储。");
+        const localSignature = cloudStateSignature(localState);
+        const mergedSignature = cloudStateSignature(merged);
+        const remoteSignature = cloudStateSignature(remote.state);
+        const needsUpload = mergedSignature !== remoteSignature;
+        if (mergedSignature !== localSignature) {
+          const persisted = app.replaceActiveState(merged, {
+            notify: false,
+            stampSync: false,
+            preserveNavigation: true,
+          });
+          if (
+            persisted === false ||
+            (typeof app.isActiveStatePersisted === "function" &&
+              !app.isActiveStatePersisted())
+          ) {
+            throw new Error("合并结果未能写入本机存储。");
+          }
         }
         cloudRevision = remote.revision;
         if (pendingConflict && isGuestConflictSource(pendingConflict.localSource)) {
@@ -2044,6 +2628,7 @@
       // Local guest mode is still safe even when the remote sign-out request fails.
     }
     pendingConsentSession = null;
+    clearCloudLoadCache();
     currentUser = null;
     applyAccountProfile(null);
     cloudRevision = null;
@@ -2086,7 +2671,7 @@
     setMessage("正在合并两边的学习记录……");
     try {
       if (syncPromise) await syncPromise;
-      const latestRemote = normalizedRemote(await cloud.loadState());
+      const latestRemote = normalizedRemote(await loadCloudState(undefined, { force: true }));
       if (!latestRemote.found || !app.hasLearningData(latestRemote.state)) {
         throw new Error("无法重新读取最新云端记录，未执行合并或覆盖。");
       }
@@ -2148,7 +2733,7 @@
     setMessage("正在只读核对本机保留记录与云端记录……");
     try {
       if (syncPromise) await syncPromise;
-      const remote = normalizedRemote(await cloud.loadState());
+      const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
       if (!remote.found || !app.hasLearningData(remote.state)) {
         throw new Error("暂时无法读取云端学习记录，未执行恢复或覆盖。");
       }
@@ -2170,6 +2755,7 @@
       };
       setMessage();
       showPrimaryAccountView();
+      showFloatingDialog(accountDialog, recoverGuestDataButton);
     } catch (error) {
       setMessage(error?.message ?? "核对失败，未执行恢复或覆盖。", "error");
       showPrimaryAccountView();
@@ -2184,7 +2770,7 @@
     setConflictBusy(true);
     try {
       if (syncPromise) await syncPromise;
-      const latestRemote = normalizedRemote(await cloud.loadState());
+      const latestRemote = normalizedRemote(await loadCloudState(undefined, { force: true }));
       if (!latestRemote.found || !app.hasLearningData(latestRemote.state)) {
         throw new Error("无法重新读取最新云端记录，未执行覆盖。");
       }
@@ -2195,7 +2781,7 @@
         ? app.mergeStates(app.getState(), latestRemote.state)
         : latestRemote.state;
       const needsUpload = Boolean(remoteNeedsUpload) ||
-        app.stateSignature(nextState) !== app.stateSignature(latestRemote.state);
+        cloudStateSignature(nextState) !== cloudStateSignature(latestRemote.state);
       activateAccountState(
         currentUser,
         nextState,
@@ -2258,6 +2844,7 @@
     } catch (error) {
       setMessage(error?.message ?? "退出失败。", "error");
     }
+    clearCloudLoadCache();
     currentUser = null;
     applyAccountProfile(null);
     cloudRevision = null;
@@ -2292,6 +2879,7 @@
       } catch {
         // The server-side deletion may invalidate the session before sign-out.
       }
+      clearCloudLoadCache();
       currentUser = null;
       applyAccountProfile(null);
       cloudRevision = null;
@@ -2339,7 +2927,7 @@
       );
       resetFeedbackForm();
       clearFeedbackRequest();
-      closeAccountDialog();
+      closeAccountDialog({ preserveMessage: true });
       setMessage("反馈已提交。");
     } catch (error) {
       setMessage(error?.message ?? "反馈提交失败，请稍后重试。", "error");
@@ -2409,6 +2997,66 @@
     }
   }
 
+  async function resolvePersistedSession(options = {}) {
+    if (!cloud) return null;
+    if (sessionResolvePromise) return sessionResolvePromise;
+    if (
+      currentUser &&
+      app.getActiveStorageKey() === app.accountStorageKey(currentUser.id) &&
+      !options.force
+    ) {
+      return { user: currentUser };
+    }
+
+    accountResolutionPending = true;
+    updateDataScopeStatus();
+    announceBootProgress(null, "正在确认浏览器中的账户会话");
+    sessionResolvePromise = (async () => {
+      try {
+        const session = await withAccountTimeout(
+          cloud.getSession(),
+          ACCOUNT_BOOTSTRAP_TIMEOUT_MS,
+          "账户会话读取超时。",
+        );
+        sessionResolutionUncertain = false;
+        if (session?.user) {
+          if (
+            currentUser?.id !== session.user.id ||
+            app.getActiveStorageKey() !== app.accountStorageKey(session.user.id)
+          ) {
+            await establishAccountSession(session);
+          } else {
+            currentUser = session.user;
+          }
+          return session;
+        }
+        if (!currentUser) {
+          app.activateGuest();
+          announceAccountScope();
+        }
+        return null;
+      } catch (error) {
+        sessionResolutionUncertain = true;
+        if (!options.silent) {
+          setMessage(
+            "账户服务暂不可用；当前记录继续保存在游客空间，联网后会自动重新确认账户。",
+            "error",
+          );
+        }
+        setDataMessage(
+          error?.message ?? "账户会话暂时无法确认，稍后会自动重试。",
+          "error",
+        );
+        return null;
+      } finally {
+        accountResolutionPending = false;
+        updateDataScopeStatus();
+        sessionResolvePromise = null;
+      }
+    })();
+    return sessionResolvePromise;
+  }
+
   async function initializeAccount() {
     setMode("login");
     showPrimaryAccountView();
@@ -2422,7 +3070,9 @@
 
     cloud.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT" && currentUser) {
+        clearCloudLoadCache();
         currentUser = null;
+        sessionResolutionUncertain = false;
         applyAccountProfile(null);
         cloudRevision = null;
         pendingConflict = null;
@@ -2432,49 +3082,35 @@
         showPrimaryAccountView();
         refreshNotifications({ silent: true });
       }
-      if (event === "TOKEN_REFRESHED" && session?.user) {
-        currentUser = session.user;
-        showPrimaryAccountView();
-        refreshAccountProfile({ silent: true });
-        refreshNotifications({ silent: true });
+      if (["INITIAL_SESSION", "SIGNED_IN"].includes(event) && session?.user) {
+        sessionResolutionUncertain = false;
+        establishAccountSession(session)
+          .then(() => {
+            refreshAccountProfile({ silent: true });
+            refreshNotifications({ silent: true });
+          })
+          .catch((error) => {
+            setMessage(error?.message ?? "账户记录载入失败。", "error");
+          });
+      } else if (event === "TOKEN_REFRESHED" && session?.user) {
+        sessionResolutionUncertain = false;
+        if (currentUser?.id === session.user.id) {
+          currentUser = session.user;
+          showPrimaryAccountView();
+          refreshAccountProfile({ silent: true });
+          refreshNotifications({ silent: true });
+        } else {
+          establishAccountSession(session).catch(() => {});
+        }
       }
     });
 
-    try {
-      const pendingSession = Promise.resolve().then(() => cloud.getSession());
-      let timeoutId = null;
-      const initial = await Promise.race([
-        pendingSession.then((session) => ({ session })),
-        new Promise((resolve) => {
-          timeoutId = window.setTimeout(
-            () => resolve({ timedOut: true }),
-            ACCOUNT_BOOTSTRAP_TIMEOUT_MS,
-          );
-        }),
-      ]);
-      if (timeoutId !== null) window.clearTimeout(timeoutId);
-
-      if (initial.timedOut) {
-        setMessage("账户服务响应较慢，已安全进入本机模式；恢复连接后会重新核对记录。");
-        pendingSession.then(async (session) => {
-          if (!session || currentUser) return;
-          try {
-            await establishAccountSession(session);
-            if (!pendingConflict && !pendingConsentSession) {
-              announceAccountScope(currentUser);
-            }
-            refreshNotifications({ silent: true });
-          } catch (error) {
-            setMessage(error?.message ?? "账户服务暂不可用。", "error");
-          }
-        }).catch((error) => {
-          setMessage(error?.message ?? "账户服务暂不可用。", "error");
-        });
-      } else if (initial.session) {
-        await establishAccountSession(initial.session);
-      }
-    } catch (error) {
-      setMessage(error?.message ?? "账户服务暂不可用。", "error");
+    await resolvePersistedSession({ reason: "startup", silent: true });
+    if (sessionResolutionUncertain) {
+      setMessage(
+        "账户服务响应较慢；本机游客记录已安全保留，恢复连接后会自动重新确认账户。",
+        "error",
+      );
     }
     startRefreshTimer();
     if (currentUser && !pendingConflict && !pendingConsentSession) {
@@ -2506,8 +3142,24 @@
   acceptLegalConsentButton.addEventListener("click", acceptLegalConsents);
   declineLegalConsentButton.addEventListener("click", declineLegalConsents);
   syncNowButton.addEventListener("click", async () => {
-    await refreshFromCloud();
-    await syncNow({ verifyPersistence: true });
+    syncNowButton.disabled = true;
+    setOperationProgress(null, "正在准备同步");
+    try {
+      if (!currentUser) {
+        await resolvePersistedSession({ reason: "manual-sync", force: true });
+      }
+      if (!currentUser) {
+        setOperationProgress(null, "需要先登录账户", "error");
+        setDataMessage("请先在设置的账户页面登录，再执行云端同步。", "error");
+        return;
+      }
+      // syncNow performs one authoritative read and merges it before the CAS
+      // write. Calling refreshFromCloud first used to download the same large
+      // document twice for every manual sync.
+      await syncNow({ verifyPersistence: true, refreshRemote: true });
+    } finally {
+      syncNowButton.disabled = false;
+    }
   });
   logoutButton.addEventListener("click", logout);
   deleteAccountButton.addEventListener("click", () => {
@@ -2517,7 +3169,7 @@
     accountConsentView.hidden = true;
     accountFeedbackView.hidden = true;
     accountDeleteConfirm.hidden = false;
-    accountDataActions.hidden = true;
+    closeAccountButton.hidden = true;
     resetDeleteConfirmation();
     setMessage();
     deleteAccountConfirmation.focus();
@@ -2535,6 +3187,45 @@
   exportDataButton.addEventListener("click", exportData);
   importDataButton.addEventListener("click", () => importDataInput.click());
   recoverGuestDataButton.addEventListener("click", openGuestRecovery);
+  compareDataButton.addEventListener("click", compareLocalCloudData);
+  repairDataButton.addEventListener("click", async () => {
+    repairDataButton.disabled = true;
+    setDataMessage();
+    setOperationProgress(0, "正在重建热力图与统计数据");
+    try {
+      const result = await app.repairDerivedData((value, completed, total) => {
+        setOperationProgress(value, `正在重建数据 ${completed}/${total}`);
+      });
+      if (result?.persisted === false) {
+        throw new Error("修复结果未能写入本机存储，请保留当前页面并重试。");
+      }
+      if (currentUser) {
+        saveSyncMeta(currentUser.id, { dirty: true });
+        setOperationProgress(null, "正在将修复结果同步到云端");
+        const syncResult = await syncNow({ verifyPersistence: true });
+        if (!syncResult?.ok && !syncResult?.skipped && !syncResult?.revision) {
+          throw new Error("本机数据已修复，但云端同步尚未完成，请再次点击立即同步。");
+        }
+      }
+      const activityDates = (result?.reports ?? [])
+        .reduce((sum, report) => sum + (Number(report.activityDates) || 0), 0);
+      const snapshotDates = (result?.reports ?? [])
+        .reduce((sum, report) => sum + (Number(report.snapshotDates) || 0), 0);
+      setOperationProgress(100, "数据修复完成", "success");
+      setDataMessage(
+        `已按当前学习记录重建 ${activityDates} 个活动日期和 ${snapshotDates} 个统计快照。`,
+      );
+    } catch (error) {
+      setOperationProgress(null, "数据修复未完成", "error");
+      setDataMessage(error?.message ?? "数据修复失败，请稍后重试。", "error");
+    } finally {
+      repairDataButton.disabled = false;
+    }
+  });
+  closeDataComparisonButton.addEventListener("click", () => {
+    dataComparison.hidden = true;
+  });
+  resolveDataDifferenceButton.addEventListener("click", resolveDataDifference);
   importDataInput.addEventListener("change", () => importData(importDataInput.files[0]));
   notificationsButton.addEventListener("click", openNotificationsDialog);
   closeNotificationsButton.addEventListener("click", closeNotificationsDialog);
@@ -2569,15 +3260,16 @@
     await addFeedbackFiles(feedbackImageInput.files);
   });
   submitFeedbackButton.addEventListener("click", submitFeedback);
-  cancelFeedbackButton.addEventListener("click", () => {
-    resetFeedbackForm();
-    clearFeedbackRequest();
-    showPrimaryAccountView();
-    setMessage();
-  });
 
   window.addEventListener("sensevocab:open-feedback", (event) => {
     openFeedbackView(event.detail?.context ?? app.getCurrentWordContext());
+  });
+
+  window.addEventListener("sensevocab:open-data", () => {
+    updateDataScopeStatus();
+    if (sessionResolutionUncertain && cloud) {
+      resolvePersistedSession({ reason: "data-page", silent: true, force: true });
+    }
   });
 
   window.addEventListener("sensevocab:state-saved", (event) => {
@@ -2613,23 +3305,31 @@
   });
 
   document.addEventListener("visibilitychange", () => {
-    if (!currentUser) return;
     if (document.visibilityState === "hidden") {
-      syncNow();
+      if (currentUser) syncNow();
     } else {
-      refreshFromCloud({ silent: true });
-      refreshAccountProfile({ silent: true });
+      if (!currentUser || sessionResolutionUncertain) {
+        resolvePersistedSession({ reason: "visible", silent: true, force: true });
+      } else {
+        refreshFromCloud({ silent: true });
+        refreshAccountProfile({ silent: true });
+      }
       refreshNotifications({ silent: true });
     }
   });
   window.addEventListener("focus", () => {
-    if (currentUser) {
+    if (!currentUser || sessionResolutionUncertain) {
+      resolvePersistedSession({ reason: "focus", silent: true, force: true });
+    } else {
       refreshFromCloud({ silent: true });
       refreshAccountProfile({ silent: true });
     }
     refreshNotifications({ silent: true });
   });
   window.addEventListener("online", async () => {
+    if (!currentUser || sessionResolutionUncertain) {
+      await resolvePersistedSession({ reason: "online", silent: true, force: true });
+    }
     if (currentUser) {
       await Promise.all([
         refreshFromCloud({ silent: true }),

@@ -8,7 +8,11 @@
     "20260809162137_compliance_dashboard_ambiguity_fix.sql",
     "20260812051224_increase_feedback_submission_limits.sql",
     "20260812154800_update_compliance_dashboard_latest_evidence.sql",
-    "20260822144248_admin_feedback_triage_readonly.sql"
+    "20260822144248_admin_feedback_triage_readonly.sql",
+    "20260929151638_optimize_user_state_sync.sql",
+    "20260930051646_optimize_user_state_load.sql",
+    "20260930191500_compact_user_state_transport.sql",
+    "20260930203000_user_state_load_manifest.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -20,10 +24,10 @@
     "defaultFunctionExposureRevoked": true
   },
   "counts": {
-    "discoveredFunctionSignatures": 66,
-    "securityDefinerSignatures": 57,
-    "explicitFinalGrants": 51,
-    "browserRpcNames": 38
+    "discoveredFunctionSignatures": 68,
+    "securityDefinerSignatures": 58,
+    "explicitFinalGrants": 55,
+    "browserRpcNames": 39
   },
   "grants": [
     {
@@ -330,6 +334,30 @@
     },
     {
       "signature": "public.admin_feedback_detail(text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.save_user_state(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state_manifest()",
       "roles": [
         "authenticated"
       ]
@@ -652,6 +680,15 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.compact_user_state_transport(p_state jsonb)",
+      "schema": "public",
+      "name": "compact_user_state_transport",
+      "latestMigration": "20260930191500_compact_user_state_transport.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
       "key": "public.confusion_links_are_valid(p_links jsonb)",
       "schema": "public",
       "name": "confusion_links_are_valid",
@@ -778,12 +815,21 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.load_user_state_manifest()",
+      "schema": "public",
+      "name": "load_user_state_manifest",
+      "latestMigration": "20260930203000_user_state_load_manifest.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
       "key": "public.load_user_state()",
       "schema": "public",
       "name": "load_user_state",
-      "latestMigration": "202607280005_concurrent_state_integrity.sql",
+      "latestMigration": "20260930191500_compact_user_state_transport.sql",
       "securityDefiner": true,
-      "declaredEmptySearchPath": false,
+      "declaredEmptySearchPath": true,
       "checksCallerIdentity": true
     },
     {
@@ -844,7 +890,7 @@
       "key": "public.save_user_state(p_state jsonb, p_expected_revision bigint default null, p_force boolean default false)",
       "schema": "public",
       "name": "save_user_state",
-      "latestMigration": "202607310001_state_recovery_guard.sql",
+      "latestMigration": "20260929151638_optimize_user_state_sync.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": true

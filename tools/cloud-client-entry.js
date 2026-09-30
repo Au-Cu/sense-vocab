@@ -6,6 +6,76 @@ function assertResult(result) {
   return result?.data ?? null;
 }
 
+let cloudProgressRequestId = 0;
+let expectedLoadStateBytes = null;
+
+function normalizeExpectedBytes(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : null;
+}
+
+function stateRpcKind(input) {
+  const rawUrl = typeof input === "string" ? input : input?.url;
+  if (!rawUrl) return null;
+  let pathname = "";
+  try {
+    pathname = new URL(rawUrl, window.location.href).pathname;
+  } catch {
+    return null;
+  }
+  if (pathname.endsWith("/rpc/load_user_state")) return "load-state";
+  if (pathname.endsWith("/rpc/save_user_state")) return "save-state";
+  return null;
+}
+
+function emitCloudProgress(detail) {
+  window.dispatchEvent(new CustomEvent("sensevocab:cloud-progress", {
+    detail,
+  }));
+}
+
+function createProgressFetch(baseFetch) {
+  return async (input, init) => {
+    const operation = stateRpcKind(input);
+    const response = await baseFetch(input, init);
+    if (!operation || !response.body?.pipeThrough || typeof TransformStream !== "function") {
+      return response;
+    }
+
+    const requestId = ++cloudProgressRequestId;
+    const totalHeader = Number(response.headers.get("content-length"));
+    // Fetch exposes the decoded body to JavaScript. A compressed Content-Length
+    // would therefore produce a false percentage, so only use an unencoded
+    // length as a denominator. The manifest fallback is the exact decoded JSON
+    // byte count and remains valid when the HTTP layer compresses the response.
+    const headerTotal = !response.headers.get("content-encoding") &&
+      Number.isFinite(totalHeader) && totalHeader > 0
+      ? totalHeader
+      : null;
+    const total = headerTotal ?? (
+      operation === "load-state" ? expectedLoadStateBytes : null
+    );
+    emitCloudProgress({ operation, requestId, received: 0, total });
+    let received = 0;
+    const progressStream = response.body.pipeThrough(new TransformStream({
+      transform(chunk, controller) {
+        received += chunk?.byteLength ?? 0;
+        emitCloudProgress({ operation, requestId, received, total });
+        controller.enqueue(chunk);
+      },
+      flush() {
+        emitCloudProgress({ operation, requestId, received, total, done: true });
+      },
+    }));
+
+    return new Response(progressStream, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  };
+}
+
 const FEEDBACK_BUCKET = "feedback-images";
 const ANNOUNCEMENT_BUCKET = "announcement-images";
 const FEEDBACK_IMAGE_TYPES = new Map([
@@ -35,6 +105,9 @@ window.SenseVocabCloud = {
 
     const projectRef = new URL(supabaseUrl).hostname.split(".")[0] || "default";
     const client = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        fetch: createProgressFetch(window.fetch.bind(window)),
+      },
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -211,16 +284,32 @@ window.SenseVocabCloud = {
         }));
       },
 
-      async loadState() {
-        return assertResult(await client.rpc("load_user_state"));
+      async loadState(signal = null, expectedBytes = null) {
+        expectedBytes = normalizeExpectedBytes(expectedBytes);
+        expectedLoadStateBytes = expectedBytes;
+        try {
+          const request = client.rpc("load_user_state");
+          if (signal) request.abortSignal(signal);
+          return assertResult(await request);
+        } finally {
+          expectedLoadStateBytes = null;
+        }
       },
 
-      async saveState(state, expectedRevision = null, force = false) {
-        return assertResult(await client.rpc("save_user_state", {
+      async loadStateManifest(signal = null) {
+        const request = client.rpc("load_user_state_manifest");
+        if (signal) request.abortSignal(signal);
+        return assertResult(await request);
+      },
+
+      async saveState(state, expectedRevision = null, force = false, signal = null) {
+        const request = client.rpc("save_user_state", {
           p_state: compactStateUpload(state),
           p_expected_revision: expectedRevision,
           p_force: Boolean(force),
-        }));
+        });
+        if (signal) request.abortSignal(signal);
+        return assertResult(await request);
       },
 
       async deleteAccount() {
