@@ -1676,16 +1676,29 @@
     refreshAdminButton.disabled = true;
     setMessage("正在读取后台数据……");
     try {
-      await Promise.all([
-        loadOverview(),
-        loadUsers(),
-        loadFeedback(),
-        loadAnnouncements(),
-        loadCompliance(),
-      ]);
-      setMessage();
-    } catch (error) {
-      setMessage(error?.message ?? "后台数据读取失败。", "error");
+      // These RPCs all expand or aggregate account data.  Running them at
+      // once made the dashboard compete with itself and amplified statement
+      // timeouts on accounts with large historical state.  Keep each section
+      // independently useful while avoiding a burst of heavyweight queries.
+      const errors = [];
+      for (const loader of [
+        loadOverview,
+        loadUsers,
+        loadFeedback,
+        loadAnnouncements,
+        loadCompliance,
+      ]) {
+        try {
+          await loader();
+        } catch (error) {
+          errors.push(error?.message ?? "后台数据读取失败。");
+        }
+      }
+      if (errors.length) {
+        setMessage(`部分后台数据读取失败：${errors[0]}`, "error");
+      } else {
+        setMessage();
+      }
     } finally {
       loading = false;
       refreshAdminButton.disabled = false;

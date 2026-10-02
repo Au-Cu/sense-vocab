@@ -31,6 +31,7 @@ function makeEnvelope() {
 
 async function installChunkRoutes(page, envelope, options = {}) {
   const requests = [];
+  let staleReturned = false;
   await page.route(`${CLOUD_URL}/rest/v1/rpc/**`, async (route) => {
     const request = route.request();
     const procedure = new URL(request.url()).pathname.split("/").pop();
@@ -56,6 +57,19 @@ async function installChunkRoutes(page, envelope, options = {}) {
 
     if (procedure === "load_user_state_chunk") {
       const index = Number(body.p_chunk_index);
+      if (options.staleOnce && !staleReturned) {
+        staleReturned = true;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            found: false,
+            revision: 8,
+            stale: true,
+          }),
+        });
+        return;
+      }
       const data = envelope.chunks[index];
       if (data === undefined) {
         await route.fulfill({
@@ -176,4 +190,22 @@ test("rejects an out-of-order chunk without completing", async ({ page }) => {
   expect(result.progress.some((entry) => (
     entry.done && entry.received === envelope.bytes && entry.total === envelope.bytes
   ))).toBe(false);
+});
+
+test("restarts once when the cloud snapshot changes during chunk loading", async ({ page }) => {
+  const envelope = makeEnvelope();
+  const requests = await installChunkRoutes(page, envelope, { staleOnce: true });
+  await page.goto(APP_URL);
+
+  const result = await loadThroughClient(page);
+
+  expect(result.error).toBeNull();
+  expect(result.document?.revision).toBe(7);
+  expect(requests.map(({ procedure }) => procedure)).toEqual([
+    "load_user_state",
+    "load_user_state_chunk",
+    "load_user_state",
+    "load_user_state_chunk",
+    "load_user_state_chunk",
+  ]);
 });

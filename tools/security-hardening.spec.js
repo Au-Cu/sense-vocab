@@ -117,6 +117,31 @@ test("account snapshots block undeclared record loss and keep recovery copies pr
   expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
 });
 
+test("staged account uploads keep transport parts private and commit once", async () => {
+  const migration = await read(
+    "supabase/migrations/20261002130000_staged_state_uploads.sql",
+  );
+  for (const table of [
+    "user_state_upload_sessions",
+    "user_state_upload_parts",
+  ]) {
+    expect(migration).toContain(
+      `alter table public.${table} enable row level security`,
+    );
+    expect(migration).toContain(
+      `revoke all on table public.${table} from public, anon, authenticated`,
+    );
+  }
+  expect(migration).toContain("create or replace function public.begin_user_state_upload");
+  expect(migration).toContain("create or replace function public.put_user_state_upload_part");
+  expect(migration).toContain("create or replace function public.finalize_user_state_upload");
+  expect(migration).toContain("public.save_user_state(");
+  expect(migration).toContain("receivedIndexes");
+  expect(migration).toContain("set statement_timeout = '120s'");
+  expect(migration).not.toMatch(/grant\s+.*on\s+table\s+public\.user_state_upload_/i);
+  expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
+});
+
 test("confusing-word account snapshots validate and guard every book", async () => {
   const migration = await read(
     "supabase/migrations/20260808150845_confusion_links_account_sync_guard.sql",
@@ -224,8 +249,11 @@ test("accounts require explicit terms, cross-border, and age consent", async () 
   expect(retentionMigration).toContain("admin_expired_feedback");
   expect(retentionMigration).toContain("admin_delete_expired_feedback");
   expect(retentionMigration).not.toContain("delete from storage.objects");
-  expect(cloudClient.indexOf(".remove(paths.slice")).toBeLessThan(
-    cloudClient.indexOf('"admin_delete_expired_feedback"'),
+  const adminFeedbackMethod = cloudClient
+    .split("async loadAdminFeedback", 2)[1]
+    .split("async loadAdminFeedbackTriage", 1)[0];
+  expect(adminFeedbackMethod).not.toMatch(
+    /admin_expired_feedback|admin_delete_expired_feedback|\.remove\(paths\.slice/,
   );
   expect(cloudClient).toContain("receipt?.ageVersion === expected.ageVersion");
 });

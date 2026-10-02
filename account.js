@@ -158,6 +158,10 @@
   // The database accepts a 4 MB delta, but leave room for JSON/request
   // overhead so a browser never hands the RPC a boundary-sized payload.
   const MAX_DELTA_PATCH_BYTES = 3500000;
+  // Staged parts are deliberately much smaller than the database limit. Each
+  // request only inserts one text row; the expensive full-state rebuild is
+  // deferred to the single finalize call.
+  const STAGED_UPLOAD_CHUNK_BYTES = 320000;
   const SYNC_DIAGNOSTICS_PREFIX = "sense-vocab-sync-diagnostics-v1:";
   const SYNC_DIAGNOSTICS_LIMIT = 40;
   const CLOUD_LOAD_CACHE_MS = 4000;
@@ -552,6 +556,15 @@
     }
   }
 
+  function createUploadId() {
+    if (typeof crypto?.randomUUID === "function") return crypto.randomUUID();
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (token) => {
+      const value = Math.floor(Math.random() * 16);
+      const nibble = token === "x" ? value : (value & 0x3) | 0x8;
+      return nibble.toString(16);
+    });
+  }
+
   function loadSyncMeta(userId) {
     return {
       revision: null,
@@ -697,6 +710,11 @@
     window.dispatchEvent(new CustomEvent("sensevocab:open-data", {
       detail: { immediate: true, reason: "account-recovery" },
     }));
+  }
+
+  function focusDataOperationSurface() {
+    hideFloatingDialog(accountDialog, { force: true });
+    requestDataPage();
   }
 
   function updateDataScopeStatus() {
@@ -1847,7 +1865,13 @@
     });
   }
 
-  function activateAccountState(user, nextState, revision, dirty = false) {
+  function activateAccountState(
+    user,
+    nextState,
+    revision,
+    dirty = false,
+    { showAccount = true } = {},
+  ) {
     if (currentUser?.id !== user.id) clearCloudLoadCache();
     currentUser = user;
     pendingConsentSession = null;
@@ -1865,7 +1889,7 @@
       lastSyncedAt: dirty ? null : new Date().toISOString(),
     });
     setSyncStatus(dirty ? "本机记录等待上传" : "云端记录已同步", dirty ? "pending" : "");
-    showPrimaryAccountView();
+    if (showAccount) showPrimaryAccountView();
     announceAccountScope(user);
     return persisted;
   }
@@ -2145,6 +2169,168 @@
       /save_user_state_delta|function .*does not exist|404/.test(message);
   }
 
+  function stagedUploadMatches(candidate, prepared, revision, force) {
+    return Boolean(candidate) &&
+      candidate.expectedRevision === Number(revision) &&
+      candidate.force === Boolean(force) &&
+      candidate.manifest === prepared.manifest &&
+      candidate.chunkCount === prepared.chunks.length &&
+      candidate.totalBytes === prepared.totalBytes &&
+      typeof candidate.uploadId === "string" &&
+      candidate.uploadId.length > 0;
+  }
+
+  async function saveStateStaged(state, revision, force = false) {
+    if (
+      typeof cloud?.prepareStateUpload !== "function" ||
+      typeof cloud?.beginStateUpload !== "function" ||
+      typeof cloud?.saveStateUploadPart !== "function" ||
+      typeof cloud?.finalizeStateUpload !== "function"
+    ) {
+      return null;
+    }
+    const expectedRevision = Number(revision);
+    if (!Number.isInteger(expectedRevision) || expectedRevision < 0) {
+      throw new Error("云端版本号尚未确认，暂不能开始分段上传。");
+    }
+    const prepared = cloud.prepareStateUpload(state, STAGED_UPLOAD_CHUNK_BYTES);
+    if (!prepared?.chunks?.length || !Number.isFinite(prepared.totalBytes)) {
+      throw new Error("本机记录分段准备失败，未执行云端写入。");
+    }
+    const userId = currentUser?.id;
+    if (!userId) throw new Error("当前账户尚未确认，未执行云端写入。");
+
+    const previous = loadSyncMeta(userId).pendingUpload;
+    const pending = stagedUploadMatches(previous, prepared, expectedRevision, force)
+      ? previous
+      : {
+        uploadId: createUploadId(),
+        expectedRevision,
+        force: Boolean(force),
+        manifest: prepared.manifest,
+        chunkCount: prepared.chunks.length,
+        totalBytes: prepared.totalBytes,
+      };
+    // Persist only the small cursor. The payload stays in the current state
+    // and is regenerated on retry, so local storage is not doubled.
+    saveSyncMeta(userId, { pendingUpload: pending, dirty: true });
+    recordSyncDiagnostic("staged-upload-start", null, {
+      revision: expectedRevision,
+      chunks: prepared.chunks.length,
+      uploadBytes: prepared.totalBytes,
+      resumed: pending === previous,
+    });
+
+    const begun = await runTransientCloudOperation(
+      (signal) => cloud.beginStateUpload(
+        pending.uploadId,
+        expectedRevision,
+        force,
+        prepared.manifest,
+        prepared.chunks.length,
+        prepared.totalBytes,
+        signal,
+      ),
+      "正在准备分段上传",
+      ACCOUNT_OPERATION_TIMEOUT_MS,
+      "save-state",
+      { completeProgress: false, preserveProgress: true },
+    );
+    if (begun?.conflict) {
+      saveSyncMeta(userId, { pendingUpload: null });
+      return begun;
+    }
+    if (!begun?.ok) {
+      throw new Error("云端未能建立分段上传会话，本机记录已保留。");
+    }
+
+    const receivedIndexes = new Set(
+      Array.isArray(begun.receivedIndexes)
+        ? begun.receivedIndexes.map((index) => Number(index))
+        : [],
+    );
+    let receivedBytes = Number(begun.receivedBytes);
+    if (!Number.isFinite(receivedBytes) || receivedBytes < 0) {
+      receivedBytes = 0;
+      receivedIndexes.forEach((index) => {
+        receivedBytes += Number(prepared.chunks[index]?.bytes) || 0;
+      });
+    }
+    const showUploadProgress = (label = "正在上传本机记录") => {
+      const percent = prepared.totalBytes > 0
+        ? Math.min(100, Math.max(0, receivedBytes / prepared.totalBytes * 100))
+        : 0;
+      setOperationProgress(
+        percent,
+        `${label} ${receivedBytes}/${prepared.totalBytes} 字节（${percent.toFixed(2)}%）`,
+      );
+    };
+    showUploadProgress();
+
+    for (let index = 0; index < prepared.chunks.length; index += 1) {
+      if (receivedIndexes.has(index)) continue;
+      if (currentUser?.id !== userId) {
+        throw new Error("账户已切换，分段上传已暂停，本机记录已保留。");
+      }
+      const part = prepared.chunks[index];
+      const result = await runTransientCloudOperation(
+        (signal) => cloud.saveStateUploadPart(
+          pending.uploadId,
+          index,
+          prepared.chunks.length,
+          part.data,
+          signal,
+        ),
+        `正在上传本机记录分段 ${index + 1}/${prepared.chunks.length}`,
+        ACCOUNT_OPERATION_TIMEOUT_MS,
+        "save-state",
+        { completeProgress: false, preserveProgress: true },
+      );
+      if (result?.conflict) {
+        saveSyncMeta(userId, { pendingUpload: null });
+        return result;
+      }
+      if (!result?.ok) {
+        throw new Error("云端未确认本机记录分段，本机记录已保留。");
+      }
+      receivedIndexes.add(index);
+      const serverBytes = Number(result.receivedBytes);
+      receivedBytes = Number.isFinite(serverBytes)
+        ? serverBytes
+        : receivedBytes + part.bytes;
+      recordSyncDiagnostic("staged-upload-part", null, {
+        chunk: index + 1,
+        chunks: prepared.chunks.length,
+        bytes: part.bytes,
+      });
+      showUploadProgress();
+    }
+
+    // The database validates the complete byte set and performs the one
+    // authoritative save here. There is intentionally no fake percentage for
+    // this short server-side commit phase.
+    setOperationProgress(null, "正在提交完整学习记录，服务端正在一次性校验");
+    const result = await runTransientCloudOperation(
+      (signal) => cloud.finalizeStateUpload(pending.uploadId, signal),
+      "正在提交完整学习记录",
+      ACCOUNT_OPERATION_TIMEOUT_MS,
+      "save-state",
+      { completeProgress: false, preserveProgress: true },
+    );
+    if (result?.conflict) {
+      saveSyncMeta(userId, { pendingUpload: null });
+      return result;
+    }
+    if (result?.incomplete) {
+      throw new Error("云端仍缺少部分本机记录分段，请继续重试上传。");
+    }
+    if (result?.ok) {
+      saveSyncMeta(userId, { pendingUpload: null });
+      setOperationProgress(100, "完整学习记录已提交", "success");
+    }
+    return result;
+  }
+
   async function saveCloudState(
     state,
     revision,
@@ -2191,6 +2377,15 @@
       };
     }
     const totalBytes = chunks.reduce((sum, entry) => sum + entry.bytes, 0);
+    const canStage = typeof cloud?.prepareStateUpload === "function" &&
+      typeof cloud?.beginStateUpload === "function" &&
+      typeof cloud?.saveStateUploadPart === "function" &&
+      typeof cloud?.finalizeStateUpload === "function";
+    const useStaged = canStage && (
+      force ||
+      !useDelta ||
+      chunks.length > 1
+    );
     let sentBytes = 0;
     recordSyncDiagnostic("upload-start", null, {
       revision: Number(revision) || 0,
@@ -2199,7 +2394,9 @@
       uploadBytes: useDelta ? totalBytes : jsonByteLength(state),
     });
     try {
-      if (useDelta) {
+      if (useStaged) {
+        result = await saveStateStaged(state, revision, force);
+      } else if (useDelta) {
         let expectedRevision = revision;
         for (let index = 0; index < chunks.length; index += 1) {
           const entry = chunks[index];
@@ -2253,7 +2450,9 @@
       // A rolling deployment may expose the new client before the RPC is
       // present. Fall back once to the audited full writer; never turn a
       // network/timeout failure into an unbounded retry loop.
-      if (!useDelta || !isDeltaRpcUnavailable(error) || sentBytes > 0) throw error;
+      if (useStaged || !useDelta || !isDeltaRpcUnavailable(error) || sentBytes > 0) {
+        throw error;
+      }
       result = await runTransientCloudOperation(
         (signal) => cloud.saveState(state, revision, false, signal),
         "云端写入",
@@ -2824,6 +3023,9 @@
           "error",
         );
         setMessage(error?.message ?? "同步失败，请稍后重试。", "error");
+        if (app.getState()?.view === "data") {
+          setDataMessage(error?.message ?? "同步失败，本机记录已保留。", "error");
+        }
         setOperationProgress(null, "同步失败，本机记录已保留", "error");
         return null;
       } finally {
@@ -3190,6 +3392,8 @@
     const originalConflict = pendingConflict;
     const { localState, localSource } = originalConflict;
     setConflictBusy(true);
+    focusDataOperationSurface();
+    setDataMessage("正在合并两边的学习记录……");
     setMessage("正在合并两边的学习记录……");
     try {
       if (syncPromise) await syncPromise;
@@ -3217,6 +3421,7 @@
         merged,
         latestRemote.revision,
         true,
+        { showAccount: false },
       );
       if (persisted === false) {
         pendingConflict = {
@@ -3233,7 +3438,8 @@
       resumePendingFeedback();
     } catch (error) {
       setMessage(error?.message ?? "合并失败，两边原记录均未删除。", "error");
-      showPrimaryAccountView();
+      setDataMessage(error?.message ?? "合并失败，两边原记录均未删除。", "error");
+      focusDataOperationSurface();
     } finally {
       setConflictBusy(false);
     }
@@ -3290,6 +3496,8 @@
     if (!pendingConflict || !currentUser || conflictBusy) return;
     const { remoteNeedsUpload, localSource } = pendingConflict;
     setConflictBusy(true);
+    focusDataOperationSurface();
+    setDataMessage("正在使用云端学习记录……");
     try {
       if (syncPromise) await syncPromise;
       const latestRemote = normalizedRemote(await loadCloudState(undefined, { force: true }));
@@ -3309,6 +3517,7 @@
         nextState,
         latestRemote.revision,
         needsUpload,
+        { showAccount: false },
       );
       if (needsUpload) await syncNow({ verifyPersistence: true });
       setMessage(isGuestConflictSource(localSource)
@@ -3317,7 +3526,8 @@
       resumePendingFeedback();
     } catch (error) {
       setMessage(error?.message ?? "读取云端记录失败，请稍后重试。", "error");
-      showPrimaryAccountView();
+      setDataMessage(error?.message ?? "读取云端记录失败，请稍后重试。", "error");
+      focusDataOperationSurface();
     } finally {
       setConflictBusy(false);
     }
@@ -3341,17 +3551,26 @@
       return;
     }
     setConflictBusy(true);
+    focusDataOperationSurface();
+    setDataMessage("正在将本机学习记录上传到云端……");
     try {
       if (isGuestConflictSource(localSource)) {
         rememberGuestDecision(currentUser.id);
       }
-      activateAccountState(currentUser, localState, remote.revision, true);
+      activateAccountState(
+        currentUser,
+        localState,
+        remote.revision,
+        true,
+        { showAccount: false },
+      );
       setMessage("正在将本机学习记录上传到云端……");
       await syncNow({ replace: true });
       resumePendingFeedback();
     } catch (error) {
       setMessage(error?.message ?? "上传本机记录失败，请稍后重试。", "error");
-      showPrimaryAccountView();
+      setDataMessage(error?.message ?? "上传本机记录失败，请稍后重试。", "error");
+      focusDataOperationSurface();
     } finally {
       setConflictBusy(false);
     }

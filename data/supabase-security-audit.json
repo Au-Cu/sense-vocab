@@ -12,7 +12,17 @@
     "20260929151638_optimize_user_state_sync.sql",
     "20260930051646_optimize_user_state_load.sql",
     "20260930191500_compact_user_state_transport.sql",
-    "20260930203000_user_state_load_manifest.sql"
+    "20260930203000_user_state_load_manifest.sql",
+    "20261001090000_materialize_user_state_transport.sql",
+    "20261001120000_incremental_user_state_sync.sql",
+    "20261001133000_extend_state_transport_safety_windows.sql",
+    "20261001150000_extend_state_read_safety_window.sql",
+    "20261001180000_compact_session_and_delta_guards.sql",
+    "20261001200000_chunked_user_state_transport.sql",
+    "20261001203000_fix_state_learning_evidence.sql",
+    "20261002090000_repair_chunk_transport_and_admin_dashboard.sql",
+    "20261002100000_fix_chunk_repair_hot_path.sql",
+    "20261002130000_staged_state_uploads.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -24,10 +34,10 @@
     "defaultFunctionExposureRevoked": true
   },
   "counts": {
-    "discoveredFunctionSignatures": 68,
-    "securityDefinerSignatures": 58,
-    "explicitFinalGrants": 55,
-    "browserRpcNames": 39
+    "discoveredFunctionSignatures": 79,
+    "securityDefinerSignatures": 66,
+    "explicitFinalGrants": 69,
+    "browserRpcNames": 42
   },
   "grants": [
     {
@@ -361,6 +371,90 @@
       "roles": [
         "authenticated"
       ]
+    },
+    {
+      "signature": "public.load_user_state()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state_manifest()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.save_user_state(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.save_user_state_delta(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.save_user_state(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.save_user_state_delta(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state_chunk(bigint, integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state_manifest()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state_chunk(bigint, integer)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.admin_dashboard()",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.begin_user_state_upload(uuid, bigint, boolean, text, integer, bigint)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.put_user_state_upload_part(uuid, integer, integer, text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.finalize_user_state_upload(uuid)",
+      "roles": [
+        "authenticated"
+      ]
     }
   ],
   "functions": [
@@ -476,7 +570,7 @@
       "key": "public.admin_dashboard()",
       "schema": "public",
       "name": "admin_dashboard",
-      "latestMigration": "20260731015734_book_aware_admin_analytics.sql",
+      "latestMigration": "20261002090000_repair_chunk_transport_and_admin_dashboard.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": false
@@ -662,6 +756,15 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.begin_user_state_upload(p_upload_id uuid, p_expected_revision bigint, p_force boolean, p_manifest text, p_chunk_count integer, p_total_bytes bigint)",
+      "schema": "public",
+      "name": "begin_user_state_upload",
+      "latestMigration": "20261002130000_staged_state_uploads.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
       "key": "public.can_upload_announcement_image(p_name text)",
       "schema": "public",
       "name": "can_upload_announcement_image",
@@ -680,10 +783,19 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.compact_user_session_transport(p_session jsonb)",
+      "schema": "public",
+      "name": "compact_user_session_transport",
+      "latestMigration": "20261001180000_compact_session_and_delta_guards.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
       "key": "public.compact_user_state_transport(p_state jsonb)",
       "schema": "public",
       "name": "compact_user_state_transport",
-      "latestMigration": "20260930191500_compact_user_state_transport.sql",
+      "latestMigration": "20261001180000_compact_session_and_delta_guards.sql",
       "securityDefiner": false,
       "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
@@ -723,6 +835,24 @@
       "securityDefiner": false,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": false
+    },
+    {
+      "key": "public.ensure_user_state_transport_chunks(p_user_id uuid, p_revision bigint)",
+      "schema": "public",
+      "name": "ensure_user_state_transport_chunks",
+      "latestMigration": "20261002100000_fix_chunk_repair_hot_path.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.finalize_user_state_upload(p_upload_id uuid)",
+      "schema": "public",
+      "name": "finalize_user_state_upload",
+      "latestMigration": "20261002130000_staged_state_uploads.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
     },
     {
       "key": "public.generate_invite_code()",
@@ -815,10 +945,19 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.load_user_state_chunk(p_revision bigint, p_chunk_index integer)",
+      "schema": "public",
+      "name": "load_user_state_chunk",
+      "latestMigration": "20261002090000_repair_chunk_transport_and_admin_dashboard.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
       "key": "public.load_user_state_manifest()",
       "schema": "public",
       "name": "load_user_state_manifest",
-      "latestMigration": "20260930203000_user_state_load_manifest.sql",
+      "latestMigration": "20261001200000_chunked_user_state_transport.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": true
@@ -827,9 +966,9 @@
       "key": "public.load_user_state()",
       "schema": "public",
       "name": "load_user_state",
-      "latestMigration": "20260930191500_compact_user_state_transport.sql",
+      "latestMigration": "20261001200000_chunked_user_state_transport.sql",
       "securityDefiner": true,
-      "declaredEmptySearchPath": true,
+      "declaredEmptySearchPath": false,
       "checksCallerIdentity": true
     },
     {
@@ -837,6 +976,24 @@
       "schema": "public",
       "name": "mark_my_notification_read",
       "latestMigration": "202607290004_membership_notifications.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
+      "key": "public.materialize_user_state_transport(p_state jsonb)",
+      "schema": "public",
+      "name": "materialize_user_state_transport",
+      "latestMigration": "20261001090000_materialize_user_state_transport.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.put_user_state_upload_part(p_upload_id uuid, p_chunk_index integer, p_chunk_count integer, p_chunk_data text)",
+      "schema": "public",
+      "name": "put_user_state_upload_part",
+      "latestMigration": "20261002130000_staged_state_uploads.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": true
@@ -887,10 +1044,19 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.save_user_state_delta(p_patch jsonb, p_expected_revision bigint default null, p_force boolean default false)",
+      "schema": "public",
+      "name": "save_user_state_delta",
+      "latestMigration": "20261001180000_compact_session_and_delta_guards.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": true
+    },
+    {
       "key": "public.save_user_state(p_state jsonb, p_expected_revision bigint default null, p_force boolean default false)",
       "schema": "public",
       "name": "save_user_state",
-      "latestMigration": "20260929151638_optimize_user_state_sync.sql",
+      "latestMigration": "20261001180000_compact_session_and_delta_guards.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": true
@@ -902,6 +1068,15 @@
       "latestMigration": "20260808150845_confusion_links_account_sync_guard.sql",
       "securityDefiner": false,
       "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.state_has_learning_evidence(p_state jsonb)",
+      "schema": "public",
+      "name": "state_has_learning_evidence",
+      "latestMigration": "20261001203000_fix_state_learning_evidence.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
     },
     {
@@ -950,6 +1125,15 @@
       "checksCallerIdentity": false
     },
     {
+      "key": "public.sync_user_state_transport_chunks()",
+      "schema": "public",
+      "name": "sync_user_state_transport_chunks",
+      "latestMigration": "20261001200000_chunked_user_state_transport.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
       "key": "public.user_learning_summary(p_user_id uuid)",
       "schema": "public",
       "name": "user_learning_summary",
@@ -963,6 +1147,15 @@
       "schema": "public",
       "name": "user_state_document",
       "latestMigration": "202607310001_state_recovery_guard.sql",
+      "securityDefiner": true,
+      "declaredEmptySearchPath": false,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.user_state_upload_progress(p_user_id uuid, p_upload_id uuid)",
+      "schema": "public",
+      "name": "user_state_upload_progress",
+      "latestMigration": "20261002130000_staged_state_uploads.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": false

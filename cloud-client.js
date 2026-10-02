@@ -20125,6 +20125,51 @@ ${suffix}`;
     }
     return payload;
   }
+  function utf8Bytes(text) {
+    if (typeof TextEncoder === "function") {
+      return new TextEncoder().encode(text);
+    }
+    return Uint8Array.from(unescape(encodeURIComponent(text)), (character) => character.charCodeAt(0));
+  }
+  function decodeUtf8(bytes) {
+    if (typeof TextDecoder === "function") {
+      return new TextDecoder().decode(bytes);
+    }
+    return decodeURIComponent(String.fromCharCode(...bytes));
+  }
+  function hashBytes(bytes) {
+    let first = 2166136261;
+    let second = 2246822519;
+    for (const value of bytes) {
+      first ^= value;
+      first = Math.imul(first, 16777619) >>> 0;
+      second ^= value;
+      second = Math.imul(second, 3266489917) >>> 0;
+    }
+    return `${first.toString(16).padStart(8, "0")}${second.toString(16).padStart(8, "0")}`;
+  }
+  function splitStateUpload(state, maxBytes = 32e4) {
+    if (!Number.isInteger(maxBytes) || maxBytes < 1024) {
+      throw new Error("Invalid staged upload chunk size");
+    }
+    const payload = compactStateUpload(state);
+    const serialized = JSON.stringify(payload);
+    const bytes = utf8Bytes(serialized);
+    const chunks = [];
+    for (let offset = 0; offset < bytes.byteLength; ) {
+      let end = Math.min(offset + maxBytes, bytes.byteLength);
+      while (end < bytes.byteLength && (bytes[end] & 192) === 128) end -= 1;
+      if (end <= offset) throw new Error("Unable to split staged upload payload");
+      const data = decodeUtf8(bytes.slice(offset, end));
+      chunks.push({ data, bytes: end - offset });
+      offset = end;
+    }
+    return {
+      chunks,
+      totalBytes: bytes.byteLength,
+      manifest: `${bytes.byteLength}:${chunks.length}:${hashBytes(bytes)}`
+    };
+  }
 
   // tools/cloud-client-entry.js
   function assertResult(result) {
@@ -20160,7 +20205,7 @@ ${suffix}`;
     }
     if (pathname.endsWith("/rpc/load_user_state")) return "load-state";
     if (pathname.endsWith("/rpc/load_user_state_chunk")) return "load-state-chunk";
-    if (pathname.endsWith("/rpc/save_user_state") || pathname.endsWith("/rpc/save_user_state_delta")) return "save-state";
+    if (pathname.endsWith("/rpc/save_user_state") || pathname.endsWith("/rpc/save_user_state_delta") || pathname.endsWith("/rpc/begin_user_state_upload") || pathname.endsWith("/rpc/put_user_state_upload_part") || pathname.endsWith("/rpc/finalize_user_state_upload")) return "save-state";
     return null;
   }
   function emitCloudProgress(detail) {
@@ -20371,74 +20416,84 @@ ${suffix}`;
         async loadState(signal = null, expectedBytes = null) {
           expectedBytes = normalizeExpectedBytes(expectedBytes);
           expectedLoadStateBytes = expectedBytes;
+          let snapshotAttempt = 0;
           try {
-            const request = client.rpc("load_user_state");
-            if (signal) request.abortSignal(signal);
-            const envelope = assertResult(await request);
-            if (!envelope?.chunked) return envelope;
-            const revision = Number(envelope.revision);
-            const chunkCount = Number(envelope.chunks);
-            if (!Number.isSafeInteger(revision) || revision < 0 || !Number.isSafeInteger(chunkCount) || chunkCount <= 0) {
-              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u6E05\u5355\u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
-            }
-            const requestId = ++cloudProgressRequestId;
-            const total = normalizeExpectedBytes(envelope.bytes) ?? expectedBytes;
-            let received = 0;
-            let exactChunkBytes = true;
-            let documentText = "";
-            emitCloudProgress({
-              operation: "load-state",
-              requestId,
-              received: 0,
-              total
-            });
-            for (let index = 0; index < chunkCount; index += 1) {
-              const chunk = await loadStateChunk(revision, index, signal);
-              if (!chunk?.found || Number(chunk.revision) !== revision || Number(chunk.chunkIndex) !== index || Number(chunk.chunkCount) !== chunkCount || typeof chunk.data !== "string") {
-                throw new Error(`\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5 ${index + 1}/${chunkCount} \u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002`);
+            while (true) {
+              const request = client.rpc("load_user_state");
+              if (signal) request.abortSignal(signal);
+              const envelope = assertResult(await request);
+              if (!envelope?.chunked) return envelope;
+              const revision = Number(envelope.revision);
+              const chunkCount = Number(envelope.chunks);
+              if (!Number.isSafeInteger(revision) || revision < 0 || !Number.isSafeInteger(chunkCount) || chunkCount <= 0) {
+                throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u6E05\u5355\u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
               }
-              documentText += chunk.data;
-              const actualBytes = utf8ByteLength(chunk.data);
-              const chunkBytes = Number(chunk.bytes);
-              if (Number.isFinite(chunkBytes) && chunkBytes >= 0) {
-                if (Math.floor(chunkBytes) !== chunkBytes || chunkBytes !== actualBytes) {
-                  throw new Error(`\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5 ${index + 1}/${chunkCount} \u957F\u5EA6\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002`);
+              const requestId = ++cloudProgressRequestId;
+              const total = normalizeExpectedBytes(envelope.bytes) ?? expectedBytes;
+              let received = 0;
+              let exactChunkBytes = true;
+              let documentText = "";
+              let restartSnapshot = false;
+              emitCloudProgress({
+                operation: "load-state",
+                requestId,
+                received: 0,
+                total
+              });
+              for (let index = 0; index < chunkCount; index += 1) {
+                const chunk = await loadStateChunk(revision, index, signal);
+                if (chunk?.stale && !signal?.aborted && snapshotAttempt < 2) {
+                  snapshotAttempt += 1;
+                  restartSnapshot = true;
+                  break;
                 }
-                received += chunkBytes;
-              } else {
-                exactChunkBytes = false;
-                received += actualBytes;
+                if (!chunk?.found || Number(chunk.revision) !== revision || Number(chunk.chunkIndex) !== index || Number(chunk.chunkCount) !== chunkCount || typeof chunk.data !== "string") {
+                  throw new Error(`\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5 ${index + 1}/${chunkCount} \u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002`);
+                }
+                documentText += chunk.data;
+                const actualBytes = utf8ByteLength(chunk.data);
+                const chunkBytes = Number(chunk.bytes);
+                if (Number.isFinite(chunkBytes) && chunkBytes >= 0) {
+                  if (Math.floor(chunkBytes) !== chunkBytes || chunkBytes !== actualBytes) {
+                    throw new Error(`\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5 ${index + 1}/${chunkCount} \u957F\u5EA6\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002`);
+                  }
+                  received += chunkBytes;
+                } else {
+                  exactChunkBytes = false;
+                  received += actualBytes;
+                }
+                if (total && exactChunkBytes && received > total) {
+                  throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u603B\u957F\u5EA6\u8D85\u51FA\u6E05\u5355\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+                }
+                emitCloudProgress({
+                  operation: "load-state",
+                  requestId,
+                  received: total ? Math.min(received, total) : received,
+                  total
+                });
               }
-              if (total && exactChunkBytes && received > total) {
-                throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u603B\u957F\u5EA6\u8D85\u51FA\u6E05\u5355\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+              if (restartSnapshot) continue;
+              let document2;
+              try {
+                document2 = JSON.parse(documentText);
+              } catch {
+                throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u65E0\u6CD5\u8FD8\u539F\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+              }
+              if (!document2?.found || Number(document2.revision) !== revision || !document2.state || typeof document2.state !== "object") {
+                throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+              }
+              if (total && exactChunkBytes && received !== total) {
+                throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u603B\u957F\u5EA6\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
               }
               emitCloudProgress({
                 operation: "load-state",
                 requestId,
-                received: total ? Math.min(received, total) : received,
-                total
+                received: total ?? received,
+                total: total ?? received,
+                done: true
               });
+              return document2;
             }
-            let document2;
-            try {
-              document2 = JSON.parse(documentText);
-            } catch {
-              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u65E0\u6CD5\u8FD8\u539F\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
-            }
-            if (!document2?.found || Number(document2.revision) !== revision || !document2.state || typeof document2.state !== "object") {
-              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
-            }
-            if (total && exactChunkBytes && received !== total) {
-              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u603B\u957F\u5EA6\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
-            }
-            emitCloudProgress({
-              operation: "load-state",
-              requestId,
-              received: total ?? received,
-              total: total ?? received,
-              done: true
-            });
-            return document2;
           } finally {
             expectedLoadStateBytes = null;
           }
@@ -20465,6 +20520,38 @@ ${suffix}`;
             p_patch: patch,
             p_expected_revision: expectedRevision,
             p_force: Boolean(force)
+          });
+          if (signal) request.abortSignal(signal);
+          return assertResult(await request);
+        },
+        prepareStateUpload(state, maxBytes = 32e4) {
+          return splitStateUpload(state, maxBytes);
+        },
+        async beginStateUpload(uploadId, expectedRevision, force, manifest, chunkCount, totalBytes, signal = null) {
+          const request = client.rpc("begin_user_state_upload", {
+            p_upload_id: uploadId,
+            p_expected_revision: expectedRevision,
+            p_force: Boolean(force),
+            p_manifest: manifest,
+            p_chunk_count: chunkCount,
+            p_total_bytes: totalBytes
+          });
+          if (signal) request.abortSignal(signal);
+          return assertResult(await request);
+        },
+        async saveStateUploadPart(uploadId, chunkIndex, chunkCount, chunkData, signal = null) {
+          const request = client.rpc("put_user_state_upload_part", {
+            p_upload_id: uploadId,
+            p_chunk_index: chunkIndex,
+            p_chunk_count: chunkCount,
+            p_chunk_data: chunkData
+          });
+          if (signal) request.abortSignal(signal);
+          return assertResult(await request);
+        },
+        async finalizeStateUpload(uploadId, signal = null) {
+          const request = client.rpc("finalize_user_state_upload", {
+            p_upload_id: uploadId
           });
           if (signal) request.abortSignal(signal);
           return assertResult(await request);
@@ -20572,24 +20659,6 @@ ${suffix}`;
             limit,
             offset
           });
-          for (let pass = 0; pass < 10; pass += 1) {
-            const expired = assertResult(await client.rpc("admin_expired_feedback", {
-              p_limit: 100
-            })) ?? [];
-            if (!expired.length) break;
-            const paths2 = [...new Set(
-              expired.flatMap((item) => Array.isArray(item.imagePaths) ? item.imagePaths : [])
-            )];
-            for (let index = 0; index < paths2.length; index += 100) {
-              assertResult(
-                await client.storage.from(FEEDBACK_BUCKET).remove(paths2.slice(index, index + 100))
-              );
-            }
-            assertResult(await client.rpc("admin_delete_expired_feedback", {
-              p_feedback_ids: expired.map((item) => item.id)
-            }));
-            if (expired.length < 100) break;
-          }
           const result = assertResult(await client.rpc("admin_feedback_list", {
             p_status: status,
             p_limit: limit,

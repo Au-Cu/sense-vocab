@@ -48,7 +48,7 @@ async function waitForAccount(page) {
 }
 
 async function installFakeCloud(page, remote = null, options = {}) {
-  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs, getSessionFailures, loadStateFailures, deltaTransport }) => {
+  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs, getSessionFailures, loadStateFailures, deltaTransport, stagedTransport, stagedFailureIndex }) => {
     window.__fakeCloud = {
       remote: initialRemote,
       session: persistedSession,
@@ -56,8 +56,15 @@ async function installFakeCloud(page, remote = null, options = {}) {
       getSessionFailures,
       loadStateFailures,
       deltaTransport,
+      stagedTransport,
+      stagedFailureIndex,
+      stagedFailureConsumed: false,
       saves: [],
       deltaSaves: [],
+      stagedBegins: [],
+      stagedParts: [],
+      stagedFinalizes: [],
+      stagedUploads: {},
       signOuts: 0,
       signUps: [],
       signupOtpVerifications: [],
@@ -295,6 +302,82 @@ async function installFakeCloud(page, remote = null, options = {}) {
         };
         return { ok: true, conflict: false, revision };
       } : undefined,
+      prepareStateUpload: stagedTransport ? (state, maxBytes = 320000) => {
+        const serialized = JSON.stringify(state);
+        const bytes = new TextEncoder().encode(serialized);
+        const chunks = [];
+        for (let offset = 0; offset < bytes.length;) {
+          let end = Math.min(offset + maxBytes, bytes.length);
+          while (end < bytes.length && (bytes[end] & 0xc0) === 0x80) end -= 1;
+          const data = new TextDecoder().decode(bytes.slice(offset, end));
+          chunks.push({ data, bytes: end - offset });
+          offset = end;
+        }
+        return {
+          chunks,
+          totalBytes: bytes.length,
+          manifest: `${bytes.length}:${chunks.length}:fake`,
+        };
+      } : undefined,
+      beginStateUpload: stagedTransport ? async (uploadId, expectedRevision, force, manifest, chunkCount, totalBytes) => {
+        window.__fakeCloud.stagedBegins.push({ uploadId, expectedRevision, force, manifest, chunkCount, totalBytes });
+        const currentRevision = window.__fakeCloud.remote?.revision ?? 0;
+        if (expectedRevision !== currentRevision) {
+          return { ok: false, conflict: true, revision: currentRevision };
+        }
+        const existing = window.__fakeCloud.stagedUploads[uploadId] ?? {
+          expectedRevision, force, manifest, chunkCount, totalBytes, parts: {},
+        };
+        window.__fakeCloud.stagedUploads[uploadId] = existing;
+        const indexes = Object.keys(existing.parts).map(Number).sort((a, b) => a - b);
+        return {
+          ok: true,
+          conflict: false,
+          uploadId,
+          revision: currentRevision,
+          chunkCount,
+          totalBytes,
+          receivedIndexes: indexes,
+          receivedChunks: indexes.length,
+          receivedBytes: indexes.reduce((sum, index) => sum + existing.parts[index].bytes, 0),
+        };
+      } : undefined,
+      saveStateUploadPart: stagedTransport ? async (uploadId, index, chunkCount, data) => {
+        if (
+          window.__fakeCloud.stagedFailureIndex === index &&
+          !window.__fakeCloud.stagedFailureConsumed
+        ) {
+          window.__fakeCloud.stagedFailureConsumed = true;
+          throw new Error("simulated staged part interruption");
+        }
+        const upload = window.__fakeCloud.stagedUploads[uploadId];
+        upload.parts[index] = { data, bytes: new TextEncoder().encode(data).byteLength };
+        window.__fakeCloud.stagedParts.push({ uploadId, index, chunkCount });
+        const indexes = Object.keys(upload.parts).map(Number);
+        return {
+          ok: true,
+          conflict: false,
+          uploadId,
+          receivedIndexes: indexes,
+          receivedChunks: indexes.length,
+          receivedBytes: indexes.reduce((sum, item) => sum + upload.parts[item].bytes, 0),
+          chunkCount: upload.chunkCount,
+          totalBytes: upload.totalBytes,
+        };
+      } : undefined,
+      finalizeStateUpload: stagedTransport ? async (uploadId) => {
+        const upload = window.__fakeCloud.stagedUploads[uploadId];
+        window.__fakeCloud.stagedFinalizes.push(uploadId);
+        const indexes = Object.keys(upload.parts).map(Number).sort((a, b) => a - b);
+        if (indexes.length !== upload.chunkCount) {
+          return { ok: false, incomplete: true, receivedChunks: indexes.length };
+        }
+        const state = JSON.parse(indexes.map((index) => upload.parts[index].data).join(""));
+        const revision = (window.__fakeCloud.remote?.revision ?? 0) + 1;
+        window.__fakeCloud.remote = { found: true, revision, state };
+        delete window.__fakeCloud.stagedUploads[uploadId];
+        return { ok: true, conflict: false, revision, staged: true };
+      } : undefined,
       async deleteAccount() {
         window.__fakeCloud.deleted = true;
         return { ok: true };
@@ -325,6 +408,8 @@ async function installFakeCloud(page, remote = null, options = {}) {
     getSessionFailures: options.getSessionFailures ?? 0,
     loadStateFailures: options.loadStateFailures ?? 0,
     deltaTransport: Boolean(options.deltaTransport),
+    stagedTransport: Boolean(options.stagedTransport),
+    stagedFailureIndex: options.stagedFailureIndex ?? null,
   });
 }
 
@@ -501,6 +586,96 @@ test("large account changes upload as ordered sub-4MB delta chunks", async ({ pa
     chunks.map((_, index) => 20 + index),
   );
   expect(chunks.at(-1).bytes).toBeGreaterThan(0);
+});
+
+test("large staged uploads resume confirmed parts and finalize once", async ({ page }) => {
+  test.setTimeout(180000);
+  const remote = makeState(20);
+  await installFakeCloud(page, {
+    found: true,
+    revision: 20,
+    state: remote,
+  }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+    stagedTransport: true,
+    stagedFailureIndex: 1,
+  });
+  await page.addInitScript(({ key, state }) => {
+    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:user-1", "completed");
+    localStorage.setItem(
+      "sense-vocab-cloud-sync-v1:user-1",
+      JSON.stringify({ revision: 20, dirty: false }),
+    );
+  }, { key: ACCOUNT_KEY, state: remote });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.waitForFunction(() => window.SenseVocabApp.isPersistenceSafe(), null, {
+    timeout: 120000,
+  });
+
+  await page.evaluate(async () => {
+    const app = window.SenseVocabApp;
+    const next = app.getState();
+    const vocabulary = await fetch("./data/vocabulary-index.json").then((response) => response.json());
+    const progress = Object.fromEntries(vocabulary.books
+      .find((entry) => entry.id === next.activeBookId)
+      .entries.flatMap((entry) => entry.senseIds.map((senseId) => [
+        `${entry.wordId}:${senseId}`,
+        {
+          status: "mastered",
+          lastSeenActual: "2026-10-01",
+          updatedAt: "2026-10-01T12:00:00.000Z",
+          lastLearningDay: 1,
+          transportPadding: "x".repeat(520),
+        },
+      ])));
+    next.progress = progress;
+    next.bookStates[next.activeBookId].progress = progress;
+    app.replaceActiveState(next);
+  });
+
+  await page.locator("#globalSettingsNavButton").click();
+  await page.locator("#dataButton").click();
+  await expect(page.locator("#syncNowButton")).toBeVisible();
+  await page.locator("#syncNowButton").click();
+  await expect.poll(
+    () => page.evaluate(() => window.__fakeCloud.stagedFailureConsumed),
+    { timeout: 120000 },
+  ).toBe(true);
+
+  // The first attempt leaves the server session and the local cursor intact.
+  // A second click must skip the already acknowledged first part.
+  await expect(page.locator("#syncNowButton")).toBeVisible();
+  await page.locator("#syncNowButton").click();
+  await expect.poll(
+    () => page.evaluate(() => window.__fakeCloud.stagedFinalizes.length),
+    { timeout: 120000 },
+  ).toBe(1);
+  const result = await page.evaluate(() => ({
+    parts: window.__fakeCloud.stagedParts,
+    delta: window.__fakeCloud.deltaSaves,
+    remoteRevision: window.__fakeCloud.remote.revision,
+  }));
+  expect(result.delta).toHaveLength(0);
+  expect(result.remoteRevision).toBe(21);
+  expect(result.parts.filter((part) => part.index === 0)).toHaveLength(1);
+  expect(result.parts.length).toBeGreaterThan(2);
+});
+
+test("staged upload chunks preserve UTF-8 JSON when reassembled", async () => {
+  const { compactStateUpload, splitStateUpload } = await import("./state-upload.mjs");
+  const original = {
+    activeBookId: "kaoyan",
+    plan: { dailyTarget: 45 },
+    progress: { "词义:测试": { status: "mastered", note: "中文内容".repeat(400) } },
+  };
+  const prepared = splitStateUpload(original, 1024);
+  expect(prepared.chunks.length).toBeGreaterThan(1);
+  expect(prepared.chunks.every((chunk) => chunk.bytes <= 1024)).toBe(true);
+  expect(JSON.parse(prepared.chunks.map((chunk) => chunk.data).join("")))
+    .toEqual(compactStateUpload(original));
 });
 
 test("timed-out cloud reads are aborted once without a blind retry", async ({ page }) => {
@@ -1306,7 +1481,8 @@ test("recommended conflict merge persists the converged state locally and remote
   await login(page);
   await expect(page.locator("#accountConflictView")).toBeVisible();
   await page.locator("#mergeStateButton").click();
-  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect(page.locator("#dataPanel")).toBeVisible();
+  await expect(page.locator("#accountUserView")).toBeHidden();
   await expect.poll(async () => {
     return page.evaluate(() => window.__fakeCloud.remote.revision);
   }).toBe(8);
@@ -1472,7 +1648,8 @@ test("retained guest recovery survives same-device cloud vectors", async ({ page
   await page.locator("#exportConflictLocalButton").click();
   expect((await download).suggestedFilename()).toContain("local-recovery");
   await page.locator("#mergeStateButton").click();
-  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect(page.locator("#dataPanel")).toBeVisible();
+  await expect(page.locator("#accountUserView")).toBeHidden();
   await expect.poll(async () => {
     return page.evaluate(() => window.__fakeCloud.remote.revision);
   }).toBe(8);
@@ -1672,7 +1849,8 @@ test("guest conflict merge preserves account learning completed after the prompt
   });
   await openAccount(page);
   await page.locator("#mergeStateButton").click();
-  await expect(page.locator("#accountUserView")).toBeVisible();
+  await expect(page.locator("#dataPanel")).toBeVisible();
+  await expect(page.locator("#accountUserView")).toBeHidden();
   await expect.poll(async () => page.evaluate(() => {
     return window.__fakeCloud.remote.state.introducedWords.slice().sort();
   })).toEqual(["abandon", "ability", "act"]);

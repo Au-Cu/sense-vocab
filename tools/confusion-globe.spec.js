@@ -220,6 +220,7 @@ test("users build symmetric pairwise confusing-word globes without transitive li
 
   await page.locator("#exitStudyButton").click();
   await page.locator("#returnHomeButton").click();
+  await expect(page.locator("#wordListButton")).toBeVisible();
   await page.locator("#wordListButton").click();
   await page.locator("#wordSearchInput").fill("abandon");
   await page.locator('.word-list-item[data-word-id="abandon"]').click();

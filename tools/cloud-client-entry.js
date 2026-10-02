@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { compactStateUpload } from "./state-upload.mjs";
+import { compactStateUpload, splitStateUpload } from "./state-upload.mjs";
 
 function assertResult(result) {
   if (result?.error) throw result.error;
@@ -40,7 +40,10 @@ function stateRpcKind(input) {
   if (pathname.endsWith("/rpc/load_user_state_chunk")) return "load-state-chunk";
   if (
     pathname.endsWith("/rpc/save_user_state") ||
-    pathname.endsWith("/rpc/save_user_state_delta")
+    pathname.endsWith("/rpc/save_user_state_delta") ||
+    pathname.endsWith("/rpc/begin_user_state_upload") ||
+    pathname.endsWith("/rpc/put_user_state_upload_part") ||
+    pathname.endsWith("/rpc/finalize_user_state_upload")
   ) return "save-state";
   return null;
 }
@@ -313,82 +316,92 @@ window.SenseVocabCloud = {
       async loadState(signal = null, expectedBytes = null) {
         expectedBytes = normalizeExpectedBytes(expectedBytes);
         expectedLoadStateBytes = expectedBytes;
+        let snapshotAttempt = 0;
         try {
-          const request = client.rpc("load_user_state");
-          if (signal) request.abortSignal(signal);
-          const envelope = assertResult(await request);
-          if (!envelope?.chunked) return envelope;
+          while (true) {
+            const request = client.rpc("load_user_state");
+            if (signal) request.abortSignal(signal);
+            const envelope = assertResult(await request);
+            if (!envelope?.chunked) return envelope;
 
-          const revision = Number(envelope.revision);
-          const chunkCount = Number(envelope.chunks);
-          if (!Number.isSafeInteger(revision) || revision < 0 ||
-              !Number.isSafeInteger(chunkCount) || chunkCount <= 0) {
-            throw new Error("云端记录分段清单无效，已保留本机记录。");
-          }
-
-          const requestId = ++cloudProgressRequestId;
-          const total = normalizeExpectedBytes(envelope.bytes) ?? expectedBytes;
-          let received = 0;
-          let exactChunkBytes = true;
-          let documentText = "";
-          emitCloudProgress({
-            operation: "load-state",
-            requestId,
-            received: 0,
-            total,
-          });
-          for (let index = 0; index < chunkCount; index += 1) {
-            const chunk = await loadStateChunk(revision, index, signal);
-            if (!chunk?.found || Number(chunk.revision) !== revision ||
-                Number(chunk.chunkIndex) !== index ||
-                Number(chunk.chunkCount) !== chunkCount ||
-                typeof chunk.data !== "string") {
-              throw new Error(`云端记录分段 ${index + 1}/${chunkCount} 无效，已保留本机记录。`);
+            const revision = Number(envelope.revision);
+            const chunkCount = Number(envelope.chunks);
+            if (!Number.isSafeInteger(revision) || revision < 0 ||
+                !Number.isSafeInteger(chunkCount) || chunkCount <= 0) {
+              throw new Error("云端记录分段清单无效，已保留本机记录。");
             }
-            documentText += chunk.data;
-            const actualBytes = utf8ByteLength(chunk.data);
-            const chunkBytes = Number(chunk.bytes);
-            if (Number.isFinite(chunkBytes) && chunkBytes >= 0) {
-              if (Math.floor(chunkBytes) !== chunkBytes || chunkBytes !== actualBytes) {
-                throw new Error(`云端记录分段 ${index + 1}/${chunkCount} 长度校验失败，已保留本机记录。`);
+
+            const requestId = ++cloudProgressRequestId;
+            const total = normalizeExpectedBytes(envelope.bytes) ?? expectedBytes;
+            let received = 0;
+            let exactChunkBytes = true;
+            let documentText = "";
+            let restartSnapshot = false;
+            emitCloudProgress({
+              operation: "load-state",
+              requestId,
+              received: 0,
+              total,
+            });
+            for (let index = 0; index < chunkCount; index += 1) {
+              const chunk = await loadStateChunk(revision, index, signal);
+              if (chunk?.stale && !signal?.aborted && snapshotAttempt < 2) {
+                snapshotAttempt += 1;
+                restartSnapshot = true;
+                break;
               }
-              received += chunkBytes;
-            } else {
-              exactChunkBytes = false;
-              received += actualBytes;
+              if (!chunk?.found || Number(chunk.revision) !== revision ||
+                  Number(chunk.chunkIndex) !== index ||
+                  Number(chunk.chunkCount) !== chunkCount ||
+                  typeof chunk.data !== "string") {
+                throw new Error(`云端记录分段 ${index + 1}/${chunkCount} 无效，已保留本机记录。`);
+              }
+              documentText += chunk.data;
+              const actualBytes = utf8ByteLength(chunk.data);
+              const chunkBytes = Number(chunk.bytes);
+              if (Number.isFinite(chunkBytes) && chunkBytes >= 0) {
+                if (Math.floor(chunkBytes) !== chunkBytes || chunkBytes !== actualBytes) {
+                  throw new Error(`云端记录分段 ${index + 1}/${chunkCount} 长度校验失败，已保留本机记录。`);
+                }
+                received += chunkBytes;
+              } else {
+                exactChunkBytes = false;
+                received += actualBytes;
+              }
+              if (total && exactChunkBytes && received > total) {
+                throw new Error("云端记录分段总长度超出清单，已保留本机记录。");
+              }
+              emitCloudProgress({
+                operation: "load-state",
+                requestId,
+                received: total ? Math.min(received, total) : received,
+                total,
+              });
             }
-            if (total && exactChunkBytes && received > total) {
-              throw new Error("云端记录分段总长度超出清单，已保留本机记录。");
+            if (restartSnapshot) continue;
+
+            let document;
+            try {
+              document = JSON.parse(documentText);
+            } catch {
+              throw new Error("云端记录分段无法还原，已保留本机记录。");
+            }
+            if (!document?.found || Number(document.revision) !== revision ||
+                !document.state || typeof document.state !== "object") {
+              throw new Error("云端记录分段校验失败，已保留本机记录。");
+            }
+            if (total && exactChunkBytes && received !== total) {
+              throw new Error("云端记录分段总长度校验失败，已保留本机记录。");
             }
             emitCloudProgress({
               operation: "load-state",
               requestId,
-              received: total ? Math.min(received, total) : received,
-              total,
+              received: total ?? received,
+              total: total ?? received,
+              done: true,
             });
+            return document;
           }
-
-          let document;
-          try {
-            document = JSON.parse(documentText);
-          } catch {
-            throw new Error("云端记录分段无法还原，已保留本机记录。");
-          }
-          if (!document?.found || Number(document.revision) !== revision ||
-              !document.state || typeof document.state !== "object") {
-            throw new Error("云端记录分段校验失败，已保留本机记录。");
-          }
-          if (total && exactChunkBytes && received !== total) {
-            throw new Error("云端记录分段总长度校验失败，已保留本机记录。");
-          }
-          emitCloudProgress({
-            operation: "load-state",
-            requestId,
-            received: total ?? received,
-            total: total ?? received,
-            done: true,
-          });
-          return document;
         } finally {
           expectedLoadStateBytes = null;
         }
@@ -419,6 +432,56 @@ window.SenseVocabCloud = {
           p_patch: patch,
           p_expected_revision: expectedRevision,
           p_force: Boolean(force),
+        });
+        if (signal) request.abortSignal(signal);
+        return assertResult(await request);
+      },
+
+      prepareStateUpload(state, maxBytes = 320000) {
+        return splitStateUpload(state, maxBytes);
+      },
+
+      async beginStateUpload(
+        uploadId,
+        expectedRevision,
+        force,
+        manifest,
+        chunkCount,
+        totalBytes,
+        signal = null,
+      ) {
+        const request = client.rpc("begin_user_state_upload", {
+          p_upload_id: uploadId,
+          p_expected_revision: expectedRevision,
+          p_force: Boolean(force),
+          p_manifest: manifest,
+          p_chunk_count: chunkCount,
+          p_total_bytes: totalBytes,
+        });
+        if (signal) request.abortSignal(signal);
+        return assertResult(await request);
+      },
+
+      async saveStateUploadPart(
+        uploadId,
+        chunkIndex,
+        chunkCount,
+        chunkData,
+        signal = null,
+      ) {
+        const request = client.rpc("put_user_state_upload_part", {
+          p_upload_id: uploadId,
+          p_chunk_index: chunkIndex,
+          p_chunk_count: chunkCount,
+          p_chunk_data: chunkData,
+        });
+        if (signal) request.abortSignal(signal);
+        return assertResult(await request);
+      },
+
+      async finalizeStateUpload(uploadId, signal = null) {
+        const request = client.rpc("finalize_user_state_upload", {
+          p_upload_id: uploadId,
         });
         if (signal) request.abortSignal(signal);
         return assertResult(await request);
@@ -549,27 +612,9 @@ window.SenseVocabCloud = {
           limit,
           offset,
         });
-        for (let pass = 0; pass < 10; pass += 1) {
-          const expired = assertResult(await client.rpc("admin_expired_feedback", {
-            p_limit: 100,
-          })) ?? [];
-          if (!expired.length) break;
-          const paths = [...new Set(
-            expired.flatMap((item) =>
-              Array.isArray(item.imagePaths) ? item.imagePaths : []),
-          )];
-          for (let index = 0; index < paths.length; index += 100) {
-            assertResult(
-              await client.storage
-                .from(FEEDBACK_BUCKET)
-                .remove(paths.slice(index, index + 100)),
-            );
-          }
-          assertResult(await client.rpc("admin_delete_expired_feedback", {
-            p_feedback_ids: expired.map((item) => item.id),
-          }));
-          if (expired.length < 100) break;
-        }
+        // Listing feedback must stay read-only.  Expiry cleanup used to run
+        // here in up to ten write batches, which made the whole admin page
+        // appear hung and could contend with the dashboard queries.
         const result = assertResult(await client.rpc("admin_feedback_list", {
           p_status: status,
           p_limit: limit,
