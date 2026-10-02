@@ -64,6 +64,47 @@ test("independent device changes merge without losing either branch", async ({ p
   expect(result.rightStatus).toBe("review");
 });
 
+test("incremental sync delta skips unchanged progress records", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate((base) => {
+    const app = window.SenseVocabApp;
+    const sync = window.SenseVocabSync;
+    const previous = {
+      ...base,
+      progress: Object.fromEntries(Array.from({ length: 4382 }, (_, index) => [
+        `word-${index}:v-1`,
+        { status: "mastered", updatedAt: "2026-09-30T12:00:00.000Z" },
+      ])),
+    };
+    sync.stampChanges(previous, base, "device-a");
+    const next = structuredClone(previous);
+    next.progress["word-4381:v-1"] = {
+      status: "review",
+      updatedAt: "2026-10-01T12:00:00.000Z",
+    };
+    sync.stampChanges(next, previous, "device-a", {
+      changedMaps: ["progress"],
+      changedMapKeys: { progress: ["word-4381:v-1"] },
+      stampScalars: false,
+    });
+    const startedAt = performance.now();
+    const delta = app.buildSyncDelta(previous, next);
+    return {
+      elapsedMs: performance.now() - startedAt,
+      payload: delta,
+      changedKeys: Object.keys(delta.books.kaoyan.maps.progress.upsert),
+      deletedKeys: delta.books.kaoyan.maps.progress.delete,
+    };
+  }, baseState());
+
+  expect(result.changedKeys).toEqual(["word-4381:v-1"]);
+  expect(result.deletedKeys).toEqual([]);
+  expect(result.payload.books.kaoyan.maps.progress.upsert["word-4381:v-1"].status)
+    .toBe("review");
+  expect(JSON.stringify(result.payload)).not.toContain("word-0:v-1");
+  expect(result.elapsedMs).toBeLessThan(1000);
+});
+
 test("concurrent disagreement on one sense keeps the safer learning state", async ({ page }) => {
   await loadSyncEngine(page);
   const result = await page.evaluate((base) => {

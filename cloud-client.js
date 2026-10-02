@@ -20082,11 +20082,43 @@ ${suffix}`;
   if (shouldShowDeprecationWarning()) console.warn("\u26A0\uFE0F  Node.js 20 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 22 or later. For more information, visit: https://github.com/orgs/supabase/discussions/45715");
 
   // tools/state-upload.mjs
+  function compactSession(session) {
+    if (!session || typeof session !== "object" || Array.isArray(session)) {
+      return session;
+    }
+    const compact = { ...session };
+    if (Array.isArray(compact.queue)) {
+      compact.queue = compact.queue.map((card) => {
+        if (!card || typeof card !== "object") return card;
+        const next = { ...card };
+        delete next.encounterSnapshot;
+        return next;
+      });
+    }
+    return compact;
+  }
+  function compactSessions(state) {
+    if (!state || typeof state !== "object") return state;
+    const payload = JSON.parse(JSON.stringify(state));
+    Object.values(payload.bookStates ?? {}).forEach((bookState) => {
+      if (bookState && Object.hasOwn(bookState, "session")) {
+        bookState.session = compactSession(bookState.session);
+      }
+    });
+    if (Object.hasOwn(payload, "session")) payload.session = compactSession(payload.session);
+    return payload;
+  }
   function compactStateUpload(state) {
-    const active = state?.bookStates?.[state.activeBookId];
-    if (!active) return state;
-    const payload = { ...state };
-    for (const key of ["dashboardSnapshots", "dashboardEvents", "_sync", "confusionLinks"]) {
+    const payload = compactSessions(state);
+    const active = payload?.bookStates?.[payload.activeBookId];
+    if (!active) return payload;
+    for (const key of [
+      "dashboardSnapshots",
+      "dashboardEvents",
+      "_sync",
+      "confusionLinks",
+      "planTargetHistory"
+    ]) {
       if (Object.hasOwn(active, key) && JSON.stringify(payload[key]) === JSON.stringify(active[key])) {
         delete payload[key];
       }
@@ -20105,6 +20137,18 @@ ${suffix}`;
     const numeric = Number(value);
     return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : null;
   }
+  function utf8ByteLength(value) {
+    const text = String(value ?? "");
+    if (typeof TextEncoder === "function") {
+      return new TextEncoder().encode(text).byteLength;
+    }
+    if (typeof Blob === "function") return new Blob([text]).size;
+    try {
+      return encodeURIComponent(text).replace(/%[\da-f]{2}/gi, "x").length;
+    } catch {
+      return text.length;
+    }
+  }
   function stateRpcKind(input) {
     const rawUrl = typeof input === "string" ? input : input?.url;
     if (!rawUrl) return null;
@@ -20115,7 +20159,8 @@ ${suffix}`;
       return null;
     }
     if (pathname.endsWith("/rpc/load_user_state")) return "load-state";
-    if (pathname.endsWith("/rpc/save_user_state")) return "save-state";
+    if (pathname.endsWith("/rpc/load_user_state_chunk")) return "load-state-chunk";
+    if (pathname.endsWith("/rpc/save_user_state") || pathname.endsWith("/rpc/save_user_state_delta")) return "save-state";
     return null;
   }
   function emitCloudProgress(detail) {
@@ -20210,6 +20255,14 @@ ${suffix}`;
           p_target_id: targetId,
           p_metadata: metadata
         }));
+      }
+      async function loadStateChunk(revision, chunkIndex, signal = null) {
+        const request = client.rpc("load_user_state_chunk", {
+          p_revision: revision,
+          p_chunk_index: chunkIndex
+        });
+        if (signal) request.abortSignal(signal);
+        return assertResult(await request);
       }
       return {
         async getSession() {
@@ -20321,10 +20374,77 @@ ${suffix}`;
           try {
             const request = client.rpc("load_user_state");
             if (signal) request.abortSignal(signal);
-            return assertResult(await request);
+            const envelope = assertResult(await request);
+            if (!envelope?.chunked) return envelope;
+            const revision = Number(envelope.revision);
+            const chunkCount = Number(envelope.chunks);
+            if (!Number.isSafeInteger(revision) || revision < 0 || !Number.isSafeInteger(chunkCount) || chunkCount <= 0) {
+              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u6E05\u5355\u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+            }
+            const requestId = ++cloudProgressRequestId;
+            const total = normalizeExpectedBytes(envelope.bytes) ?? expectedBytes;
+            let received = 0;
+            let exactChunkBytes = true;
+            let documentText = "";
+            emitCloudProgress({
+              operation: "load-state",
+              requestId,
+              received: 0,
+              total
+            });
+            for (let index = 0; index < chunkCount; index += 1) {
+              const chunk = await loadStateChunk(revision, index, signal);
+              if (!chunk?.found || Number(chunk.revision) !== revision || Number(chunk.chunkIndex) !== index || Number(chunk.chunkCount) !== chunkCount || typeof chunk.data !== "string") {
+                throw new Error(`\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5 ${index + 1}/${chunkCount} \u65E0\u6548\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002`);
+              }
+              documentText += chunk.data;
+              const actualBytes = utf8ByteLength(chunk.data);
+              const chunkBytes = Number(chunk.bytes);
+              if (Number.isFinite(chunkBytes) && chunkBytes >= 0) {
+                if (Math.floor(chunkBytes) !== chunkBytes || chunkBytes !== actualBytes) {
+                  throw new Error(`\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5 ${index + 1}/${chunkCount} \u957F\u5EA6\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002`);
+                }
+                received += chunkBytes;
+              } else {
+                exactChunkBytes = false;
+                received += actualBytes;
+              }
+              if (total && exactChunkBytes && received > total) {
+                throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u603B\u957F\u5EA6\u8D85\u51FA\u6E05\u5355\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+              }
+              emitCloudProgress({
+                operation: "load-state",
+                requestId,
+                received: total ? Math.min(received, total) : received,
+                total
+              });
+            }
+            let document2;
+            try {
+              document2 = JSON.parse(documentText);
+            } catch {
+              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u65E0\u6CD5\u8FD8\u539F\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+            }
+            if (!document2?.found || Number(document2.revision) !== revision || !document2.state || typeof document2.state !== "object") {
+              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+            }
+            if (total && exactChunkBytes && received !== total) {
+              throw new Error("\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5\u603B\u957F\u5EA6\u6821\u9A8C\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\u3002");
+            }
+            emitCloudProgress({
+              operation: "load-state",
+              requestId,
+              received: total ?? received,
+              total: total ?? received,
+              done: true
+            });
+            return document2;
           } finally {
             expectedLoadStateBytes = null;
           }
+        },
+        async loadStateChunk(revision, chunkIndex, signal = null) {
+          return loadStateChunk(revision, chunkIndex, signal);
         },
         async loadStateManifest(signal = null) {
           const request = client.rpc("load_user_state_manifest");
@@ -20334,6 +20454,15 @@ ${suffix}`;
         async saveState(state, expectedRevision = null, force = false, signal = null) {
           const request = client.rpc("save_user_state", {
             p_state: compactStateUpload(state),
+            p_expected_revision: expectedRevision,
+            p_force: Boolean(force)
+          });
+          if (signal) request.abortSignal(signal);
+          return assertResult(await request);
+        },
+        async saveStateDelta(patch, expectedRevision = null, force = false, signal = null) {
+          const request = client.rpc("save_user_state_delta", {
+            p_patch: patch,
             p_expected_revision: expectedRevision,
             p_force: Boolean(force)
           });

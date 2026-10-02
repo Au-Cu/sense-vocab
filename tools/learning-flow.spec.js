@@ -1356,7 +1356,8 @@ test("major study navigation uses directional transitions with safe fallbacks", 
   await expect.poll(() => page.evaluate(() => window.__fallbackAnimations)).toBeGreaterThan(0);
   expect(await page.evaluate(() => window.__fallbackScopes)).toContain("hierarchy");
   expect(await page.evaluate(() => window.__fallbackTargets))
-    .toContainEqual(expect.stringContaining("ui-transition-snapshot-new"));
+    .toContainEqual(expect.stringContaining("app-shell"));
+  await expect(page.locator(".ui-transition-fallback-overlay")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
     .toBe("");
 
@@ -1365,7 +1366,8 @@ test("major study navigation uses directional transitions with safe fallbacks", 
   await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition || ""))
     .toBe("");
   expect(await page.evaluate(() => window.__fallbackTargets))
-    .toContainEqual(expect.stringContaining("ui-transition-snapshot-old"));
+    .toContainEqual(expect.stringContaining("app-shell"));
+
 
   await page.locator("#wordListButton").click();
   await expect(page.locator("#wordListPanel")).toBeVisible();

@@ -1,7 +1,7 @@
 # Third-Party License Bundle
 
-Generated from `package-lock.json` and installed package artifacts for Sense Vocab 1.11.0.
-Evidence date: 2026-08-09. Package-lock SHA-256: `8c83c6f222adda138d17500d06e7b3b7c2b9a7c0789eaadb59ce1824b203ef3c`.
+Generated from `package-lock.json` and installed package artifacts for Sense Vocab 1.11.1.
+Evidence date: 2026-08-09. Package-lock SHA-256: `4a13be563f102705f39f5461138439a267413f102186857a63fa00df074e89e6`.
 
 ## Component inventory
 

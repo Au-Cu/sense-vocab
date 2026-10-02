@@ -148,10 +148,22 @@
     window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_TIMEOUT_MS__,
   )
     ? Math.max(0, window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_TIMEOUT_MS__)
-    : 15000;
-  const ACCOUNT_OPERATION_TIMEOUT_MS = 30000;
+    : 600000;
+  const ACCOUNT_REMOTE_STATE_STALL_TIMEOUT_MS = Number.isFinite(
+    window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_STALL_TIMEOUT_MS__,
+  )
+    ? Math.max(0, window.__SENSE_VOCAB_ACCOUNT_REMOTE_STATE_STALL_TIMEOUT_MS__)
+    : 300000;
+  const ACCOUNT_OPERATION_TIMEOUT_MS = 120000;
+  // The database accepts a 4 MB delta, but leave room for JSON/request
+  // overhead so a browser never hands the RPC a boundary-sized payload.
+  const MAX_DELTA_PATCH_BYTES = 3500000;
+  const SYNC_DIAGNOSTICS_PREFIX = "sense-vocab-sync-diagnostics-v1:";
+  const SYNC_DIAGNOSTICS_LIMIT = 40;
   const CLOUD_LOAD_CACHE_MS = 4000;
-  const CLOUD_LOAD_MANIFEST_TIMEOUT_MS = 2500;
+  const CLOUD_LOAD_MANIFEST_TIMEOUT_MS = 30000;
+  const SYNC_DEBOUNCE_MS = 3000;
+  const SYNC_MIN_INTERVAL_MS = 15000;
   const REFRESH_INTERVAL_MS = Number.isFinite(
     window.__SENSE_VOCAB_REFRESH_INTERVAL_MS__,
   )
@@ -174,6 +186,48 @@
       }),
     ]).finally(() => {
       if (timeoutId !== null) window.clearTimeout(timeoutId);
+    });
+  }
+
+  function withCloudProgressTimeout(
+    task,
+    {
+      hardTimeoutMs,
+      stallTimeoutMs,
+      operation,
+      message,
+      onTimeout = null,
+    },
+  ) {
+    let hardTimeoutId = null;
+    let stallTimeoutId = null;
+    let timedOut = false;
+    let rejectTimeout = null;
+    const finishTimeout = () => {
+      if (timedOut) return;
+      timedOut = true;
+      onTimeout?.();
+      rejectTimeout?.(new Error(message));
+    };
+    const resetStallTimeout = () => {
+      if (stallTimeoutId !== null) window.clearTimeout(stallTimeoutId);
+      stallTimeoutId = window.setTimeout(finishTimeout, stallTimeoutMs);
+    };
+    const onProgress = (event) => {
+      if (event.detail?.operation === operation) resetStallTimeout();
+    };
+    const timeoutPromise = new Promise((_, reject) => {
+      rejectTimeout = reject;
+      hardTimeoutId = window.setTimeout(() => {
+        finishTimeout();
+      }, hardTimeoutMs);
+      window.addEventListener("sensevocab:cloud-progress", onProgress);
+      resetStallTimeout();
+    });
+    return Promise.race([Promise.resolve(task), timeoutPromise]).finally(() => {
+      window.removeEventListener("sensevocab:cloud-progress", onProgress);
+      if (hardTimeoutId !== null) window.clearTimeout(hardTimeoutId);
+      if (stallTimeoutId !== null) window.clearTimeout(stallTimeoutId);
     });
   }
 
@@ -206,10 +260,16 @@
   let conflictBusy = false;
   let syncTimer = null;
   let syncPromise = null;
+  let syncRequestedWhileBusy = false;
+  let lastSyncStartedAt = 0;
   let refreshPromise = null;
   let cloudLoadPromise = null;
   let cloudLoadUserId = null;
   let cloudLoadCache = null;
+  // The last successful remote state is the base for incremental writes. It
+  // is treated as immutable; all merge/normalization paths clone their
+  // inputs before changing them.
+  let cloudBaselineState = null;
   let activeCloudOperation = null;
   let refreshTimer = null;
   let authBusy = false;
@@ -234,8 +294,246 @@
   const volatileSyncMeta = new Map();
   const volatileGuestDecisions = new Map();
 
+  function tutorialActive() {
+    return typeof app.isTutorialActive === "function" && app.isTutorialActive();
+  }
+
+  function diagnosticsKey(userId) {
+    return `${SYNC_DIAGNOSTICS_PREFIX}${userId}`;
+  }
+
+  function recordSyncDiagnostic(operation, error = null, detail = {}) {
+    if (!currentUser?.id) return;
+    const entry = {
+      at: new Date().toISOString(),
+      operation: String(operation ?? "sync").slice(0, 80),
+      code: error?.code ? String(error.code).slice(0, 40) : null,
+      message: error ? String(error?.message ?? error).slice(0, 240) : null,
+      ...Object.fromEntries(Object.entries(detail).filter(([, value]) => {
+        return ["string", "number", "boolean"].includes(typeof value) || value === null;
+      })),
+    };
+    try {
+      const key = diagnosticsKey(currentUser.id);
+      const previous = readJson(key, []);
+      const entries = Array.isArray(previous) ? previous : [];
+      entries.push(entry);
+      localStorage.setItem(key, JSON.stringify(entries.slice(-SYNC_DIAGNOSTICS_LIMIT)));
+    } catch {
+      // Diagnostics must never compete with learning data for local quota.
+    }
+  }
+
+  function jsonByteLength(value) {
+    const text = JSON.stringify(value);
+    return typeof TextEncoder === "function"
+      ? new TextEncoder().encode(text).byteLength
+      : text.length;
+  }
+
+  function cloneJson(value) {
+    return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+  }
+
+  function makeDeltaChunk(activeBookId, bookId, bookPatch) {
+    return {
+      version: 1,
+      activeBookId,
+      books: { [bookId]: bookPatch },
+    };
+  }
+
+  function splitSyncDelta(delta, maxBytes = MAX_DELTA_PATCH_BYTES) {
+    if (!delta?.books || typeof delta.books !== "object") return [];
+    const chunks = [];
+    const activeBookId = delta.activeBookId ?? app.getState()?.activeBookId ?? "kaoyan";
+    // Serialize each value once and keep an upper-bound byte estimate while a
+    // chunk is growing. Re-serializing the whole accumulated map for every
+    // entry makes a large account O(n^2) on the browser main thread.
+    const memberUpperBound = (key, value) => {
+      return jsonByteLength(String(key)) + 2 + jsonByteLength(value);
+    };
+    const arrayItemUpperBound = (key) => jsonByteLength(String(key)) + 1;
+    const pushChecked = (bookId, patch) => {
+      if (!patch || !Object.keys(patch).length) return;
+      const chunk = makeDeltaChunk(activeBookId, bookId, patch);
+      const bytes = jsonByteLength(chunk);
+      if (bytes > maxBytes) {
+        throw new Error(`单个同步记录仍超过 ${Math.round(maxBytes / 1000)} KB，已停止上传以保护本机记录。`);
+      }
+      chunks.push({ chunk, bytes });
+    };
+
+    Object.entries(delta.books).forEach(([bookId, sourceBook]) => {
+      const book = sourceBook && typeof sourceBook === "object" ? sourceBook : {};
+      const base = {};
+      if (book.scalars && Object.keys(book.scalars).length) {
+        base.scalars = cloneJson(book.scalars);
+      }
+      if (book.replacements && Object.keys(book.replacements).length) {
+        base.replacements = cloneJson(book.replacements);
+      }
+      const scalarNames = new Set([
+        ...Object.keys(book.scalars ?? {}),
+        ...Object.keys(book.replacements ?? {}),
+      ]);
+      const baseSync = {};
+      if (book.sync?.counters && Object.keys(book.sync.counters).length) {
+        baseSync.counters = cloneJson(book.sync.counters);
+      }
+      Object.entries(book.sync?.records ?? {}).forEach(([name, records]) => {
+        if (!scalarNames.has(name) || !records || typeof records !== "object") return;
+        baseSync.records ??= {};
+        baseSync.records[name] = cloneJson(records);
+      });
+      if (Object.keys(baseSync).length) base.sync = baseSync;
+      pushChecked(bookId, base);
+
+      const syncRecords = book.sync?.records ?? {};
+      Object.entries(book.maps ?? {}).forEach(([domain, mapPatch]) => {
+        if (!mapPatch || typeof mapPatch !== "object") return;
+        const upserts = mapPatch.upsert && typeof mapPatch.upsert === "object"
+          ? mapPatch.upsert
+          : {};
+        const deletes = Array.isArray(mapPatch.delete) ? mapPatch.delete : [];
+        const records = syncRecords[domain] && typeof syncRecords[domain] === "object"
+          ? syncRecords[domain]
+          : {};
+        let upsert = {};
+        let upsertCount = 0;
+        let deleted = [];
+        let recordEntries = {};
+        let recordEntryCount = 0;
+        const emptyDomainPatch = {
+          maps: { [domain]: { upsert: {}, delete: [] } },
+          sync: { records: { [domain]: {} } },
+        };
+        let estimatedBytes = jsonByteLength(
+          makeDeltaChunk(activeBookId, bookId, emptyDomainPatch),
+        );
+        const flush = () => {
+          if (!upsertCount && !deleted.length && !recordEntryCount) return;
+          const patch = { maps: { [domain]: { upsert, delete: deleted } } };
+          if (recordEntryCount) {
+            patch.sync = { records: { [domain]: recordEntries } };
+          }
+          pushChecked(bookId, patch);
+          upsert = {};
+          upsertCount = 0;
+          deleted = [];
+          recordEntries = {};
+          recordEntryCount = 0;
+          estimatedBytes = jsonByteLength(
+            makeDeltaChunk(activeBookId, bookId, emptyDomainPatch),
+          );
+        };
+        const add = (key, value, isDelete) => {
+          const record = records[key];
+          const addition = isDelete
+            ? arrayItemUpperBound(key)
+            : memberUpperBound(key, value);
+          const recordAddition = record === undefined
+            ? 0
+            : memberUpperBound(key, record);
+          if (estimatedBytes + addition + recordAddition > maxBytes &&
+              (upsertCount || deleted.length || recordEntryCount)) {
+            flush();
+          }
+          if (estimatedBytes + addition + recordAddition > maxBytes) {
+            throw new Error(`同步记录 ${domain}/${key} 单项过大，已停止上传。`);
+          }
+          if (isDelete) deleted.push(key);
+          else {
+            upsert[key] = value;
+            upsertCount += 1;
+          }
+          if (record !== undefined) {
+            recordEntries[key] = cloneJson(record);
+            recordEntryCount += 1;
+          }
+          estimatedBytes += addition + recordAddition;
+        };
+        Object.entries(upserts).forEach(([key, value]) => add(key, cloneJson(value), false));
+        deletes.forEach((key) => add(String(key), undefined, true));
+        flush();
+
+        // A record vector can change without a corresponding value mutation.
+        const emitted = new Set([
+          ...Object.keys(upserts),
+          ...deletes.map(String),
+        ]);
+        let syncOnly = {};
+        let syncOnlyCount = 0;
+        const emptySyncOnlyPatch = { sync: { records: { [domain]: {} } } };
+        let syncOnlyEstimatedBytes = jsonByteLength(
+          makeDeltaChunk(activeBookId, bookId, emptySyncOnlyPatch),
+        );
+        Object.entries(records).forEach(([key, record]) => {
+          if (emitted.has(key)) return;
+          const addition = memberUpperBound(key, record);
+          if (syncOnlyEstimatedBytes + addition > maxBytes && syncOnlyCount) {
+            pushChecked(bookId, { sync: { records: { [domain]: syncOnly } } });
+            syncOnly = {};
+            syncOnlyCount = 0;
+            syncOnlyEstimatedBytes = jsonByteLength(
+              makeDeltaChunk(activeBookId, bookId, emptySyncOnlyPatch),
+            );
+          }
+          if (syncOnlyEstimatedBytes + addition > maxBytes) {
+            throw new Error(`同步记录 ${domain}/${key} 单项过大，已停止上传。`);
+          }
+          syncOnly[key] = cloneJson(record);
+          syncOnlyCount += 1;
+          syncOnlyEstimatedBytes += addition;
+        });
+        if (syncOnlyCount) {
+          pushChecked(bookId, { sync: { records: { [domain]: syncOnly } } });
+        }
+      });
+
+      Object.entries(syncRecords).forEach(([domain, records]) => {
+        if (scalarNames.has(domain) || Object.hasOwn(book.maps ?? {}, domain)) return;
+        if (!records || typeof records !== "object") return;
+        let group = {};
+        let groupCount = 0;
+        const emptySyncPatch = { sync: { records: { [domain]: {} } } };
+        let estimatedBytes = jsonByteLength(
+          makeDeltaChunk(activeBookId, bookId, emptySyncPatch),
+        );
+        Object.entries(records).forEach(([key, record]) => {
+          const addition = memberUpperBound(key, record);
+          if (estimatedBytes + addition > maxBytes && groupCount) {
+            pushChecked(bookId, { sync: { records: { [domain]: group } } });
+            group = {};
+            groupCount = 0;
+            estimatedBytes = jsonByteLength(
+              makeDeltaChunk(activeBookId, bookId, emptySyncPatch),
+            );
+          }
+          if (estimatedBytes + addition > maxBytes) {
+            throw new Error(`同步记录 ${domain}/${key} 单项过大，已停止上传。`);
+          }
+          group[key] = cloneJson(record);
+          groupCount += 1;
+          estimatedBytes += addition;
+        });
+        if (groupCount) {
+          pushChecked(bookId, { sync: { records: { [domain]: group } } });
+        }
+      });
+    });
+    return chunks;
+  }
+
   function clearCloudLoadCache() {
     cloudLoadCache = null;
+    cloudBaselineState = null;
+  }
+
+  function rememberCloudBaseline(result) {
+    cloudBaselineState = result?.found && result?.state
+      ? result.state
+      : null;
   }
 
   function syncMetaKey(userId) {
@@ -1600,6 +1898,14 @@
       ].map(dateKey).filter(Boolean).sort();
       return dates[dates.length - 1] ?? "";
     };
+    const progressEvidenceByWord = new Map();
+    Object.entries(scope.progress ?? {}).forEach(([key, progress]) => {
+      const wordId = String(key).split(":", 1)[0];
+      const evidenceDate = progressEvidenceDate(progress);
+      if (!wordId || !evidenceDate) return;
+      const previous = progressEvidenceByWord.get(wordId) ?? "";
+      if (evidenceDate > previous) progressEvidenceByWord.set(wordId, evidenceDate);
+    });
     const activityHasEvidence = (date, entry) => {
       if (!entry || typeof entry !== "object") return false;
       if (entry.newCountLocked || entry.baseCompleted || entry.overtime) return true;
@@ -1610,10 +1916,9 @@
         ...(Array.isArray(entry.newWords) ? entry.newWords : []),
         ...(Array.isArray(entry.reviewWords) ? entry.reviewWords : []),
       ];
-      if (words.some((wordId) => Object.entries(scope.progress ?? {}).some(([key, progress]) => {
-        return (key === wordId || key.startsWith(`${wordId}:`)) &&
-          progressEvidenceDate(progress) >= dateKey(date);
-      }))) return true;
+      if (words.some((wordId) => {
+        return (progressEvidenceByWord.get(String(wordId)) ?? "") >= dateKey(date);
+      })) return true;
       if (dateKey(scope.session?.date) === dateKey(date) &&
           Number(scope.session?.currentIndex) > 0) return true;
       return (Array.isArray(scope.studyWindows) ? scope.studyWindows : [])
@@ -1627,6 +1932,21 @@
         return meaningful && activityHasEvidence(date, entry);
       }),
     );
+    const hongKongToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Hong_Kong",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const planTargetHistory = Object.fromEntries(
+      Object.entries(scope.planTargetHistory ?? {}).filter(([date]) => {
+        // A current-day entry can be created while rendering an otherwise
+        // untouched plan. It becomes durable sync evidence only after the
+        // corresponding day has actual activity; historical entries are
+        // retained because they define the target used for old heatmap days.
+        return date < hongKongToday || activityLog[date] !== undefined;
+      }),
+    );
     const plan = scope.plan && typeof scope.plan === "object"
       ? { ...scope.plan, advancedDays: undefined }
       : null;
@@ -1638,6 +1958,7 @@
       introducedWords: scope.introducedWords ?? [],
       progress: scope.progress ?? {},
       activityLog,
+      planTargetHistory,
       studyWindows: scope.studyWindows ?? [],
       confusionLinks: scope.confusionLinks ?? {},
       wordListSort: scope.wordListSort ?? "mastery",
@@ -1649,19 +1970,29 @@
     label,
     timeoutMs = ACCOUNT_REMOTE_STATE_TIMEOUT_MS,
     kind = "cloud",
+    { completeProgress = true, preserveProgress = false } = {},
   ) {
     const controller = new AbortController();
     const operationContext = { kind, label };
     activeCloudOperation = operationContext;
-    setOperationProgress(null, label);
+    if (!preserveProgress) setOperationProgress(null, label);
     try {
-      const result = await withAccountTimeout(
-        operation(controller.signal),
-        timeoutMs,
-        `${label}超时，本机记录未改动。`,
-        () => controller.abort(),
-      );
-      setOperationProgress(100, `${label}完成`);
+      const task = operation(controller.signal);
+      const result = kind === "load-state"
+        ? await withCloudProgressTimeout(task, {
+          hardTimeoutMs: timeoutMs,
+          stallTimeoutMs: Math.min(timeoutMs, ACCOUNT_REMOTE_STATE_STALL_TIMEOUT_MS),
+          operation: kind,
+          message: `${label}超时，本机记录未改动。`,
+          onTimeout: () => controller.abort(),
+        })
+        : await withAccountTimeout(
+          task,
+          timeoutMs,
+          `${label}超时，本机记录未改动。`,
+          () => controller.abort(),
+        );
+      if (completeProgress) setOperationProgress(100, `${label}完成`);
       return result;
     } finally {
       if (activeCloudOperation === operationContext) {
@@ -1692,7 +2023,7 @@
       }
       pendingConsentSession = session;
       pendingConflict = null;
-      app.activateGuest();
+      app.activateGuest({ preserveNavigation: true });
       announceAccountScope();
       showFloatingDialog(accountDialog);
       showPrimaryAccountView();
@@ -1701,7 +2032,7 @@
     } catch (error) {
       pendingConsentSession = session;
       pendingConflict = null;
-      app.activateGuest();
+      app.activateGuest({ preserveNavigation: true });
       announceAccountScope();
       showFloatingDialog(accountDialog);
       showPrimaryAccountView();
@@ -1715,8 +2046,11 @@
 
   async function loadCloudState(
     label = "正在读取云端记录",
-    { force = false, maxAgeMs = CLOUD_LOAD_CACHE_MS } = {},
+    { force = false, maxAgeMs = CLOUD_LOAD_CACHE_MS, manifest = undefined } = {},
   ) {
+    if (tutorialActive()) {
+      return { found: false, revision: 0, state: null, skipped: true };
+    }
     const userId = currentUser?.id ?? null;
     if (!userId) throw new Error("当前账户尚未确认，无法读取云端记录。");
     if (
@@ -1724,6 +2058,7 @@
       cloudLoadCache?.userId === userId &&
       Date.now() - cloudLoadCache.completedAt <= maxAgeMs
     ) {
+      rememberCloudBaseline(cloudLoadCache.result);
       setOperationProgress(100, `${label}已确认`, "success");
       return cloudLoadCache.result;
     }
@@ -1740,7 +2075,16 @@
     const request = runTransientCloudOperation(
       async (signal) => {
         let expectedBytes = null;
-        if (typeof cloud.loadStateManifest === "function") {
+        if (manifest !== undefined) {
+          const bytes = Number(manifest?.bytes);
+          if (manifest?.found && Number.isFinite(bytes) && bytes > 0) {
+            expectedBytes = Math.round(bytes);
+            setOperationProgress(
+              0,
+              `${label} 0.00%（预计 ${(expectedBytes / 1024 / 1024).toFixed(2)} MB）`,
+            );
+          }
+        } else if (typeof cloud.loadStateManifest === "function") {
           const manifestController = new AbortController();
           const relayAbort = () => manifestController.abort();
           signal.addEventListener("abort", relayAbort, { once: true });
@@ -1783,6 +2127,7 @@
         completedAt: Date.now(),
         result,
       };
+      rememberCloudBaseline(result);
       return result;
     }).finally(() => {
       if (cloudLoadUserId === userId) {
@@ -1793,13 +2138,132 @@
     return cloudLoadPromise;
   }
 
-  async function saveCloudState(state, revision, force = false) {
-    const result = await runTransientCloudOperation(
-      (signal) => cloud.saveState(state, revision, force, signal),
-      "云端写入",
-      ACCOUNT_OPERATION_TIMEOUT_MS,
-      "save-state",
-    );
+  function isDeltaRpcUnavailable(error) {
+    const code = String(error?.code ?? "");
+    const message = String(error?.message ?? error ?? "");
+    return code === "42883" || code === "PGRST202" ||
+      /save_user_state_delta|function .*does not exist|404/.test(message);
+  }
+
+  async function saveCloudState(
+    state,
+    revision,
+    force = false,
+    delta = null,
+  ) {
+    if (tutorialActive()) {
+      throw new Error("教程演示记录不会上传到云端。");
+    }
+    if (!force && cloudBaselineState && app.hasLearningData(cloudBaselineState) &&
+        !app.hasLearningData(state)) {
+      recordSyncDiagnostic("blocked-empty-upload", null, {
+        revision: Number(revision) || 0,
+        deltaBytes: delta ? jsonByteLength(delta) : 0,
+      });
+      return {
+        ok: false,
+        conflict: false,
+        destructiveBlocked: true,
+        revision: Number(revision) || 0,
+        reason: "learning_evidence_would_be_deleted",
+      };
+    }
+    const useDelta = Boolean(delta) &&
+      typeof cloud.saveStateDelta === "function";
+    let result;
+    let chunks = [];
+    try {
+      chunks = useDelta ? splitSyncDelta(delta) : [];
+    } catch (error) {
+      recordSyncDiagnostic("upload-prepare-failed", error, {
+        revision: Number(revision) || 0,
+        deltaBytes: delta ? jsonByteLength(delta) : 0,
+      });
+      throw error;
+    }
+    if (useDelta && !chunks.length) {
+      cloudBaselineState = state;
+      return {
+        ok: true,
+        conflict: false,
+        revision: Number(revision) || 0,
+        unchanged: true,
+      };
+    }
+    const totalBytes = chunks.reduce((sum, entry) => sum + entry.bytes, 0);
+    let sentBytes = 0;
+    recordSyncDiagnostic("upload-start", null, {
+      revision: Number(revision) || 0,
+      deltaBytes: delta ? jsonByteLength(delta) : 0,
+      chunks: useDelta ? chunks.length : 1,
+      uploadBytes: useDelta ? totalBytes : jsonByteLength(state),
+    });
+    try {
+      if (useDelta) {
+        let expectedRevision = revision;
+        for (let index = 0; index < chunks.length; index += 1) {
+          const entry = chunks[index];
+          const progress = totalBytes > 0 ? sentBytes / totalBytes * 100 :
+            index / chunks.length * 100;
+          setOperationProgress(
+            progress,
+            `云端写入 ${index + 1}/${chunks.length}（${progress.toFixed(2)}%）`,
+          );
+          result = await runTransientCloudOperation(
+            (signal) => cloud.saveStateDelta(
+              entry.chunk,
+              expectedRevision,
+              force,
+              signal,
+            ),
+            "云端写入",
+            ACCOUNT_OPERATION_TIMEOUT_MS,
+            "save-state",
+            { completeProgress: false, preserveProgress: true },
+          );
+          recordSyncDiagnostic("upload-chunk", null, {
+            chunk: index + 1,
+            chunks: chunks.length,
+            bytes: entry.bytes,
+            revision: Number(result?.revision) || Number(expectedRevision) || 0,
+          });
+          if (!result?.ok || result.conflict || result.destructiveBlocked) return result;
+          expectedRevision = Number(result.revision) || Number(expectedRevision) + 1;
+          sentBytes += entry.bytes;
+          setOperationProgress(
+            totalBytes > 0 ? sentBytes / totalBytes * 100 :
+              (index + 1) / chunks.length * 100,
+            `云端写入 ${index + 1}/${chunks.length}`,
+          );
+        }
+      } else {
+        result = await runTransientCloudOperation(
+          (signal) => cloud.saveState(state, revision, force, signal),
+          "云端写入",
+          ACCOUNT_OPERATION_TIMEOUT_MS,
+          "save-state",
+        );
+      }
+    } catch (error) {
+      recordSyncDiagnostic("upload-failed", error, {
+        chunks: useDelta ? chunks.length : 1,
+        sentBytes,
+        totalBytes: useDelta ? totalBytes : jsonByteLength(state),
+      });
+      // A rolling deployment may expose the new client before the RPC is
+      // present. Fall back once to the audited full writer; never turn a
+      // network/timeout failure into an unbounded retry loop.
+      if (!useDelta || !isDeltaRpcUnavailable(error) || sentBytes > 0) throw error;
+      result = await runTransientCloudOperation(
+        (signal) => cloud.saveState(state, revision, false, signal),
+        "云端写入",
+        ACCOUNT_OPERATION_TIMEOUT_MS,
+        "save-state",
+      );
+    }
+    if (result?.ok && !result.conflict && !result.destructiveBlocked) {
+      cloudBaselineState = state;
+    }
     cloudLoadCache = null;
     return result;
   }
@@ -1885,11 +2349,13 @@
     setSyncStatus("本机账户记录已加载，正在核对云端…", "pending");
     setMessage("正在读取云端记录……");
     showPrimaryAccountView();
-    // The authenticated local scope is safe to show immediately. Remote state,
-    // profile, and notifications continue independently instead of extending
-    // the startup screen when one endpoint is slow.
+    // Profile state affects whether study controls are available. Start the
+    // request before the cloud read, but settle it before declaring the
+    // account session ready; otherwise an expired account can briefly render
+    // as active and the result depends on endpoint timing.
+    const profilePromise = refreshAccountProfile({ silent: true });
+    await profilePromise;
     announceAccountReady();
-    refreshAccountProfile({ silent: true }).catch(() => {});
     refreshNotifications({ silent: true }).catch(() => {});
 
     try {
@@ -2008,11 +2474,18 @@
   }
 
   function scheduleSync() {
-    if (!currentUser || hasBlockingConflict() || pendingConsentSession) return;
+    if (!currentUser || tutorialActive() || hasBlockingConflict() || pendingConsentSession) return;
+    if (syncPromise) {
+      syncRequestedWhileBusy = true;
+      return;
+    }
     clearTimeout(syncTimer);
+    const elapsed = Date.now() - lastSyncStartedAt;
+    const delay = Math.max(SYNC_DEBOUNCE_MS, SYNC_MIN_INTERVAL_MS - elapsed);
     syncTimer = setTimeout(() => {
+      syncTimer = null;
       syncNow();
-    }, 800);
+    }, delay);
   }
 
   function queueRemoteConflict(remote, localState, source = "account-replace") {
@@ -2026,7 +2499,7 @@
   }
 
   async function syncNow(options = {}) {
-    if (!cloud || !currentUser || hasBlockingConflict() || pendingConsentSession) {
+    if (!cloud || !currentUser || tutorialActive() || hasBlockingConflict() || pendingConsentSession) {
       return null;
     }
     if (typeof app.isPersistenceSafe === "function" && !app.isPersistenceSafe()) {
@@ -2040,6 +2513,8 @@
     if (syncPromise) return syncPromise;
 
     clearTimeout(syncTimer);
+    syncTimer = null;
+    lastSyncStartedAt = Date.now();
     const syncUserId = currentUser.id;
     const syncMeta = loadSyncMeta(syncUserId);
     // A manual sync must re-read the authoritative remote revision even when
@@ -2141,8 +2616,8 @@
                 };
               }
               const merged = app.mergeStates(app.getState(), remote.state);
-              const localSignature = app.stateSignature(app.getState());
-              const mergedSignature = app.stateSignature(merged);
+              const localSignature = cloudStateSignature(app.getState());
+              const mergedSignature = cloudStateSignature(merged);
               const mergedIsRemote = cloudStateSignature(merged) ===
                 cloudStateSignature(remote.state);
               if (mergedSignature !== localSignature) {
@@ -2179,12 +2654,23 @@
             }
           }
 
-          const snapshotSignature = app.stateSignature(snapshot);
+          const snapshotSignature = cloudStateSignature(snapshot);
           setOperationProgress(null, "正在上传合并后的记录");
+          const deltaBaseline = cloudBaselineState ??
+            (Number(expectedRevision) === 0 ? {} : null);
+          const delta = deltaBaseline &&
+            typeof app.buildSyncDelta === "function"
+            ? app.buildSyncDelta(
+              deltaBaseline,
+              snapshot,
+              { includeSession: true },
+            )
+            : null;
           const result = await saveCloudState(
             snapshot,
             expectedRevision,
             replaceRemote,
+            delta,
           );
           if (result?.conflict) {
             setOperationProgress(null, "检测到其他设备更新，正在重新读取");
@@ -2302,7 +2788,7 @@
           const stillUsingAccount = currentUser?.id === syncUserId &&
             app.getActiveStorageKey() === app.accountStorageKey(syncUserId);
           const changedDuringSync = stillUsingAccount &&
-            app.stateSignature(app.getState()) !== snapshotSignature;
+            cloudStateSignature(app.getState()) !== snapshotSignature;
           saveSyncMeta(syncUserId, {
             revision: cloudRevision,
             dirty: changedDuringSync,
@@ -2326,6 +2812,10 @@
         }
         throw new Error("多台设备更新过于频繁，请稍后再次同步。");
       } catch (error) {
+        recordSyncDiagnostic("sync-failed", error, {
+          revision: Number(cloudRevision) || 0,
+          dirty: true,
+        });
         saveSyncMeta(syncUserId, { dirty: true });
         setSyncStatus(
           localQuotaWarning
@@ -2338,6 +2828,10 @@
         return null;
       } finally {
         syncPromise = null;
+        if (syncRequestedWhileBusy) {
+          syncRequestedWhileBusy = false;
+          scheduleSync();
+        }
       }
     })();
 
@@ -2345,7 +2839,7 @@
   }
 
   async function refreshFromCloud(options = {}) {
-    if (!cloud || !currentUser || hasBlockingConflict() || pendingConsentSession) {
+    if (!cloud || !currentUser || tutorialActive() || hasBlockingConflict() || pendingConsentSession) {
       return null;
     }
     if (refreshPromise) return refreshPromise;
@@ -2359,8 +2853,36 @@
           hasBlockingConflict() ||
           pendingConsentSession
         ) return null;
-        const remote = normalizedRemote(await loadCloudState(undefined, {
-          force: Boolean(options.force),
+        let remote;
+        let manifest;
+        if (!options.force && typeof cloud.loadStateManifest === "function") {
+          try {
+            const manifestController = new AbortController();
+            manifest = await withAccountTimeout(
+              cloud.loadStateManifest(manifestController.signal),
+              CLOUD_LOAD_MANIFEST_TIMEOUT_MS,
+              "云端记录版本读取超时。",
+              () => manifestController.abort(),
+            );
+            const manifestRevision = Number(manifest?.revision) || 0;
+            if (!manifest?.found || manifestRevision <= (cloudRevision ?? -1)) {
+              cloudRevision = manifestRevision;
+              return normalizedRemote({
+                found: Boolean(manifest?.found),
+                revision: manifestRevision,
+                updatedAt: manifest?.updatedAt ?? null,
+                state: null,
+              });
+            }
+          } catch (manifestError) {
+            // A pre-migration deployment may not have the cheap manifest RPC.
+            // Fall back to one full read rather than silently hiding updates.
+            manifest = undefined;
+          }
+        }
+        remote = normalizedRemote(await loadCloudState(undefined, {
+          force: Boolean(options.force) || manifest !== undefined,
+          manifest,
         }));
         if (!remote.found || remote.revision <= (cloudRevision ?? -1)) {
           return remote;
@@ -2633,7 +3155,7 @@
     applyAccountProfile(null);
     cloudRevision = null;
     pendingConflict = null;
-    app.activateGuest();
+    app.activateGuest({ preserveNavigation: true });
     announceAccountScope();
     await refreshNotifications({ silent: true });
     showPrimaryAccountView();
@@ -2850,7 +3372,7 @@
     cloudRevision = null;
     pendingConflict = null;
     pendingConsentSession = null;
-    app.activateGuest();
+    app.activateGuest({ preserveNavigation: true });
     announceAccountScope();
     await refreshNotifications({ silent: true });
     logoutButton.disabled = false;
@@ -2885,7 +3407,7 @@
       cloudRevision = null;
       pendingConflict = null;
       pendingConsentSession = null;
-      app.activateGuest();
+      app.activateGuest({ preserveNavigation: true });
       announceAccountScope();
       await refreshNotifications({ silent: true });
       setMessage("账户及云端学习记录已删除。");
@@ -3031,7 +3553,7 @@
           return session;
         }
         if (!currentUser) {
-          app.activateGuest();
+          app.activateGuest({ preserveNavigation: true });
           announceAccountScope();
         }
         return null;
@@ -3077,7 +3599,7 @@
         cloudRevision = null;
         pendingConflict = null;
         pendingConsentSession = null;
-        app.activateGuest();
+        app.activateGuest({ preserveNavigation: true });
         announceAccountScope();
         showPrimaryAccountView();
         refreshNotifications({ silent: true });
@@ -3273,8 +3795,12 @@
   });
 
   window.addEventListener("sensevocab:state-saved", (event) => {
-    if (!currentUser || pendingConsentSession) return;
+    if (!currentUser || tutorialActive() || pendingConsentSession) return;
     if (event.detail?.storageKey !== app.accountStorageKey(currentUser.id)) return;
+    // Only presentation/reconciliation writes explicitly marked as irrelevant
+    // may bypass the dirty marker. `stampSync:false` alone is also used by
+    // callers that replace local data and still need a cloud verification pass.
+    if (event.detail?.syncRelevant === false) return;
     saveSyncMeta(currentUser.id, { dirty: true });
     setSyncStatus(
       event.detail?.persisted === false
@@ -3304,10 +3830,17 @@
     );
   });
 
+  window.addEventListener("sensevocab:tutorial-finished", () => {
+    if (!currentUser || pendingConsentSession) return;
+    saveSyncMeta(currentUser.id, { dirty: true });
+    scheduleSync();
+  });
+
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      if (currentUser) syncNow();
+      if (currentUser && !tutorialActive()) syncNow();
     } else {
+      if (tutorialActive()) return;
       if (!currentUser || sessionResolutionUncertain) {
         resolvePersistedSession({ reason: "visible", silent: true, force: true });
       } else {
@@ -3318,6 +3851,7 @@
     }
   });
   window.addEventListener("focus", () => {
+    if (tutorialActive()) return;
     if (!currentUser || sessionResolutionUncertain) {
       resolvePersistedSession({ reason: "focus", silent: true, force: true });
     } else {
@@ -3327,6 +3861,7 @@
     refreshNotifications({ silent: true });
   });
   window.addEventListener("online", async () => {
+    if (tutorialActive()) return;
     if (!currentUser || sessionResolutionUncertain) {
       await resolvePersistedSession({ reason: "online", silent: true, force: true });
     }
@@ -3340,15 +3875,17 @@
     refreshNotifications({ silent: true });
   });
   window.addEventListener("storage", (event) => {
-    if (!currentUser || event.key !== app.accountStorageKey(currentUser.id)) return;
+    if (!currentUser || tutorialActive() || event.key !== app.accountStorageKey(currentUser.id)) return;
     if (!event.newValue) return;
     try {
-      const incoming = typeof app.decodeStorageValue === "function"
-        ? app.decodeStorageValue(event.newValue)
-        : JSON.parse(event.newValue);
+      const incoming = typeof app.getAccountState === "function"
+        ? app.getAccountState(currentUser.id)
+        : (typeof app.decodeStorageValue === "function"
+          ? app.decodeStorageValue(event.newValue)
+          : JSON.parse(event.newValue));
       const localState = app.getState();
       const merged = app.mergeStates(localState, incoming);
-      if (app.stateSignature(merged) === app.stateSignature(localState)) return;
+      if (cloudStateSignature(merged) === cloudStateSignature(localState)) return;
       app.replaceActiveState(merged, {
         notify: false,
         stampSync: false,

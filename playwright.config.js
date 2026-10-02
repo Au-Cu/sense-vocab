@@ -8,6 +8,7 @@ module.exports = defineConfig({
     "learning-flow.spec.js",
     "account-sync.spec.js",
     "sync-concurrency.spec.js",
+    "cloud-client-chunk.spec.js",
     "book-scope.spec.js",
     "admin-ui.spec.js",
     "mobile-tutorial.spec.js",

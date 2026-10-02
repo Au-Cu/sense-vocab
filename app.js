@@ -2,10 +2,12 @@ const DEFAULT_DAILY_TARGET = 20;
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const ACCOUNT_STORAGE_PREFIX = `${STORAGE_KEY}:account:`;
 const LOCAL_STORAGE_COMPRESSION_PREFIX = "svlz1:";
+const DASHBOARD_SNAPSHOT_STORAGE_SEGMENT = ":dashboard-snapshot-v1:";
+const LEARNING_JOURNAL_STORAGE_SEGMENT = ":learning-journal-v1:";
 const LZ_MIN_MATCH = 4;
 const LZ_MAX_MATCH = 65538;
 const LZ_MAX_DISTANCE = 65535;
-const LZ_MAX_CANDIDATES = 16;
+const LZ_MAX_CANDIDATES = 2;
 const DATA_VERSION = 10;
 const DASHBOARD_DATA_VERSION = 1;
 const ROOT_STATE_VERSION = 2;
@@ -13,6 +15,10 @@ const DEFAULT_BOOK_ID = "kaoyan";
 const VOCABULARY_INDEX_URL = "./data/vocabulary-index.json";
 const VOCABULARY_BUNDLE_URL = "./data/vocabulary-bundle.json";
 const VOCABULARY_CACHE_PREFIX = "sense-vocab-vocabulary-";
+// Let the index-backed shell paint first, then hydrate the full bundle soon
+// enough that study and morphology pages do not sit in an artificial loading
+// state after the app is already interactive.
+const VOCABULARY_PRELOAD_DELAY_MS = 750;
 const FAST_CALENDAR_LAST_VERSION = 5;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TUTORIAL_STORAGE_PREFIX = "sense-vocab-tutorial-complete-v1:";
@@ -292,6 +298,7 @@ const wordSearchInput = document.querySelector("#wordSearchInput");
 const wordListFilters = document.querySelector("#wordListFilters");
 const wordListEmpty = document.querySelector("#wordListEmpty");
 const wordList = document.querySelector("#wordList");
+const wordListMore = document.querySelector("#wordListMore");
 const wordListSummary = document.querySelector("#wordListSummary");
 const wordListLoadMoreButton = document.querySelector("#wordListLoadMoreButton");
 const wordListBackButton = document.querySelector("#wordListBackButton");
@@ -391,6 +398,7 @@ let vocabularySearchRelations = new Map();
 let vocabularyDetailsReady = false;
 let vocabularyDetailsPromise = null;
 let vocabularyDetailsError = null;
+let vocabularyPreloadTimer = null;
 let vocabularyBlockingIntent = null;
 let vocabularyCatalogAuthoritative = false;
 let bookById = new Map();
@@ -413,8 +421,12 @@ let wordListQuery = "";
 let wordListFilter = "all";
 const WORD_LIST_PAGE_SIZE = 80;
 let wordListVisibleCount = WORD_LIST_PAGE_SIZE;
+let wordListWindowKey = "";
+let wordListItemsForRender = [];
 let wordListIndexCache = null;
 let wordListIndexRevision = 0;
+let wordListRenderToken = 0;
+let wordListRenderFrame = null;
 let heatmapPositionedBookId = null;
 let dashboardBookId = null;
 let dashboardUnit = "sense";
@@ -432,6 +444,7 @@ let confusionRuntime = null;
 let confusionGlobe = null;
 let confusionGlobeSignature = null;
 let confusionTransitioning = false;
+let confusionTransitionToken = 0;
 let confusionGlobeLoader = null;
 let activeUiTransition = null;
 let commitActiveUiTransition = null;
@@ -440,6 +453,8 @@ let deferredUiStateSavePending = false;
 let deferredUiStateSaveFrame = null;
 let deferredUiStateSaveTimer = null;
 let deferredUiStateSaveIdle = null;
+let deferredUiStateSaveOptions = {};
+let dirtyDashboardSnapshots = new Map();
 let studyHierarchyOrigin = null;
 let wordListHierarchyOrigin = null;
 let membershipAccess = {
@@ -746,6 +761,8 @@ function installVocabularyData(data, { details = false } = {}) {
     ? normalizeWordList(data.words)
     : normalizeVocabularyIndex(data.words);
   poolWordById = new Map(normalizedPool.map((word) => [word.id, word]));
+  wordListIndexRevision += 1;
+  wordListIndexCache = null;
 
   if (rootState) {
     activateBookScope(rootState.activeBookId, { sanitize: false });
@@ -790,10 +807,17 @@ function beginVocabularyDetailsLoad({ forceNetwork = false } = {}) {
       vocabularyDetailsError = null;
       document.documentElement.dataset.vocabularyReady = "true";
       setVocabularyStatus();
-      if (state) render();
       window.dispatchEvent(
         new CustomEvent("sensevocab:vocabulary-ready"),
       );
+      // Home and list views already render from the index. Repainting them here
+      // can monopolize the main thread just as the background load completes.
+      // Only an open study card needs the newly hydrated fields immediately.
+      if (state?.view === "study") {
+        window.requestAnimationFrame(() => {
+          if (state?.view === "study") render();
+        });
+      }
       return true;
     })
     .catch((error) => {
@@ -812,9 +836,32 @@ function beginVocabularyDetailsLoad({ forceNetwork = false } = {}) {
   return vocabularyDetailsPromise;
 }
 
+function scheduleVocabularyDetailsPreload() {
+  if (vocabularyDetailsReady || vocabularyDetailsPromise) return;
+  if (vocabularyPreloadTimer !== null) {
+    window.clearTimeout(vocabularyPreloadTimer);
+  }
+  vocabularyPreloadTimer = window.setTimeout(() => {
+    vocabularyPreloadTimer = null;
+    if (document.visibilityState === "hidden" || vocabularyBlockingIntent) {
+      scheduleVocabularyDetailsPreload();
+      return;
+    }
+    beginVocabularyDetailsLoad();
+  }, VOCABULARY_PRELOAD_DELAY_MS);
+}
+
+function cancelVocabularyDetailsPreload() {
+  if (vocabularyPreloadTimer !== null) {
+    window.clearTimeout(vocabularyPreloadTimer);
+    vocabularyPreloadTimer = null;
+  }
+}
+
 async function ensureVocabularyDetailsReady(intent = "study") {
   if (vocabularyDetailsReady) return true;
 
+  cancelVocabularyDetailsPreload();
   vocabularyBlockingIntent = intent;
   setVocabularyStatus(
     vocabularyDetailsError
@@ -992,6 +1039,19 @@ function normalizeConfusionLinks(value) {
   return links;
 }
 
+function normalizePlanTargetHistory(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([date, target]) => {
+        return /^\d{4}-\d{2}-\d{2}$/.test(date) &&
+          Number.isFinite(Number(target)) && Number(target) >= 0;
+      })
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([date, target]) => [date, Math.max(0, Math.round(Number(target)))])
+  );
+}
+
 function createEncounterSnapshot(wordId) {
   const word = wordById.get(wordId);
   const progress = {};
@@ -1046,6 +1106,7 @@ function createState() {
     dashboardEvents: {},
     dashboardSnapshots: {},
     confusionLinks: {},
+    planTargetHistory: {},
     learningDayCounter: 0,
     wordListSort: "mastery",
     wordBrowse: null,
@@ -1091,6 +1152,7 @@ function normalizeLoadedState(saved) {
       ? saved.dashboardSnapshots
       : {},
     confusionLinks: normalizeConfusionLinks(saved.confusionLinks),
+    planTargetHistory: normalizePlanTargetHistory(saved.planTargetHistory),
     learningDayCounter: Number.isFinite(saved.learningDayCounter)
       ? saved.learningDayCounter
       : 0,
@@ -1134,6 +1196,7 @@ function normalizeRootState(saved) {
       "dashboardEvents",
       "dashboardSnapshots",
       "confusionLinks",
+      "planTargetHistory",
       "learningDayCounter",
       "wordListSort",
       "wordBrowse",
@@ -1160,7 +1223,9 @@ function normalizeRootState(saved) {
 }
 
 function compactLocalState(candidate) {
-  const normalized = normalizeRootState(cloneSerializable(candidate));
+  const normalized = normalizeRootState(compactStateSessions(cloneSerializable(
+    stateWithoutDashboardSnapshots(candidate),
+  )));
   const activeId = normalized.activeBookId;
   const activeScope = cloneSerializable(
     normalized.bookStates[activeId] ?? createState(),
@@ -1198,6 +1263,366 @@ function readStoredState(storageKey) {
   } catch {
     return { raw, parsed: null };
   }
+}
+
+function dashboardSnapshotStoragePrefix(storageKey) {
+  return `${storageKey}${DASHBOARD_SNAPSHOT_STORAGE_SEGMENT}`;
+}
+
+function dashboardSnapshotStorageKey(storageKey, bookId, snapshotId) {
+  return `${dashboardSnapshotStoragePrefix(storageKey)}${encodeURIComponent(bookId)}:${encodeURIComponent(snapshotId)}`;
+}
+
+function markDashboardSnapshotDirty(bookId, snapshotId) {
+  if (!bookId || !snapshotId) return;
+  const ids = dirtyDashboardSnapshots.get(bookId) ?? new Set();
+  ids.add(snapshotId);
+  dirtyDashboardSnapshots.set(bookId, ids);
+}
+
+function markAllDashboardSnapshotsDirty(candidate = rootState) {
+  Object.entries(candidate?.bookStates ?? {}).forEach(([bookId, bookState]) => {
+    Object.keys(bookState?.dashboardSnapshots ?? {}).forEach((snapshotId) => {
+      markDashboardSnapshotDirty(bookId, snapshotId);
+    });
+  });
+}
+
+function dashboardSnapshotChanges(candidate, includeAll = false) {
+  const changes = new Map();
+  Object.entries(candidate?.bookStates ?? {}).forEach(([bookId, bookState]) => {
+    const ids = includeAll
+      ? Object.keys(bookState?.dashboardSnapshots ?? {})
+      : [...(dirtyDashboardSnapshots.get(bookId) ?? [])];
+    if (ids.length) changes.set(bookId, new Set(ids));
+  });
+  return changes;
+}
+
+function stateWithoutDashboardSnapshots(candidate) {
+  if (!candidate || typeof candidate !== "object") return candidate;
+  const bookStates = Object.fromEntries(
+    Object.entries(candidate.bookStates ?? {}).map(([bookId, bookState]) => [
+      bookId,
+      { ...(bookState ?? {}), dashboardSnapshots: {} },
+    ]),
+  );
+  return {
+    ...candidate,
+    dashboardSnapshots: {},
+    bookStates,
+  };
+}
+
+function learningJournalStorageKey(storageKey = activeStorageKey) {
+  return `${storageKey}${LEARNING_JOURNAL_STORAGE_SEGMENT}`;
+}
+
+function compactSessionForPersistence(value, { forCloud = false } = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const session = cloneSerializable(value);
+  if (!Array.isArray(session.queue)) return session;
+  const currentIndex = Math.max(
+    0,
+    Math.min(session.queue.length, Number(session.currentIndex) || 0),
+  );
+  session.queue = session.queue.map((card, index) => {
+    if (!card || typeof card !== "object") return card;
+    const compact = { ...card };
+    const keepSnapshot = !forCloud && Math.abs(index - currentIndex) <= 1;
+    if (!keepSnapshot) {
+      delete compact.encounterSnapshot;
+      return compact;
+    }
+    if (compact.encounterSnapshot && typeof compact.encounterSnapshot === "object") {
+      const snapshot = { ...compact.encounterSnapshot };
+      // The current and immediately previous card are enough to recover an
+      // interrupted interaction. Keep only their sense keys instead of a full
+      // duplicate progress map for every queued card.
+      if (snapshot.progress && typeof snapshot.progress === "object") {
+        const keepKeys = new Set([
+          ...(Array.isArray(compact.activeSenseKeys) ? compact.activeSenseKeys : []),
+          ...(Array.isArray(compact.confirmedKeys) ? compact.confirmedKeys : []),
+        ]);
+        snapshot.progress = Object.fromEntries(
+          Object.entries(snapshot.progress).filter(([key]) => keepKeys.has(key)),
+        );
+      }
+      compact.encounterSnapshot = snapshot;
+    }
+    return compact;
+  });
+  return session;
+}
+
+function compactStateSessions(candidate, { forCloud = false } = {}) {
+  const cloned = cloneSerializable(candidate);
+  Object.values(cloned?.bookStates ?? {}).forEach((bookState) => {
+    if (bookState && Object.prototype.hasOwnProperty.call(bookState, "session")) {
+      bookState.session = compactSessionForPersistence(bookState.session, { forCloud });
+    }
+  });
+  if (cloned && Object.prototype.hasOwnProperty.call(cloned, "session")) {
+    cloned.session = compactSessionForPersistence(cloned.session, { forCloud });
+  }
+  return cloned;
+}
+
+function readLearningJournal(storageKey = activeStorageKey) {
+  try {
+    const raw = localStorage.getItem(learningJournalStorageKey(storageKey));
+    if (!raw) return null;
+    const journal = JSON.parse(raw);
+    return journal?.version === 1 && typeof journal === "object" ? journal : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeJournalMaps(previous, next) {
+  return {
+    ...(previous && typeof previous === "object" ? previous : {}),
+    ...(next && typeof next === "object" ? next : {}),
+  };
+}
+
+function mergeJournalWindows(previous, next) {
+  const byId = new Map();
+  [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(next) ? next : [])]
+    .forEach((entry) => {
+      if (!entry || typeof entry !== "object") return;
+      byId.set(String(entry.id ?? `${entry.startedAt ?? ""}-${byId.size}`), entry);
+    });
+  return [...byId.values()].sort((left, right) => {
+    return String(left.startedAt ?? "").localeCompare(String(right.startedAt ?? ""));
+  }).slice(-20);
+}
+
+function writeLearningJournal(options = {}) {
+  if (tutorialRuntime?.active || !state || !isPersistenceSafe()) return false;
+  const bookId = activeBookId();
+  const changed = options.syncChangeOptions?.changedMapKeysByBook?.[bookId] ?? {};
+  const previous = readLearningJournal() ?? {};
+  const progressKeys = new Set(changed.progress ?? []);
+  const card = currentCard();
+  (card?.activeSenseKeys ?? []).forEach((key) => progressKeys.add(key));
+  const progress = {};
+  progressKeys.forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(state.progress ?? {}, key)) {
+      progress[key] = cloneSerializable(state.progress[key]);
+    }
+  });
+  const activityDates = new Set(changed.activityLog ?? []);
+  const date = typeof currentActivityDate === "function" ? currentActivityDate() : null;
+  if (date) activityDates.add(date);
+  const activityLog = {};
+  activityDates.forEach((entryDate) => {
+    if (state.activityLog?.[entryDate]) {
+      activityLog[entryDate] = cloneSerializable(state.activityLog[entryDate]);
+    }
+  });
+  const introducedWords = new Set(previous.introducedWords ?? []);
+  (changed.introducedWords ?? []).forEach((wordId) => introducedWords.add(String(wordId)));
+  const journal = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    bookId,
+    session: compactSessionForPersistence(state.session),
+    progress: mergeJournalMaps(previous.progress, progress),
+    activityLog: mergeJournalMaps(previous.activityLog, activityLog),
+    introducedWords: [...introducedWords],
+    studyWindows: mergeJournalWindows(previous.studyWindows, state.studyWindows?.slice(-3)),
+    learningDayCounter: Math.max(
+      Number(previous.learningDayCounter) || 0,
+      Number(state.learningDayCounter) || 0,
+    ),
+    plan: state.plan ? cloneSerializable(state.plan) : previous.plan ?? null,
+    planTargetHistory: mergeJournalMaps(
+      previous.planTargetHistory,
+      state.planTargetHistory,
+    ),
+  };
+  try {
+    localStorage.setItem(learningJournalStorageKey(), JSON.stringify(journal));
+    return true;
+  } catch (error) {
+    window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
+      detail: {
+        error,
+        storageKey: learningJournalStorageKey(),
+        quotaExceeded: isStorageQuotaError(error),
+        journal: true,
+      },
+    }));
+    return false;
+  }
+}
+
+function applyLearningJournal(storageKey, candidate) {
+  const journal = readLearningJournal(storageKey);
+  if (!journal || !candidate?.bookStates) return candidate;
+  if (!candidate.bookStates[journal.bookId]) {
+    // A crash can happen before the main root write creates the selected
+    // book scope.  Keep the journal as the recovery source instead of
+    // silently discarding that session on the next boot.
+    candidate.bookStates[journal.bookId] = createState();
+  }
+  const bookState = candidate.bookStates[journal.bookId];
+  if (journal.session && typeof journal.session === "object") {
+    bookState.session = normalizeLoadedState({ session: journal.session }).session;
+  }
+  if (journal.plan && typeof journal.plan === "object") bookState.plan = journal.plan;
+  bookState.progress = {
+    ...(bookState.progress ?? {}),
+    ...(journal.progress ?? {}),
+  };
+  bookState.activityLog = {
+    ...(bookState.activityLog ?? {}),
+    ...(journal.activityLog ?? {}),
+  };
+  bookState.introducedWords = [...new Set([
+    ...(bookState.introducedWords ?? []),
+    ...(journal.introducedWords ?? []),
+  ])];
+  bookState.studyWindows = mergeJournalWindows(
+    bookState.studyWindows,
+    journal.studyWindows,
+  );
+  bookState.learningDayCounter = Math.max(
+    Number(bookState.learningDayCounter) || 0,
+    Number(journal.learningDayCounter) || 0,
+  );
+  bookState.planTargetHistory = normalizePlanTargetHistory({
+    ...(bookState.planTargetHistory ?? {}),
+    ...(journal.planTargetHistory ?? {}),
+  });
+  candidate.activeBookId = journal.bookId;
+  return candidate;
+}
+
+function clearLearningJournal(storageKey = activeStorageKey) {
+  try {
+    localStorage.removeItem(learningJournalStorageKey(storageKey));
+  } catch {
+    // A stale journal is harmless if the browser refuses the cleanup write.
+  }
+}
+
+function cloneStateForPersistence(candidate, changes = new Map()) {
+  const cloned = normalizeRootState(compactStateSessions(cloneSerializable(
+    stateWithoutDashboardSnapshots(candidate),
+  )));
+  changes.forEach((snapshotIds, bookId) => {
+    const target = cloned.bookStates?.[bookId];
+    const source = candidate?.bookStates?.[bookId]?.dashboardSnapshots ?? {};
+    if (!target) return;
+    snapshotIds.forEach((snapshotId) => {
+      if (source[snapshotId]) {
+        target.dashboardSnapshots[snapshotId] = cloneSerializable(source[snapshotId]);
+      }
+    });
+  });
+  return cloned;
+}
+
+function serializeDashboardSnapshotSidecar(bookId, snapshotId, snapshot) {
+  const json = JSON.stringify({ bookId, snapshotId, snapshot });
+  if (json.length < 256000) return json;
+  const packed = LOCAL_STORAGE_COMPRESSION_PREFIX + compressStorageText(json);
+  return packed.length < json.length ? packed : json;
+}
+
+function readDashboardSnapshotSidecar(storageKey, bookId, snapshotId) {
+  const raw = localStorage.getItem(
+    dashboardSnapshotStorageKey(storageKey, bookId, snapshotId),
+  );
+  if (!raw) return null;
+  try {
+    const decoded = decodeStorageValue(raw);
+    return decoded?.bookId === bookId && decoded?.snapshotId === snapshotId &&
+      decoded.snapshot && typeof decoded.snapshot === "object"
+      ? decoded.snapshot
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function hydrateDashboardSnapshotSidecars(storageKey, candidate) {
+  const prefix = dashboardSnapshotStoragePrefix(storageKey);
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const decoded = decodeStorageValue(raw);
+      const bookId = String(decoded?.bookId ?? "");
+      const snapshotId = String(decoded?.snapshotId ?? "");
+      const snapshot = decoded?.snapshot;
+      const bookState = candidate?.bookStates?.[bookId];
+      if (!bookState || !snapshotId || !snapshot || typeof snapshot !== "object") continue;
+      bookState.dashboardSnapshots[snapshotId] = snapshot;
+    } catch {
+      // Ignore one damaged sidecar without discarding the remaining history.
+    }
+  }
+  return candidate;
+}
+
+function persistDashboardSnapshotChanges(
+  storageKey,
+  candidate,
+  changes,
+  { prune = false } = {},
+) {
+  const retainedKeys = new Set();
+  changes.forEach((snapshotIds, bookId) => {
+    const snapshots = candidate?.bookStates?.[bookId]?.dashboardSnapshots ?? {};
+    snapshotIds.forEach((snapshotId) => {
+      const key = dashboardSnapshotStorageKey(storageKey, bookId, snapshotId);
+      const snapshot = snapshots[snapshotId];
+      if (!snapshot) {
+        localStorage.removeItem(key);
+        return;
+      }
+      localStorage.setItem(
+        key,
+        serializeDashboardSnapshotSidecar(bookId, snapshotId, snapshot),
+      );
+      retainedKeys.add(key);
+    });
+  });
+
+  if (!prune) return;
+  Object.entries(candidate?.bookStates ?? {}).forEach(([bookId, bookState]) => {
+    Object.keys(bookState?.dashboardSnapshots ?? {}).forEach((snapshotId) => {
+      retainedKeys.add(dashboardSnapshotStorageKey(storageKey, bookId, snapshotId));
+    });
+  });
+  const prefix = dashboardSnapshotStoragePrefix(storageKey);
+  const staleKeys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(prefix) && !retainedKeys.has(key)) staleKeys.push(key);
+  }
+  staleKeys.forEach((key) => localStorage.removeItem(key));
+}
+
+function removeDashboardSnapshotSidecars(storageKey) {
+  const prefix = dashboardSnapshotStoragePrefix(storageKey);
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(prefix)) keys.push(key);
+  }
+  keys.forEach((key) => localStorage.removeItem(key));
+}
+
+function hasEmbeddedDashboardSnapshots(candidate) {
+  return Object.values(candidate?.bookStates ?? {}).some((bookState) => {
+    return Object.keys(bookState?.dashboardSnapshots ?? {}).length > 0;
+  });
 }
 
 function migrateStoredStateToCompactFormat(storageKey, normalized, raw) {
@@ -1240,14 +1665,41 @@ function compactKnownStateCaches() {
   keys.forEach((key) => {
     const { raw, parsed } = readStoredState(key);
     if (!parsed) return;
-    migrateStoredStateToCompactFormat(key, normalizeRootState(parsed), raw);
+    const normalized = normalizeRootState(parsed);
+    if (hasEmbeddedDashboardSnapshots(normalized)) {
+      try {
+        persistDashboardSnapshotChanges(
+          key,
+          normalized,
+          dashboardSnapshotChanges(normalized, true),
+          { prune: true },
+        );
+      } catch {
+        // Never remove the only copy of another account's historical charts.
+        return;
+      }
+    }
+    migrateStoredStateToCompactFormat(key, normalized, raw);
   });
 }
 
 function loadState(storageKey = activeStorageKey) {
   const { raw, parsed } = readStoredState(storageKey);
-  if (!parsed) return createRootState();
-  const normalized = normalizeRootState(parsed);
+  const normalized = normalizeRootState(applyLearningJournal(
+    storageKey,
+    normalizeRootState(parsed ?? createRootState()),
+  ));
+  const embeddedSnapshots = hasEmbeddedDashboardSnapshots(normalized);
+  if (embeddedSnapshots) {
+    const allSnapshots = dashboardSnapshotChanges(normalized, true);
+    try {
+      persistDashboardSnapshotChanges(storageKey, normalized, allSnapshots, { prune: true });
+    } catch {
+      // Keep the legacy embedded copy if the one-time sidecar migration cannot finish.
+      return normalized;
+    }
+  }
+  hydrateDashboardSnapshotSidecars(storageKey, normalized);
   migrateStoredStateToCompactFormat(storageKey, normalized, raw);
   return normalized;
 }
@@ -1260,13 +1712,56 @@ function saveState(options = {}) {
   wordListIndexRevision += 1;
   wordListIndexCache = null;
   const notify = options.notify !== false;
-  if (notify) dashboardRecordSnapshot(activeBookId());
+  const syncRelevant = options.syncRelevant !== undefined
+    ? options.syncRelevant !== false
+    : !(
+      Array.isArray(options.syncChangeOptions?.changedMaps) &&
+      options.syncChangeOptions.changedMaps.length === 0
+    );
+  const uiOnlySave = options.persistAllSnapshots !== true &&
+    options.recordDashboardSnapshot !== true &&
+    (
+      options.persistUiOnly === true ||
+      (
+        options.stampSync === false &&
+        !Array.isArray(options.syncChangeOptions?.changedMaps)
+      ) ||
+      (
+        Array.isArray(options.syncChangeOptions?.changedMaps) &&
+        options.syncChangeOptions.changedMaps.length === 0
+      )
+    );
+  if (uiOnlySave) {
+    // View/session presentation changes do not need a synchronous full-state
+    // clone or localStorage write. The next durable learning mutation persists
+    // the current session together with its progress. Keeping this path in
+    // memory prevents a large history from stealing the animation frame.
+    rootState.bookStates[activeBookId()] = state;
+    if (notify) {
+      window.dispatchEvent(new CustomEvent("sensevocab:state-saved", {
+        detail: {
+          storageKey: activeStorageKey,
+          persisted: true,
+          stampSync: false,
+          syncRelevant: false,
+        },
+      }));
+    }
+    return true;
+  }
+  if (notify && options.recordDashboardSnapshot !== false) {
+    dashboardRecordSnapshot(activeBookId());
+  }
+  const snapshotChanges = dashboardSnapshotChanges(
+    rootState,
+    options.persistAllSnapshots === true,
+  );
   let persisted = true;
   let attemptedCharacters = 0;
   let previousCharacters = 0;
   try {
     rootState.bookStates[activeBookId()] = state;
-    const nextRootState = cloneSerializable(rootState);
+    const nextRootState = cloneStateForPersistence(rootState, snapshotChanges);
     if (state.wordBrowse && requestedWordId()) {
       nextRootState.bookStates[activeBookId()] = {
         ...nextRootState.bookStates[activeBookId()],
@@ -1279,15 +1774,50 @@ function saveState(options = {}) {
       persistedStateBaseline.raw === previousRaw
       ? persistedStateBaseline
       : readStoredState(activeStorageKey);
-    const previousStoredState = previous.parsed;
+    const previousStoredState = previous.parsed
+      ? snapshotChanges.size === 0
+        ? previous.parsed
+        : cloneStateForPersistence(previous.parsed)
+      : null;
+    snapshotChanges.forEach((snapshotIds, bookId) => {
+      const previousBook = previousStoredState?.bookStates?.[bookId];
+      if (!previousBook) return;
+      snapshotIds.forEach((snapshotId) => {
+        const snapshot = readDashboardSnapshotSidecar(
+          activeStorageKey,
+          bookId,
+          snapshotId,
+        );
+        if (snapshot) previousBook.dashboardSnapshots[snapshotId] = snapshot;
+      });
+    });
     previousCharacters = previous.raw?.length ?? 0;
     if (window.SenseVocabSync) {
       if (options.stampSync === false) {
         window.SenseVocabSync.ensureMetadata(nextRootState);
       } else {
+        const changedMapKeysByBook = Object.fromEntries(
+          Object.entries(options.syncChangeOptions?.changedMapKeysByBook ?? {})
+            .map(([bookId, changedKeys]) => [bookId, { ...changedKeys }]),
+        );
+        snapshotChanges.forEach((snapshotIds, bookId) => {
+          const existing = changedMapKeysByBook[bookId] ?? {};
+          changedMapKeysByBook[bookId] = {
+            ...existing,
+            dashboardSnapshots: [
+              ...(existing.dashboardSnapshots ?? []),
+              ...snapshotIds,
+            ],
+          };
+        });
         window.SenseVocabSync.stampChanges(
           nextRootState,
           previousStoredState,
+          undefined,
+          {
+            ...(options.syncChangeOptions ?? {}),
+            changedMapKeysByBook,
+          },
         );
       }
       Object.entries(nextRootState.bookStates ?? {}).forEach(([bookId, bookState]) => {
@@ -1299,8 +1829,22 @@ function saveState(options = {}) {
     }
     const serialized = serializeLocalState(nextRootState);
     attemptedCharacters = serialized.length;
+    persistDashboardSnapshotChanges(
+      activeStorageKey,
+      rootState,
+      snapshotChanges,
+      { prune: options.persistAllSnapshots === true },
+    );
     writeStoredState(activeStorageKey, serialized);
+    clearLearningJournal(activeStorageKey);
+    // nextRootState is already detached from the live state, so retaining it
+    // avoids a second full clone after the write has completed.
     persistedStateBaseline = { key: activeStorageKey, raw: serialized, parsed: nextRootState };
+    snapshotChanges.forEach((snapshotIds, bookId) => {
+      const dirtyIds = dirtyDashboardSnapshots.get(bookId);
+      snapshotIds.forEach((snapshotId) => dirtyIds?.delete(snapshotId));
+      if (dirtyIds?.size === 0) dirtyDashboardSnapshots.delete(bookId);
+    });
   } catch (error) {
     persisted = false;
     window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
@@ -1317,10 +1861,65 @@ function saveState(options = {}) {
 
   if (notify) {
     window.dispatchEvent(new CustomEvent("sensevocab:state-saved", {
-      detail: { storageKey: activeStorageKey, persisted },
+      detail: {
+        storageKey: activeStorageKey,
+        persisted,
+        stampSync: options.stampSync !== false,
+        syncRelevant,
+      },
     }));
   }
   return persisted;
+}
+
+function mergeDeferredUiStateSaveOptions(nextOptions = {}) {
+  const current = deferredUiStateSaveOptions;
+  const merged = { ...current, ...nextOptions };
+  ["recordDashboardSnapshot", "persistAllSnapshots"].forEach((name) => {
+    if (current[name] === true || nextOptions[name] === true) merged[name] = true;
+  });
+
+  const currentChanges = current.syncChangeOptions;
+  const nextChanges = nextOptions.syncChangeOptions;
+  if (currentChanges || nextChanges) {
+    const combined = { ...(currentChanges ?? {}), ...(nextChanges ?? {}) };
+    if (currentChanges?.stampScalars === false || nextChanges?.stampScalars === false) {
+      combined.stampScalars = false;
+    }
+    const changedMaps = [
+      ...(Array.isArray(currentChanges?.changedMaps) ? currentChanges.changedMaps : []),
+      ...(Array.isArray(nextChanges?.changedMaps) ? nextChanges.changedMaps : []),
+    ];
+    if (changedMaps.length) combined.changedMaps = [...new Set(changedMaps)];
+    const currentKeys = currentChanges?.changedMapKeysByBook ?? {};
+    const nextKeys = nextChanges?.changedMapKeysByBook ?? {};
+    const books = new Set([...Object.keys(currentKeys), ...Object.keys(nextKeys)]);
+    if (books.size) {
+      combined.changedMapKeysByBook = {};
+      books.forEach((bookId) => {
+        const bookKeys = {};
+        const maps = new Set([
+          ...Object.keys(currentKeys[bookId] ?? {}),
+          ...Object.keys(nextKeys[bookId] ?? {}),
+        ]);
+        maps.forEach((mapName) => {
+          bookKeys[mapName] = [...new Set([
+            ...(currentKeys[bookId]?.[mapName] ?? []),
+            ...(nextKeys[bookId]?.[mapName] ?? []),
+          ])];
+        });
+        combined.changedMapKeysByBook[bookId] = bookKeys;
+      });
+    }
+    merged.syncChangeOptions = combined;
+    if (combined.changedMaps?.length) {
+      // A durable mutation must win over a later presentation-only save that
+      // happens before the deferred write runs.
+      merged.stampSync = true;
+      merged.syncRelevant = true;
+    }
+  }
+  return merged;
 }
 
 function runDeferredUiStateSave() {
@@ -1329,19 +1928,29 @@ function runDeferredUiStateSave() {
   deferredUiStateSaveIdle = null;
   if (!deferredUiStateSavePending) return;
   deferredUiStateSavePending = false;
-  saveState();
+  const options = deferredUiStateSaveOptions;
+  deferredUiStateSaveOptions = {};
+  saveState(options);
 }
 
-function scheduleIdleUiStateSave(timeout = 700) {
+function scheduleIdleUiStateSave(timeout = 700, options = {}) {
+  deferredUiStateSaveOptions = mergeDeferredUiStateSaveOptions(options);
+  const durable = Boolean(
+    deferredUiStateSaveOptions.persistAllSnapshots === true ||
+    (deferredUiStateSaveOptions.syncChangeOptions?.changedMaps?.length ?? 0) > 0,
+  );
   if (deferredUiStateSaveIdle !== null) return;
   if (typeof window.requestIdleCallback === "function") {
     deferredUiStateSaveIdle = window.requestIdleCallback(
       () => runDeferredUiStateSave(),
-      { timeout },
+      { timeout: durable ? Math.max(timeout, 1200) : timeout },
     );
     return;
   }
-  deferredUiStateSaveTimer = window.setTimeout(runDeferredUiStateSave, 160);
+  deferredUiStateSaveTimer = window.setTimeout(
+    runDeferredUiStateSave,
+    durable ? Math.max(600, timeout) : 160,
+  );
 }
 
 function flushDeferredUiStateSave() {
@@ -1360,8 +1969,18 @@ function flushDeferredUiStateSave() {
   runDeferredUiStateSave();
 }
 
-function saveStateAfterInteractionFrame() {
-  if (document.visibilityState === "hidden") return saveState();
+function saveStateAfterInteractionFrame(options = {}) {
+  const saveOptions = {
+    recordDashboardSnapshot: false,
+    ...options,
+  };
+  if (saveOptions.journal !== false) writeLearningJournal(saveOptions);
+  deferredUiStateSaveOptions = mergeDeferredUiStateSaveOptions(saveOptions);
+  if (document.visibilityState === "hidden") {
+    const immediateOptions = deferredUiStateSaveOptions;
+    deferredUiStateSaveOptions = {};
+    return saveState(immediateOptions);
+  }
   deferredUiStateSavePending = true;
   if (deferredUiStateSaveFrame !== null || deferredUiStateSaveTimer !== null) return true;
   deferredUiStateSaveFrame = window.requestAnimationFrame(() => {
@@ -1374,8 +1993,18 @@ function saveStateAfterInteractionFrame() {
   return true;
 }
 
-function saveStateAfterMotion(delay = 380) {
-  if (document.visibilityState === "hidden") return saveState();
+function saveStateAfterMotion(delay = 380, options = {}) {
+  const saveOptions = {
+    recordDashboardSnapshot: false,
+    ...options,
+  };
+  if (saveOptions.journal !== false) writeLearningJournal(saveOptions);
+  deferredUiStateSaveOptions = mergeDeferredUiStateSaveOptions(saveOptions);
+  if (document.visibilityState === "hidden") {
+    const immediateOptions = deferredUiStateSaveOptions;
+    deferredUiStateSaveOptions = {};
+    return saveState(immediateOptions);
+  }
   deferredUiStateSavePending = true;
   if (deferredUiStateSaveFrame !== null) {
     window.cancelAnimationFrame(deferredUiStateSaveFrame);
@@ -1480,6 +2109,42 @@ function finishStudyWindow(reason) {
   return studyWindow;
 }
 
+function targetForBookDate(bookState, date) {
+  const normalizedDate = String(date ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+    return Math.max(0, Number(bookState?.plan?.dailyTarget) || 0);
+  }
+  const history = normalizePlanTargetHistory(bookState?.planTargetHistory);
+  const historicalDate = Object.keys(history)
+    .filter((entryDate) => entryDate <= normalizedDate)
+    .sort()
+    .at(-1);
+  if (historicalDate) return history[historicalDate];
+  const startedOn = String(bookState?.plan?.startedOn ?? "").slice(0, 10);
+  if (startedOn && normalizedDate >= startedOn) {
+    return Math.max(0, Number(bookState?.plan?.dailyTarget) || 0);
+  }
+  return 0;
+}
+
+function ensurePlanTargetHistory(bookState) {
+  if (!bookState || typeof bookState !== "object") return {};
+  const history = normalizePlanTargetHistory(bookState.planTargetHistory);
+  // An activity entry records the target that applied to that day, but it is
+  // not by itself a plan-change event. Treating every historical activity
+  // target as a new baseline makes one anomalous day (or an old legacy value)
+  // leak into every later empty day. Only explicit planTargetHistory entries
+  // are allowed to change the target used for dates without an activity row.
+  if (bookState.plan && /^\d{4}-\d{2}-\d{2}$/.test(bookState.plan.startedOn ?? "")) {
+    const start = bookState.plan.startedOn;
+    if (!Object.prototype.hasOwnProperty.call(history, start)) {
+      history[start] = Math.max(0, Number(bookState.plan.dailyTarget) || 0);
+    }
+  }
+  bookState.planTargetHistory = normalizePlanTargetHistory(history);
+  return bookState.planTargetHistory;
+}
+
 function startStudyWindow() {
   finishStudyWindow("new-entry");
   const startedAt = new Date().toISOString();
@@ -1507,7 +2172,8 @@ function isCrossDayStudy() {
 function activityForDate(date = currentActivityDate()) {
   state.activityLog[date] = normalizeActivityEntry(state.activityLog[date]);
   if (!Number.isFinite(state.activityLog[date].target)) {
-    state.activityLog[date].target = state.plan?.dailyTarget ?? 0;
+    ensurePlanTargetHistory(state);
+    state.activityLog[date].target = targetForBookDate(state, date);
   }
   return state.activityLog[date];
 }
@@ -1803,6 +2469,7 @@ function sanitizeState() {
     }),
   );
   migrateLegacyActivity();
+  ensurePlanTargetHistory(state);
   state.wordListSort = [
     "mastery",
     "time-asc",
@@ -2113,7 +2780,16 @@ function applyWordDeepLink() {
   }
   const wordId = requestedWordId();
   if (!wordId || !wordById.has(wordId)) return false;
-  wordDeepLinkReturnView = state.view;
+  // Account/bootstrap scope switches can re-apply the URL while the card is
+  // already open. Do not replace the original return surface with "study";
+  // otherwise closing a read-only deep link leaves the user on a hidden card.
+  const sameOpenCard = state.view === "study" &&
+    state.wordBrowse?.wordId === wordId;
+  if (!sameOpenCard) {
+    wordDeepLinkReturnView = ["home", "word-list"].includes(state.view)
+      ? state.view
+      : "home";
+  }
   state.wordBrowse = { wordId };
   state.view = "study";
   return true;
@@ -2138,7 +2814,17 @@ function stateHasLearningData(candidate) {
     Object.keys(candidate.progress ?? {}).length ||
     Object.keys(candidate.activityLog ?? {}).length ||
     Object.keys(candidate.confusionLinks ?? {}).length ||
-    (Array.isArray(candidate.studyWindows) && candidate.studyWindows.length),
+    (Array.isArray(candidate.studyWindows) && candidate.studyWindows.length) ||
+    (
+      candidate.session &&
+      typeof candidate.session === "object" &&
+      (
+        Number(candidate.session.currentIndex) > 0 ||
+        Boolean(candidate.session.revealed) ||
+        (Array.isArray(candidate.session.queue) && candidate.session.queue.length > 0 &&
+          candidate.session.queue.some((card) => (card?.confirmedKeys?.length ?? 0) > 0))
+      )
+    ),
   );
 }
 
@@ -2167,6 +2853,178 @@ function stateSignature(candidate) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+const SYNC_DELTA_SCALARS = Object.freeze([
+  "plan",
+  "learningDayCounter",
+  "wordListSort",
+  "dataVersion",
+]);
+const SYNC_DELTA_MAPS = Object.freeze([
+  "progress",
+  "activityLog",
+  "planTargetHistory",
+  "dashboardEvents",
+  "dashboardSnapshots",
+  "confusionLinks",
+]);
+const SYNC_DELTA_SYNC_MAPS = Object.freeze([
+  "introducedWords",
+  ...SYNC_DELTA_MAPS,
+]);
+
+function syncRecordEqual(left, right) {
+  if (left === right) return true;
+  if (!left || !right || Boolean(left.deleted) !== Boolean(right.deleted)) {
+    return false;
+  }
+  const leftVector = left.vector && typeof left.vector === "object"
+    ? left.vector
+    : {};
+  const rightVector = right.vector && typeof right.vector === "object"
+    ? right.vector
+    : {};
+  const leftKeys = Object.keys(leftVector);
+  const rightKeys = Object.keys(rightVector);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => leftVector[key] === rightVector[key]);
+}
+
+function stateBookScopes(candidate) {
+  if (candidate?.bookStates && typeof candidate.bookStates === "object" &&
+      !Array.isArray(candidate.bookStates)) {
+    const normalized = normalizeRootState(candidate);
+    return normalized.bookStates ?? {};
+  }
+  return { [DEFAULT_BOOK_ID]: candidate ?? {} };
+}
+
+function buildSyncDelta(previousCandidate, nextCandidate, { includeSession = false } = {}) {
+  const previousScopes = stateBookScopes(previousCandidate);
+  const nextScopes = stateBookScopes(nextCandidate);
+  const bookIds = new Set([
+    ...Object.keys(previousScopes),
+    ...Object.keys(nextScopes),
+  ]);
+  const books = {};
+
+  bookIds.forEach((bookId) => {
+    const previous = previousScopes[bookId] ?? {};
+    const next = nextScopes[bookId] ?? {};
+    const bookPatch = {};
+    const scalars = {};
+    const replacements = {};
+    const maps = {};
+    const syncRecords = {};
+
+    SYNC_DELTA_SCALARS.forEach((name) => {
+      if (stableStateStringify(previous[name]) !== stableStateStringify(next[name])) {
+        scalars[name] = cloneSerializable(next[name]);
+      }
+    });
+    if (includeSession &&
+        stableStateStringify(previous.session) !== stableStateStringify(next.session)) {
+      scalars.session = cloneSerializable(next.session);
+    }
+    if (Object.keys(scalars).length) bookPatch.scalars = scalars;
+
+    ["introducedWords", "studyWindows"].forEach((name) => {
+      if (stableStateStringify(previous[name]) !== stableStateStringify(next[name])) {
+        replacements[name] = cloneSerializable(next[name] ?? (name === "studyWindows" ? [] : []));
+      }
+    });
+    if (Object.keys(replacements).length) bookPatch.replacements = replacements;
+
+    SYNC_DELTA_MAPS.forEach((name) => {
+      const previousMap = previous[name] && typeof previous[name] === "object"
+        ? previous[name]
+        : {};
+      const nextMap = next[name] && typeof next[name] === "object"
+        ? next[name]
+        : {};
+      const upsert = {};
+      const deleted = [];
+      const keys = new Set([
+        ...Object.keys(previousMap),
+        ...Object.keys(nextMap),
+      ]);
+      const previousRecords = previous._sync?.records?.[name] ?? {};
+      const nextRecords = next._sync?.records?.[name] ?? {};
+      keys.forEach((key) => {
+        const previousHas = Object.prototype.hasOwnProperty.call(previousMap, key);
+        const nextHas = Object.prototype.hasOwnProperty.call(nextMap, key);
+        if (previousHas && nextHas) {
+          // Sync vectors are intentionally cheap to compare and are updated
+          // for every durable record mutation. Avoid serializing thousands of
+          // unchanged progress objects on every background sync.
+          if (previousRecords[key] && nextRecords[key] &&
+              syncRecordEqual(previousRecords[key], nextRecords[key])) return;
+          if (stableStateStringify(previousMap[key]) ===
+              stableStateStringify(nextMap[key])) return;
+        }
+        if (nextHas) upsert[key] = cloneSerializable(nextMap[key]);
+        else if (previousHas) deleted.push(key);
+      });
+      if (Object.keys(upsert).length || deleted.length) {
+        maps[name] = { upsert, delete: deleted };
+      }
+    });
+    if (Object.keys(maps).length) bookPatch.maps = maps;
+
+    const previousSync = previous._sync ?? {};
+    const nextSync = next._sync ?? {};
+    if (stableStateStringify(previousSync.counters) !== stableStateStringify(nextSync.counters)) {
+      bookPatch.sync = {
+        ...(bookPatch.sync ?? {}),
+        counters: cloneSerializable(nextSync.counters ?? {}),
+      };
+    }
+    const scalarSyncNames = includeSession
+      ? [...SYNC_DELTA_SCALARS, "session"]
+      : SYNC_DELTA_SCALARS;
+    scalarSyncNames.forEach((name) => {
+      const previousRecord = previousSync.records?.[name];
+      const nextRecord = nextSync.records?.[name];
+      if (stableStateStringify(previousRecord) !== stableStateStringify(nextRecord) &&
+          nextRecord) {
+        syncRecords[name] = cloneSerializable(nextRecord);
+      }
+    });
+    SYNC_DELTA_SYNC_MAPS.forEach((name) => {
+      const previousRecords = previousSync.records?.[name] ?? {};
+      const nextRecords = nextSync.records?.[name] ?? {};
+      const changedRecords = {};
+      const keys = new Set([
+        ...Object.keys(previousRecords),
+        ...Object.keys(nextRecords),
+      ]);
+      keys.forEach((key) => {
+        const nextRecord = nextRecords[key];
+        if (previousRecords[key] && nextRecord &&
+            syncRecordEqual(previousRecords[key], nextRecord)) return;
+        if (stableStateStringify(previousRecords[key]) ===
+            stableStateStringify(nextRecord)) return;
+        if (nextRecord) changedRecords[key] = cloneSerializable(nextRecord);
+      });
+      if (Object.keys(changedRecords).length) syncRecords[name] = changedRecords;
+    });
+    if (Object.keys(syncRecords).length) {
+      bookPatch.sync = {
+        ...(bookPatch.sync ?? {}),
+        records: syncRecords,
+      };
+    }
+
+    if (Object.keys(bookPatch).length) books[bookId] = bookPatch;
+  });
+
+  if (!Object.keys(books).length) return null;
+  return {
+    version: 1,
+    activeBookId: nextCandidate?.activeBookId ?? DEFAULT_BOOK_ID,
+    books,
+  };
+}
+
 function recoveryStateSignature(candidate) {
   const normalized = normalizeRootState(cloneSerializable(candidate ?? {}));
   const recoveryState = {
@@ -2178,6 +3036,7 @@ function recoveryStateSignature(candidate) {
           introducedWords: bookState.introducedWords,
           progress: bookState.progress,
           activityLog: bookState.activityLog,
+          planTargetHistory: bookState.planTargetHistory,
           studyWindows: bookState.studyWindows,
           dashboardEvents: bookState.dashboardEvents,
           dashboardSnapshots: bookState.dashboardSnapshots,
@@ -2195,7 +3054,7 @@ function recoveryStateSignature(candidate) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-function applyStateToStorage(storageKey, nextState = null) {
+function applyStateToStorage(storageKey, nextState = null, options = {}) {
   if (tutorialRuntime?.active) {
     tutorialRuntime.realStorageKey = storageKey;
     tutorialRuntime.realRootState = nextState
@@ -2203,13 +3062,25 @@ function applyStateToStorage(storageKey, nextState = null) {
       : loadState(storageKey);
     return true;
   }
+  const navigation = options.preserveNavigation ? captureActiveNavigation() : null;
   activeStorageKey = storageKey;
+  dirtyDashboardSnapshots = new Map();
   rootState = nextState
     ? normalizeRootState(cloneSerializable(nextState))
     : loadState(storageKey);
+  if (nextState) markAllDashboardSnapshotsDirty(rootState);
+  if (navigation && bookById.has(navigation.bookId)) {
+    rootState.activeBookId = navigation.bookId;
+  }
   activateBookScope(rootState.activeBookId);
+  restoreActiveNavigation(navigation);
   applyWordDeepLink();
-  const persisted = saveState({ notify: false, stampSync: !nextState });
+  const persisted = saveState({
+    notify: false,
+    stampSync: !nextState,
+    syncRelevant: !nextState,
+    persistAllSnapshots: Boolean(nextState),
+  });
   render();
   window.dispatchEvent(new CustomEvent("sensevocab:scope-changed", {
     detail: { storageKey: activeStorageKey },
@@ -2219,9 +3090,12 @@ function applyStateToStorage(storageKey, nextState = null) {
 
 function cloudStateSnapshot() {
   if (tutorialRuntime?.active) {
-    return cloneSerializable(tutorialRuntime.realRootState);
+    return compactStateSessions(
+      cloneSerializable(tutorialRuntime.realRootState),
+      { forCloud: true },
+    );
   }
-  const snapshot = cloneSerializable(rootState);
+  const snapshot = compactStateSessions(cloneSerializable(rootState), { forCloud: true });
   if (!isPersistenceSafe()) return snapshot;
   const activeScope = {
     ...cloneSerializable(state),
@@ -2275,6 +3149,7 @@ window.SenseVocabApp = {
   hasLearningData: stateHasLearningData,
   isPersistenceSafe,
   stateSignature,
+  buildSyncDelta,
   recoveryStateSignature,
   mergeStates: (localState, remoteState) => {
     if (!window.SenseVocabSync) return cloneSerializable(remoteState);
@@ -2296,10 +3171,13 @@ window.SenseVocabApp = {
     return window.SenseVocabSync.hasIndependentChanges(candidate, baseline);
   },
   getCurrentWordContext: () => currentFeedbackContext(),
-  activateGuest: () => applyStateToStorage(STORAGE_KEY),
+  activateGuest: (options = {}) => applyStateToStorage(STORAGE_KEY, null, options),
   activateAccount: (userId, nextState = null) => {
-    return applyStateToStorage(accountStorageKey(userId), nextState);
+    return applyStateToStorage(accountStorageKey(userId), nextState, {
+      preserveNavigation: true,
+    });
   },
+  isTutorialActive: () => Boolean(tutorialRuntime?.active),
   isActiveStatePersisted: () => {
     const { parsed } = readStoredState(activeStorageKey);
     if (!parsed) return false;
@@ -2315,6 +3193,8 @@ window.SenseVocabApp = {
       ? captureActiveNavigation()
       : null;
     rootState = normalizeRootState(cloneSerializable(nextState));
+    dirtyDashboardSnapshots = new Map();
+    markAllDashboardSnapshotsDirty(rootState);
     if (navigation && bookById.has(navigation.bookId)) {
       rootState.activeBookId = navigation.bookId;
     }
@@ -2324,12 +3204,20 @@ window.SenseVocabApp = {
     const persisted = saveState({
       notify: options.notify !== false,
       stampSync: options.stampSync !== false,
+      // Replacing the active state is normally a real data mutation, even
+      // when the caller deliberately avoids stamping a sync revision. Remote
+      // reconciliation paths opt out explicitly; local recovery and imports
+      // must still schedule a cloud verification/upload.
+      syncRelevant: options.syncRelevant ?? true,
+      persistAllSnapshots: true,
     });
     render();
     return persisted;
   },
   removeAccountCache: (userId) => {
-    localStorage.removeItem(accountStorageKey(userId));
+    const storageKey = accountStorageKey(userId);
+    localStorage.removeItem(storageKey);
+    removeDashboardSnapshotSidecars(storageKey);
   },
 };
 
@@ -3188,6 +4076,7 @@ function commitUiTransition(kind, update, {
   afterStart,
   scope = "page",
   origin = null,
+  snapshots = true,
 } = {}) {
   const root = document.documentElement;
   let afterStartCalled = false;
@@ -3281,7 +4170,7 @@ function commitUiTransition(kind, update, {
   }
 
   const transitionSurface = scope === "card" ? studyCardViewport : appShell;
-  const outgoingSurface = !lightweightMotion && ["hierarchy", "page", "card"].includes(scope)
+  const outgoingSurface = snapshots && !lightweightMotion && ["hierarchy", "page", "card"].includes(scope)
     ? cloneUiTransitionSurface(transitionSurface, {
       includeNavigation: scope === "hierarchy",
     })
@@ -3353,11 +4242,14 @@ function commitUiTransition(kind, update, {
   const animationEasing = scope === "card"
     ? "cubic-bezier(0.22, 0.61, 0.36, 1)"
     : "cubic-bezier(0.16, 1, 0.3, 1)";
+  const liveHierarchyFrames = !outgoingSurface && scope === "hierarchy" && !lightweightMotion
+    ? uiTransitionFrames("forward", scope, "incoming")
+    : null;
   try {
     animation = target?.animate?.(
       lightweightMotion
         ? lightweightUiTransitionFrames(kind, scope)
-        : uiTransitionFrames(kind, scope, "incoming"), {
+        : liveHierarchyFrames ?? uiTransitionFrames(kind, scope, "incoming"), {
         duration: animationDuration,
         easing: animationEasing,
         fill: "both",
@@ -3594,12 +4486,16 @@ function dashboardRecordSnapshot(bookId = activeBookId(), date = currentDate()) 
     stableStateStringify(previous.enteredAt) === stableStateStringify(enteredAt)) {
     return false;
   }
-  bookState.dashboardSnapshots = normalizeDashboardMap(bookState.dashboardSnapshots);
+  if (!bookState.dashboardSnapshots || typeof bookState.dashboardSnapshots !== "object") {
+    bookState.dashboardSnapshots = {};
+  }
   bookState.dashboardSnapshots[id] = snapshot;
+  markDashboardSnapshotDirty(bookId, id);
   const dates = Object.values(bookState.dashboardSnapshots)
     .filter((entry) => entry?.bookId === bookId && /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? ""))
     .sort((left, right) => String(left.date).localeCompare(String(right.date)));
   dates.slice(0, Math.max(0, dates.length - 180)).forEach((entry) => {
+    markDashboardSnapshotDirty(bookId, entry.id);
     delete bookState.dashboardSnapshots[entry.id];
   });
   return true;
@@ -3717,7 +4613,7 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
   const todayActivity = activityLog[today] ?? normalizeRepairActivity(
     {},
     new Set(bookWords.map((word) => String(word.id))),
-    bookState.plan?.dailyTarget,
+    targetForBookDate(bookState, today),
   );
   const remainingNew = Math.max(
     0,
@@ -3779,17 +4675,25 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
       wordIdBySenseKey.set(key, String(word.id));
     });
   });
-  const defaultTarget = Number(bookState.plan?.dailyTarget) || 0;
+  ensurePlanTargetHistory(bookState);
   const beforeActivity = stableStateStringify(bookState.activityLog ?? {});
   const beforeSnapshots = stableStateStringify(bookState.dashboardSnapshots ?? {});
   const activityLog = {};
   Object.entries(bookState.activityLog ?? {}).forEach(([date, entry]) => {
     if (!repairDateKey(date)) return;
-    activityLog[date] = normalizeRepairActivity(entry, knownWordIds, defaultTarget);
+    activityLog[date] = normalizeRepairActivity(
+      entry,
+      knownWordIds,
+      targetForBookDate(bookState, date),
+    );
   });
   const activityForRepair = (date) => {
     if (!date || date > today) return null;
-    activityLog[date] ??= normalizeRepairActivity({}, knownWordIds, defaultTarget);
+    activityLog[date] ??= normalizeRepairActivity(
+      {},
+      knownWordIds,
+      targetForBookDate(bookState, date),
+    );
     return activityLog[date];
   };
   const addRepairWord = (date, field, wordId) => {
@@ -4021,10 +4925,16 @@ async function repairActiveDerivedData(onProgress = null) {
     window.SenseVocabSync.stampChanges(repaired, previous);
   }
   rootState = normalizeRootState(repaired);
+  dirtyDashboardSnapshots = new Map();
+  markAllDashboardSnapshotsDirty(rootState);
   if (navigation && bookById.has(navigation.bookId)) rootState.activeBookId = navigation.bookId;
   activateBookScope(rootState.activeBookId);
   restoreActiveNavigation(navigation);
-  const persisted = saveState({ notify: false, stampSync: false });
+  const persisted = saveState({
+    notify: false,
+    stampSync: false,
+    persistAllSnapshots: true,
+  });
   render();
   onProgress?.(100, entries.length, entries.length);
   return {
@@ -4430,10 +5340,15 @@ function dashboardEnhanceChart(container, options = {}) {
   const refreshVisibleScale = options.groups?.length && options.visibleScale
     ? dashboardBindVisibleScale(container, frame, svg, options.groups, options.visibleScale)
     : null;
-  requestAnimationFrame(() => {
+  const positionAtLatestWindow = () => {
     plotScroll.scrollLeft = plotScroll.scrollWidth;
     refreshVisibleScale?.();
-  });
+  };
+  // Set the initial viewport and scale before yielding to the compositor. A
+  // delayed first refresh briefly exposes an outlier from the full range and
+  // makes the chart appear to jump when the latest window is selected.
+  positionAtLatestWindow();
+  requestAnimationFrame(positionAtLatestWindow);
 }
 
 function dashboardEnhanceStatusBar(counts, total) {
@@ -4736,7 +5651,14 @@ function dashboardPlannedTargets(bookState, bookWords, dates, unit) {
   };
   dates.forEach((date) => {
     const activity = normalizeActivityEntry(bookState.activityLog?.[date]);
-    const wordTarget = Math.max(0, Number(activity.target ?? bookState.plan?.dailyTarget ?? 0));
+    const wordTarget = Math.max(
+      0,
+      Number(
+        Number.isFinite(activity.target)
+          ? activity.target
+          : targetForBookDate(bookState, date),
+      ) || 0,
+    );
     if (unit === "word") {
       targets[date] = wordTarget;
       return;
@@ -5570,7 +6492,14 @@ function heatmapColor(date, activity) {
   const hasActivity = newCountValue + reviewCountValue > 0;
   if (!hasActivity) return "#dc6a63";
 
-  const target = activity?.target || state.plan?.dailyTarget || 1;
+  const target = Math.max(
+    1,
+    Number(
+      Number.isFinite(activity?.target)
+        ? activity.target
+        : targetForBookDate(state, date),
+    ) || 0,
+  );
   const baseCompleted = Boolean(activity?.baseCompleted) ||
     (newCountValue >= target && hasSuccessfulStudyWindowForDate(date)) ||
     (state.session?.date === date && state.session.baseCompleted);
@@ -5654,8 +6583,35 @@ function renderHeatmap() {
   positionHeatmapAtLatest();
 }
 
-function wordLearningInfo(word) {
-  const introduced = state.introducedWords.includes(word.id);
+function buildWordListIndexContext() {
+  const introducedOrder = new Map();
+  const introducedSet = new Set();
+  state.introducedWords.forEach((wordId, index) => {
+    const normalizedWordId = String(wordId);
+    introducedSet.add(normalizedWordId);
+    if (!introducedOrder.has(normalizedWordId)) {
+      introducedOrder.set(normalizedWordId, index);
+    }
+  });
+
+  const activityDatesByWord = new Map();
+  Object.entries(state.activityLog ?? {}).forEach(([date, activity]) => {
+    const wordIds = new Set([
+      ...(Array.isArray(activity?.newWords) ? activity.newWords : []),
+      ...(Array.isArray(activity?.reviewWords) ? activity.reviewWords : []),
+    ]);
+    wordIds.forEach((wordId) => {
+      const dates = activityDatesByWord.get(String(wordId)) ?? [];
+      dates.push(date);
+      activityDatesByWord.set(String(wordId), dates);
+    });
+  });
+
+  return { activityDatesByWord, introducedOrder, introducedSet };
+}
+
+function wordLearningInfo(word, context = buildWordListIndexContext()) {
+  const introduced = context.introducedSet.has(word.id);
   const keys = allSenseKeysForWord(word);
   const isDate = (date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? "");
   const actualProgressDates = keys.flatMap((key) => {
@@ -5671,13 +6627,7 @@ function wordLearningInfo(word) {
     return [progress?.firstSeen, progress?.lastSeen, progress?.masteredOn]
       .filter(isDate);
   });
-  const activityDates = Object.entries(state.activityLog)
-    .filter(([, activity]) => {
-      return activity?.newWords?.includes(word.id) ||
-        activity?.reviewWords?.includes(word.id);
-    })
-    .map(([date]) => date)
-    .filter(isDate);
+  const activityDates = (context.activityDatesByWord.get(word.id) ?? []).filter(isDate);
   const encounterDates = [...new Set([
     ...actualProgressDates,
     ...activityDates,
@@ -5697,7 +6647,7 @@ function wordLearningInfo(word) {
   const mastered = keys.length > 0 && masteredDates.every(Boolean);
   const masteredOn = mastered ? masteredDates.sort().at(-1) : null;
   const duration = encounterDates.length;
-  const introducedOrder = state.introducedWords.indexOf(word.id);
+  const introducedOrder = context.introducedOrder.get(word.id) ?? -1;
 
   return {
     firstLearned,
@@ -5710,8 +6660,8 @@ function wordLearningInfo(word) {
   };
 }
 
-function wordStatusBadges(word) {
-  if (!state.introducedWords.includes(word.id)) {
+function wordStatusBadges(word, context = buildWordListIndexContext()) {
+  if (!context.introducedSet.has(word.id)) {
     return [{ label: "待新学", type: "new" }];
   }
 
@@ -5872,10 +6822,11 @@ function getWordListIndex() {
     return wordListIndexCache.items;
   }
 
+  const context = buildWordListIndexContext();
   const items = words.map((word) => ({
     word,
-    info: wordLearningInfo(word),
-    badges: wordStatusBadges(word),
+    info: wordLearningInfo(word, context),
+    badges: wordStatusBadges(word, context),
     normalizedWord: word.word.toLocaleLowerCase("en"),
   }));
   wordListIndexCache = { state, revision: wordListIndexRevision, items };
@@ -5942,6 +6893,72 @@ function sortedWordsForList(options = {}) {
   });
 }
 
+const WORD_LIST_RENDER_BATCH_SIZE = 160;
+
+function cancelWordListRender() {
+  wordListRenderToken += 1;
+  if (wordListRenderFrame !== null) {
+    cancelAnimationFrame(wordListRenderFrame);
+    wordListRenderFrame = null;
+  }
+}
+
+function createWordListItem({ word, info, badges }) {
+  const button = document.createElement("button");
+  button.className = "word-list-item";
+  button.type = "button";
+  button.dataset.wordId = word.id;
+
+  const name = document.createElement("span");
+  name.className = "word-list-name";
+  name.textContent = word.word;
+
+  const meta = document.createElement("span");
+  meta.className = "word-list-meta";
+
+  const duration = document.createElement("span");
+  duration.className = "word-list-badge is-duration";
+  duration.textContent = `学习${Math.max(0, info.duration)}天`;
+  meta.append(duration);
+
+  badges.forEach(({ label, type }) => {
+    const status = document.createElement("span");
+    status.className = `word-list-badge is-${type}`;
+    status.textContent = label;
+    meta.append(status);
+  });
+
+  button.append(name, meta);
+  return button;
+}
+
+function appendWordListChunk(items, start, token) {
+  if (token !== wordListRenderToken) return;
+  const end = Math.min(start + WORD_LIST_RENDER_BATCH_SIZE, items.length);
+  const fragment = document.createDocumentFragment();
+  for (let index = start; index < end; index += 1) {
+    fragment.append(createWordListItem(items[index]));
+  }
+  wordList.insertBefore(fragment, wordListMore);
+
+  if (end < items.length) {
+    wordListRenderFrame = requestAnimationFrame(() => {
+      appendWordListChunk(items, end, token);
+    });
+    return;
+  }
+
+  wordListRenderFrame = null;
+  wordList.removeAttribute("aria-busy");
+  const shown = Math.min(wordListVisibleCount, wordListItemsForRender.length);
+  const hasMore = shown < wordListItemsForRender.length;
+  wordListMore.hidden = !hasMore;
+  wordListSummary.textContent = hasMore
+    ? `已显示 ${shown} / ${wordListItemsForRender.length}`
+    : `共 ${wordListItemsForRender.length} 个单词`;
+  wordListLoadMoreButton.hidden = !hasMore;
+}
+
 function renderWordList() {
   if (wordListBookName) wordListBookName.textContent = bookDisplayName();
   wordSortSelect.value = state.wordListSort;
@@ -5951,38 +6968,49 @@ function renderWordList() {
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  const fragment = document.createDocumentFragment();
+  cancelWordListRender();
   const items = sortedWordsForList();
+  const nextWindowKey = [
+    activeBookId(),
+    state.wordListSort,
+    wordListFilter,
+    wordListQuery.trim(),
+  ].join("|");
+  if (nextWindowKey !== wordListWindowKey) {
+    wordListWindowKey = nextWindowKey;
+    wordListVisibleCount = WORD_LIST_PAGE_SIZE;
+  }
+  wordListItemsForRender = items;
   wordListEmpty.hidden = items.length > 0;
-  items.forEach(({ word, info }) => {
-    const button = document.createElement("button");
-    button.className = "word-list-item";
-    button.type = "button";
-    button.dataset.wordId = word.id;
+  wordList.replaceChildren(wordListMore);
+  wordListMore.hidden = true;
+  if (items.length === 0) {
+    wordList.removeAttribute("aria-busy");
+    return;
+  }
 
-    const name = document.createElement("span");
-    name.className = "word-list-name";
-    name.textContent = word.word;
+  wordList.setAttribute("aria-busy", "true");
+  appendWordListChunk(
+    items.slice(0, Math.min(wordListVisibleCount, items.length)),
+    0,
+    wordListRenderToken,
+  );
+}
 
-    const meta = document.createElement("span");
-    meta.className = "word-list-meta";
-
-    const duration = document.createElement("span");
-    duration.className = "word-list-badge is-duration";
-    duration.textContent = `学习${Math.max(0, info.duration)}天`;
-    meta.append(duration);
-
-    wordStatusBadges(word).forEach(({ label, type }) => {
-      const status = document.createElement("span");
-      status.className = `word-list-badge is-${type}`;
-      status.textContent = label;
-      meta.append(status);
-    });
-
-    button.append(name, meta);
-    fragment.append(button);
-  });
-  wordList.replaceChildren(fragment);
+function loadMoreWordList() {
+  if (wordListVisibleCount >= wordListItemsForRender.length) return;
+  cancelWordListRender();
+  const start = wordListVisibleCount;
+  wordListVisibleCount = Math.min(
+    wordListVisibleCount + WORD_LIST_PAGE_SIZE,
+    wordListItemsForRender.length,
+  );
+  wordList.setAttribute("aria-busy", "true");
+  appendWordListChunk(
+    wordListItemsForRender.slice(start, wordListVisibleCount),
+    0,
+    wordListRenderToken,
+  );
 }
 
 function wordBrowseListItems() {
@@ -6021,7 +7049,7 @@ function renderWordBrowseNavigation() {
 function renderStudy() {
   const session = ensureTodaySession();
   const browsing = Boolean(state.wordBrowse);
-  if (state.view === "study" && !vocabularyDetailsReady) {
+  if (state.view === "study" && !vocabularyDetailsReady && !browsing) {
     studyFeedbackButton.hidden = true;
     studyTopbar.hidden = browsing;
     studyProgressRow.hidden = false;
@@ -6426,7 +7454,13 @@ async function startStudy(event) {
   commitUiTransition("forward", () => {
     state.view = "study";
     render();
-  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: () => saveStateAfterMotion(520) });
+  }, {
+    scope: "hierarchy",
+    origin: transitionOrigin,
+    afterStart: () => saveStateAfterMotion(520, {
+      syncChangeOptions: { changedMaps: ["studyWindows", "dashboardSnapshots"] },
+    }),
+  });
 }
 
 async function startAdvanceStudy(event) {
@@ -6458,7 +7492,13 @@ async function startAdvanceStudy(event) {
   commitUiTransition("forward", () => {
     state.view = "study";
     render();
-  }, { scope: "hierarchy", origin: transitionOrigin, afterStart: () => saveStateAfterMotion(520) });
+  }, {
+    scope: "hierarchy",
+    origin: transitionOrigin,
+    afterStart: () => saveStateAfterMotion(520, {
+      syncChangeOptions: { changedMaps: ["studyWindows", "dashboardSnapshots"] },
+    }),
+  });
 }
 
 function mountFloatingDialogs() {
@@ -6542,7 +7582,10 @@ function openFloatingDialog(dialog, originTarget = null) {
         };
         window.requestAnimationFrame(trackTutorialTarget);
       }
-      Promise.resolve(animation.finished).then(done, done);
+      // Some WebViews occasionally lose the CSS animation finished event.
+      // Keep the visual animation, but never leave the dialog in its entering
+      // state and make the underlying controls permanently unstable.
+      settleAnimation(animation.finished, 520).then(done);
     } else {
       window.setTimeout(done, 470);
     }
@@ -6585,7 +7628,7 @@ function closeFloatingDialog(dialog, { force = false } = {}) {
   };
   const animation = dialog.querySelector(".reset-dialog")?.getAnimations?.()[0];
   if (animation) {
-    Promise.resolve(animation.finished).then(done, done);
+    settleAnimation(animation.finished, 360).then(done);
   } else {
     window.setTimeout(done, 300);
   }
@@ -6652,7 +7695,13 @@ function openWordList(event) {
     wordListQuery = "";
     wordListFilter = "all";
     render();
-  }, { scope: "hierarchy", origin: transitionOrigin });
+  }, {
+    scope: "hierarchy",
+    origin: transitionOrigin,
+    // The catalog can contain thousands of rows. Animate the live surface so
+    // a fallback transition never deep-clones the rendered list.
+    snapshots: false,
+  });
 }
 
 function closeWordList(event) {
@@ -6665,6 +7714,7 @@ function closeWordList(event) {
   }, {
     scope: "hierarchy",
     origin: returnOrigin,
+    snapshots: false,
     after: () => {
       wordListHierarchyOrigin = null;
     },
@@ -6855,6 +7905,21 @@ function reducedMotionPreferred() {
 
 function transitionAnimationFinished(animation) {
   return animation.finished.catch(() => undefined);
+}
+
+function settleAnimation(promise, timeout = 900) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) window.clearTimeout(timer);
+      resolve();
+    };
+    timer = window.setTimeout(finish, timeout);
+    Promise.resolve(promise).then(finish, finish);
+  });
 }
 
 function interpolateNumber(from, to, progress) {
@@ -7079,6 +8144,7 @@ async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) 
   const originWord = currentWord();
   if (!originWord) return;
   confusionTransitioning = true;
+  const transitionToken = ++confusionTransitionToken;
   const sourceRect = revealButton.getBoundingClientRect();
   const sourceFont = Number.parseFloat(window.getComputedStyle(wordText).fontSize) || 72;
   const transition = createWordGlobeTransition(
@@ -7101,24 +8167,37 @@ async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) 
   await nextAnimationFrame();
   const targetRect = confusionSphereRect();
   const targetFont = confusionWordFontSize(confusionRuntime.focusWordId);
-  await animateCardIntoGlobe(transition, sourceRect, targetRect, {
+  await settleAnimation(animateCardIntoGlobe(transition, sourceRect, targetRect, {
     fromFontSize: sourceFont,
     toFontSize: targetFont,
     globe: confusionGlobe,
-  });
+  }), 1_500);
+  if (transitionToken !== confusionTransitionToken || !confusionRuntime) {
+    transition.remove();
+    return;
+  }
   confusionPanel.classList.remove("is-transitioning");
   confusionGlobe?.setPresentationProgress?.(1);
-  if (confusionGlobe?.nextPaint) {
-    await confusionGlobe.nextPaint();
-  } else {
-    await nextAnimationFrame();
-  }
-  await waitForGlobeCompositorCommit();
-  await fadeOutWordGlobeTransition(transition, 220);
-  transition.remove();
-  studyPanel.classList.remove("is-transitioning");
+  // The globe is interactive as soon as its panel is visible. Cleanup of the
+  // handoff overlay must not keep the back button locked on slower WebViews.
   confusionTransitioning = false;
-  renderConfusionPanel();
+  void (async () => {
+    try {
+      if (confusionGlobe?.nextPaint) {
+        await settleAnimation(confusionGlobe.nextPaint(), 180);
+      } else {
+        await settleAnimation(nextAnimationFrame(), 120);
+      }
+      await settleAnimation(waitForGlobeCompositorCommit(), 220);
+      await settleAnimation(fadeOutWordGlobeTransition(transition, 220), 280);
+    } finally {
+      transition.remove();
+      if (transitionToken === confusionTransitionToken) {
+        studyPanel.classList.remove("is-transitioning");
+        renderConfusionPanel();
+      }
+    }
+  })();
 }
 
 async function closeConfusionGlobe(options = {}) {
@@ -7131,8 +8210,9 @@ async function closeConfusionGlobe(options = {}) {
   if (!selectedWord) return;
 
   confusionTransitioning = true;
-  if (options.animate !== false) {
-    await confusionGlobe?.focusWord(selectedWordId);
+  const transitionToken = ++confusionTransitionToken;
+  if (options.animate !== false && !options.back) {
+    await settleAnimation(confusionGlobe?.focusWord(selectedWordId), 520);
   }
   const sourceRect = confusionSphereRect();
   const sourceFont = confusionWordFontSize(selectedWordId);
@@ -7144,10 +8224,10 @@ async function closeConfusionGlobe(options = {}) {
   confusionGlobeStage.style.pointerEvents = "none";
 
   if (options.animate !== false) {
-    await flattenGlobeIntoTransition(transition, sourceRect, {
+    await settleAnimation(flattenGlobeIntoTransition(transition, sourceRect, {
       fontSize: sourceFont,
       globe: confusionGlobe,
-    });
+    }), 620);
   }
   confusionPanel.classList.add("is-transitioning");
 
@@ -7170,17 +8250,17 @@ async function closeConfusionGlobe(options = {}) {
   confusionRuntime = null;
   render();
   studyPanel.classList.add("is-transitioning");
-  await nextAnimationFrame();
-  await nextAnimationFrame();
+  await settleAnimation(nextAnimationFrame(), 120);
+  await settleAnimation(nextAnimationFrame(), 120);
   const targetRect = revealButton.getBoundingClientRect();
   const targetFont = Number.parseFloat(window.getComputedStyle(wordText).fontSize) || 72;
   if (options.animate === false) {
     transition.remove();
   } else {
-    await animateFlatCircleIntoCard(transition, sourceRect, targetRect, {
+    await settleAnimation(animateFlatCircleIntoCard(transition, sourceRect, targetRect, {
       fromFontSize: sourceFont,
       toFontSize: targetFont,
-    });
+    }), 720);
   }
   confusionPanel.classList.remove("is-transitioning");
   studyPanel.classList.remove("is-transitioning");
@@ -7188,9 +8268,8 @@ async function closeConfusionGlobe(options = {}) {
   confusionTransitioning = false;
 }
 
-async function openWordCard(wordId, options = {}) {
+function openWordCard(wordId, options = {}) {
   if (!wordById.has(wordId)) return;
-  if (!await ensureVocabularyDetailsReady("word-card")) return;
   const transitionOrigin = options.origin ?? getUiTransitionOrigin(options.event?.currentTarget);
   studyHierarchyOrigin = transitionOrigin;
   commitUiTransition("forward", () => {
@@ -7205,8 +8284,19 @@ async function openWordCard(wordId, options = {}) {
       : { wordId };
     state.view = "study";
     render();
-    saveStateAfterMotion(520);
-  }, { scope: "hierarchy", origin: transitionOrigin });
+    saveStateAfterMotion(520, { stampSync: false });
+  }, {
+    scope: "hierarchy",
+    origin: transitionOrigin,
+    snapshots: options.source !== "word-list",
+  });
+
+  // The catalog index already contains the word and sense identities needed by
+  // a read-only card. Enter immediately, then hydrate examples, audio, and
+  // morphology in the background instead of blocking the tap on the full pack.
+  if (!vocabularyDetailsReady) {
+    window.setTimeout(() => beginVocabularyDetailsLoad(), 0);
+  }
 }
 
 function navigateWordCard(direction) {
@@ -7219,12 +8309,14 @@ function navigateWordCard(direction) {
     stopWordAudio();
     state.wordBrowse.wordId = wordId;
     render();
-    saveStateAfterMotion(460);
+    saveStateAfterMotion(460, { stampSync: false });
   }, { scope: "card" });
 }
 
 function closeWordCard(event) {
   const transitionOrigin = studyHierarchyOrigin ?? getUiTransitionOrigin(event?.currentTarget);
+  const returningToWordList = state.wordBrowse?.source === "word-list" ||
+    requestedWordId() && wordDeepLinkReturnView === "word-list";
   commitUiTransition("backward", () => {
     const deepLinked = Boolean(requestedWordId());
     state.wordBrowse = null;
@@ -7236,10 +8328,11 @@ function closeWordCard(event) {
     clearWordDeepLink();
     wordDeepLinkReturnView = null;
     render();
-    saveStateAfterMotion(520);
+    saveStateAfterMotion(520, { stampSync: false });
   }, {
     scope: "hierarchy",
     origin: transitionOrigin,
+    snapshots: !returningToWordList,
     after: () => {
       studyHierarchyOrigin = null;
     },
@@ -7265,7 +8358,9 @@ function exitStudy(transitionOrigin = null) {
   }, {
     scope: "hierarchy",
     origin: returnOrigin,
-    afterStart: () => saveStateAfterMotion(520),
+    afterStart: () => saveStateAfterMotion(520, {
+      syncChangeOptions: { changedMaps: ["studyWindows", "dashboardSnapshots"] },
+    }),
     after: () => {
       studyHierarchyOrigin = null;
     },
@@ -7329,7 +8424,7 @@ function showPreviousWord() {
     clearStudyCompletionAnimation();
     closeReturnDialog();
     render();
-    saveStateAfterMotion(460);
+    saveStateAfterMotion(460, { syncChangeOptions: { changedMaps: [] } });
   }, { scope: "card" });
 }
 
@@ -7352,7 +8447,7 @@ function showNextHistoryWord() {
     clearStudyCompletionAnimation();
     closeReturnDialog();
     render();
-    saveStateAfterMotion(460);
+    saveStateAfterMotion(460, { syncChangeOptions: { changedMaps: [] } });
   }, { scope: "card" });
 }
 
@@ -7368,7 +8463,7 @@ function returnToCurrentWord() {
     session.historyView = null;
     clearStudyCompletionAnimation();
     render();
-    saveStateAfterMotion(460);
+    saveStateAfterMotion(460, { syncChangeOptions: { changedMaps: [] } });
   }, { scope: "card" });
 }
 
@@ -7380,7 +8475,7 @@ function revealSenses() {
     session.revealed = true;
     session.cardPhase = "select";
     render();
-    saveStateAfterMotion(340);
+    saveStateAfterMotion(340, { syncChangeOptions: { changedMaps: [] } });
   }, { scope: "reveal" });
 }
 
@@ -7728,8 +8823,18 @@ function markSenseFamiliar(key, options = {}) {
   }
   // State mutation is complete before this point; never serialize/compress the
   // full multi-book cache before the pressed state can paint.
-  if (options.deferSave) saveStateAfterMotion();
-  else saveStateAfterInteractionFrame();
+  const syncChangeOptions = {
+    changedMaps: ["progress", "dashboardEvents"],
+    stampScalars: false,
+    changedMapKeysByBook: {
+      [activeBookId()]: { progress: [key] },
+    },
+  };
+  if (options.deferSave) {
+    saveStateAfterMotion(380, { syncChangeOptions });
+  } else {
+    saveStateAfterInteractionFrame({ syncChangeOptions });
+  }
 }
 
 function toggleGreenSenseDetails(key) {
@@ -7743,7 +8848,9 @@ function toggleGreenSenseDetails(key) {
   }
   card.expandedMasteredKeys = [...expanded];
   render();
-  saveStateAfterInteractionFrame();
+  saveStateAfterInteractionFrame({
+    syncChangeOptions: { changedMaps: [], stampScalars: false },
+  });
 }
 
 function animateSenseMastered(item) {
@@ -7870,7 +8977,9 @@ function completeCurrentSelection() {
     card.expandedMasteredKeys = [];
     session.cardPhase = "examples";
     render();
-    saveStateAfterMotion(340);
+    saveStateAfterMotion(340, {
+      syncChangeOptions: { changedMaps: [], stampScalars: false },
+    });
   }, { scope: "reveal" });
 }
 
@@ -7915,10 +9024,23 @@ function nextWord() {
   if (!state) return;
 
   const session = ensureTodaySession();
-  if (!session.revealed || session.cardPhase !== "examples" || !currentCard()) return;
+  const completedCard = currentCard();
+  if (!session.revealed || session.cardPhase !== "examples" || !completedCard) return;
+  const activeBook = activeBookId();
+  const cardKeys = activeSenseKeysForCard(completedCard);
+  const syncChangeOptions = {
+    changedMaps: ["progress", "introducedWords", "activityLog", "dashboardEvents"],
+    stampScalars: false,
+    changedMapKeysByBook: {
+      [activeBook]: {
+        progress: cardKeys,
+        introducedWords: [completedCard.wordId],
+        activityLog: [currentActivityDate()],
+      },
+    },
+  };
 
   commitUiTransition("forward", () => {
-    const completedCard = currentCard();
     scheduleUnknownSenses();
     markCurrentWordIntroduced();
     if (
@@ -7962,7 +9084,10 @@ function nextWord() {
     }
     render();
     if (!currentCard()) triggerStudyCompletionCue();
-  }, { scope: "card", afterStart: () => saveStateAfterMotion(460) });
+  }, {
+    scope: "card",
+    afterStart: () => saveStateAfterMotion(460, { syncChangeOptions }),
+  });
 }
 
 function handleProgressButton(event) {
@@ -8085,6 +9210,8 @@ function savePlan() {
     state.plan.dailyTarget = target;
     state.plan.updatedOn = date;
   }
+  ensurePlanTargetHistory(state);
+  state.planTargetHistory[date] = target;
 
   closePlanDialog({ force: true });
   saveState();
@@ -8635,7 +9762,19 @@ function finishTutorial() {
   activateBookScope(rootState.activeBookId);
   state.view = "home";
   state.wordBrowse = null;
+  // The tutorial deliberately never writes its demo state. Persist the real
+  // state immediately when it restores control so a page close right after
+  // the tutorial cannot leave the account on an in-memory-only copy.
+  saveState({
+    notify: false,
+    stampSync: false,
+    syncRelevant: false,
+    recordDashboardSnapshot: false,
+  });
   render();
+  window.dispatchEvent(new CustomEvent("sensevocab:tutorial-finished", {
+    detail: { storageKey: activeStorageKey },
+  }));
 }
 
 function showTutorialCompletedDialog() {
@@ -8899,7 +10038,7 @@ async function initializeApp() {
   window.dispatchEvent(new CustomEvent("sensevocab:app-ready"));
   maybeStartAutomaticTutorial();
   if (!vocabularyDetailsReady) {
-    beginVocabularyDetailsLoad();
+    scheduleVocabularyDetailsPreload();
   } else if (!vocabularyDetailsError) {
     setVocabularyStatus();
   }
@@ -9020,12 +10159,18 @@ wordSortSelect.addEventListener("change", () => {
   saveState();
   renderWordList();
 });
-wordList.addEventListener("click", async (event) => {
+wordListLoadMoreButton.addEventListener("click", loadMoreWordList);
+wordList.addEventListener("scroll", () => {
+  if (wordListMore.hidden || wordListRenderFrame !== null) return;
+  const distanceToBottom = wordList.scrollHeight - wordList.scrollTop - wordList.clientHeight;
+  if (distanceToBottom < 220) loadMoreWordList();
+}, { passive: true });
+wordList.addEventListener("click", (event) => {
   const item = event.target.closest(".word-list-item");
   if (!item) return;
   item.classList.add("is-loading");
   item.setAttribute("aria-busy", "true");
-  await openWordCard(item.dataset.wordId, {
+  openWordCard(item.dataset.wordId, {
     source: "word-list",
     event,
     origin: getUiTransitionOrigin(item),

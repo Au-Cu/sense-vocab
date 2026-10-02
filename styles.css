@@ -1950,6 +1950,8 @@ button {
   font-size: 1rem;
   font-weight: 650;
   letter-spacing: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: 58px;
 }
 
 .word-list-name {
@@ -2006,6 +2008,20 @@ button {
 
 .word-list-item:last-child {
   border-bottom: 0;
+}
+
+.word-list-more {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 16px 8px 20px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.word-list-more .secondary-button {
+  min-height: 40px;
+  width: min(230px, 100%);
 }
 
 .word-list-item:hover,

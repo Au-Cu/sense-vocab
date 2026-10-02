@@ -86,17 +86,9 @@ test("reviewed heteronyms have distinct sourced recordings without changing stab
 });
 
 test("the home shell stays usable while detailed vocabulary loads slowly", async ({ page }) => {
-  const bundle = fs.readFileSync(
-    path.join(ROOT_DIR, "data", "vocabulary-bundle.json"),
-    "utf8",
-  );
   await page.route("**/data/vocabulary-bundle.json*", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 3000));
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: bundle,
-    });
+    await route.continue();
   });
 
   await page.goto(APP_URL);
@@ -115,7 +107,8 @@ test("the home shell stays usable while detailed vocabulary loads slowly", async
 
   await page.locator("#wordListButton").click();
   await expect(page.locator("#wordListPanel")).toBeVisible();
-  await expect(page.locator(".word-list-item")).toHaveCount(5042);
+  await expect(page.locator(".word-list-item")).toHaveCount(80);
+  await expect(page.locator("#wordListLoadMoreButton")).toBeVisible();
 
   await expect(page.locator("html")).toHaveAttribute("data-vocabulary-ready", "true", {
     timeout: 20000,
@@ -138,7 +131,7 @@ test("plans, progress, statistics, and word lists switch by book", async ({ page
   await expect(page.locator("#homeRemainingWords")).toHaveText("4827");
   await page.locator("#wordListButton").click();
   await expect(page.locator("#wordListBookName")).toHaveText("雅思词汇");
-  await expect(page.locator(".word-list-item")).toHaveCount(4827);
+  await expect(page.locator(".word-list-item")).toHaveCount(80);
   await page.locator("#wordListBackButton").click();
 
   await page.locator("#planButton").click();
@@ -164,7 +157,15 @@ test("a Wikimedia pronunciation keeps long attribution off the learning card", a
   await page.locator("#dailyTargetInput").fill("30");
   await page.locator("#savePlanButton").click();
   await page.locator("#wordListButton").click();
-  await page.locator(".word-list-item[data-word-id='in']").click();
+  await page.locator("#wordSearchInput").fill("in");
+  const targetWord = page.locator("#wordList .word-list-item[data-word-id='in']");
+  for (let pageIndex = 0; pageIndex < 10 && await targetWord.count() === 0; pageIndex += 1) {
+    const loadMore = page.locator("#wordListLoadMoreButton");
+    if (!(await loadMore.isVisible())) break;
+    await loadMore.click();
+  }
+  await expect(targetWord).toHaveCount(1);
+  await targetWord.click();
 
   await expect(page.locator("#audioAttribution")).toHaveCount(0);
   await expect(page.locator(".audio-attribution-entry")).toHaveCount(0);

@@ -17,6 +17,7 @@
     "introducedWords",
     "progress",
     "activityLog",
+    "planTargetHistory",
     "studyWindows",
     "dashboardEvents",
     "dashboardSnapshots",
@@ -105,6 +106,7 @@
         introducedWords: {},
         progress: {},
         activityLog: {},
+        planTargetHistory: {},
         studyWindows: {},
         dashboardEvents: {},
         dashboardSnapshots: {},
@@ -127,8 +129,27 @@
     return result;
   }
 
-  function ensureScopeMetadata(state) {
+  function hasCompleteMetadata(state) {
+    const metadata = state?._sync;
+    if (!metadata || typeof metadata !== "object" ||
+        metadata.version !== SYNC_VERSION ||
+        !metadata.counters || typeof metadata.counters !== "object" ||
+        !metadata.records || typeof metadata.records !== "object") {
+      return false;
+    }
+    return SCALAR_RECORDS.every((name) => {
+      return metadata.records[name] === null ||
+        (metadata.records[name] && typeof metadata.records[name] === "object");
+    }) && MAP_RECORDS.every((name) => {
+      return metadata.records[name] &&
+        typeof metadata.records[name] === "object" &&
+        !Array.isArray(metadata.records[name]);
+    });
+  }
+
+  function ensureScopeMetadata(state, { reuse = false } = {}) {
     if (!state || typeof state !== "object") return emptyMetadata();
+    if (reuse && hasCompleteMetadata(state)) return state._sync;
     const source = state._sync && typeof state._sync === "object"
       ? state._sync
       : {};
@@ -181,6 +202,11 @@
     Object.keys(state.activityLog ?? {}).forEach((date) => {
       if (!metadata.records.activityLog[date]) {
         metadata.records.activityLog[date] = normalizeRecord(null);
+      }
+    });
+    Object.keys(state.planTargetHistory ?? {}).forEach((date) => {
+      if (!metadata.records.planTargetHistory[date]) {
+        metadata.records.planTargetHistory[date] = normalizeRecord(null);
       }
     });
     Object.keys(windowsById(state.studyWindows)).forEach((id) => {
@@ -273,12 +299,22 @@
     );
   }
 
-  function stampMap(nextMap, previousMap, metadata, previousMetadata, name, writer) {
-    const keys = new Set([
-      ...Object.keys(nextMap),
-      ...Object.keys(previousMap),
-      ...Object.keys(previousMetadata.records[name]),
-    ]);
+  function stampMap(
+    nextMap,
+    previousMap,
+    metadata,
+    previousMetadata,
+    name,
+    writer,
+    changedKeys = null,
+  ) {
+    const keys = changedKeys === null
+      ? new Set([
+        ...Object.keys(nextMap),
+        ...Object.keys(previousMap),
+        ...Object.keys(previousMetadata.records[name]),
+      ])
+      : new Set(changedKeys);
     keys.forEach((key) => {
       const nextHas = hasOwn(nextMap, key);
       const previousHas = hasOwn(previousMap, key);
@@ -295,98 +331,159 @@
     });
   }
 
-  function stampScopeChanges(nextState, previousState, writer = deviceId()) {
+  function shouldStampMap(name, options) {
+    return !Array.isArray(options.changedMaps) || options.changedMaps.includes(name);
+  }
+
+  function shouldStampScalar(name, options) {
+    if (options.stampScalars === false) return false;
+    return !Array.isArray(options.changedScalars) ||
+      options.changedScalars.includes(name);
+  }
+
+  function stampScopeChanges(nextState, previousState, writer = deviceId(), options = {}) {
     if (!nextState || typeof nextState !== "object") return nextState;
-    const previous = previousState && typeof previousState === "object"
-      ? clone(previousState)
-      : {};
-    const previousMetadata = ensureScopeMetadata(previous);
-    const metadata = ensureScopeMetadata(nextState);
-    inheritMetadata(metadata, previousMetadata);
+    // Persistence clones already carry a complete _sync tree. Reusing it avoids
+    // rebuilding and copying thousands of record vectors on every card tap.
+    // Legacy/incomplete states still take the audited normalization path once.
+    const canReuseMetadata = hasCompleteMetadata(previousState) &&
+      hasCompleteMetadata(nextState);
+    const previous = canReuseMetadata
+      ? previousState
+      : previousState && typeof previousState === "object"
+        ? clone(previousState)
+        : {};
+    const previousMetadata = ensureScopeMetadata(previous, {
+      reuse: canReuseMetadata,
+    });
+    const metadata = ensureScopeMetadata(nextState, {
+      reuse: canReuseMetadata,
+    });
+    if (!canReuseMetadata) inheritMetadata(metadata, previousMetadata);
 
-    stampScalar(nextState, previous, metadata, previousMetadata, "plan", writer);
-    stampScalar(nextState, previous, metadata, previousMetadata, "session", writer);
-    stampScalar(
-      nextState,
-      previous,
-      metadata,
-      previousMetadata,
-      "learningDayCounter",
-      writer,
-    );
-    stampScalar(
-      nextState,
-      previous,
-      metadata,
-      previousMetadata,
-      "wordListSort",
-      writer,
-    );
+    if (shouldStampScalar("plan", options)) {
+      stampScalar(nextState, previous, metadata, previousMetadata, "plan", writer);
+    }
+    if (shouldStampScalar("session", options)) {
+      stampScalar(nextState, previous, metadata, previousMetadata, "session", writer);
+    }
+    if (shouldStampScalar("learningDayCounter", options)) {
+      stampScalar(
+        nextState,
+        previous,
+        metadata,
+        previousMetadata,
+        "learningDayCounter",
+        writer,
+      );
+    }
+    if (shouldStampScalar("wordListSort", options)) {
+      stampScalar(
+        nextState,
+        previous,
+        metadata,
+        previousMetadata,
+        "wordListSort",
+        writer,
+      );
+    }
 
-    const nextMembership = Object.fromEntries(
-      (Array.isArray(nextState.introducedWords) ? nextState.introducedWords : [])
-        .map((wordId) => [wordId, true]),
-    );
-    const previousMembership = Object.fromEntries(
-      (Array.isArray(previous.introducedWords) ? previous.introducedWords : [])
-        .map((wordId) => [wordId, true]),
-    );
-    stampMap(
-      nextMembership,
-      previousMembership,
-      metadata,
-      previousMetadata,
-      "introducedWords",
-      writer,
-    );
-    stampMap(
-      nextState.progress ?? {},
-      previous.progress ?? {},
-      metadata,
-      previousMetadata,
-      "progress",
-      writer,
-    );
-    stampMap(
-      nextState.activityLog ?? {},
-      previous.activityLog ?? {},
-      metadata,
-      previousMetadata,
-      "activityLog",
-      writer,
-    );
-    stampMap(
-      windowsById(nextState.studyWindows),
-      windowsById(previous.studyWindows),
-      metadata,
-      previousMetadata,
-      "studyWindows",
-      writer,
-    );
-    stampMap(
-      nextState.dashboardEvents ?? {},
-      previous.dashboardEvents ?? {},
-      metadata,
-      previousMetadata,
-      "dashboardEvents",
-      writer,
-    );
-    stampMap(
-      nextState.dashboardSnapshots ?? {},
-      previous.dashboardSnapshots ?? {},
-      metadata,
-      previousMetadata,
-      "dashboardSnapshots",
-      writer,
-    );
-    stampMap(
-      nextState.confusionLinks ?? {},
-      previous.confusionLinks ?? {},
-      metadata,
-      previousMetadata,
-      "confusionLinks",
-      writer,
-    );
+    if (shouldStampMap("introducedWords", options)) {
+      const nextMembership = Object.fromEntries(
+        (Array.isArray(nextState.introducedWords) ? nextState.introducedWords : [])
+          .map((wordId) => [wordId, true]),
+      );
+      const previousMembership = Object.fromEntries(
+        (Array.isArray(previous.introducedWords) ? previous.introducedWords : [])
+          .map((wordId) => [wordId, true]),
+      );
+      stampMap(
+        nextMembership,
+        previousMembership,
+        metadata,
+        previousMetadata,
+        "introducedWords",
+        writer,
+        options.changedMapKeys?.introducedWords ?? null,
+      );
+    }
+    if (shouldStampMap("progress", options)) {
+      stampMap(
+        nextState.progress ?? {},
+        previous.progress ?? {},
+        metadata,
+        previousMetadata,
+        "progress",
+        writer,
+        options.changedMapKeys?.progress ?? null,
+      );
+    }
+    if (shouldStampMap("activityLog", options)) {
+      stampMap(
+        nextState.activityLog ?? {},
+        previous.activityLog ?? {},
+        metadata,
+        previousMetadata,
+        "activityLog",
+        writer,
+        options.changedMapKeys?.activityLog ?? null,
+      );
+    }
+    if (shouldStampMap("planTargetHistory", options)) {
+      stampMap(
+        nextState.planTargetHistory ?? {},
+        previous.planTargetHistory ?? {},
+        metadata,
+        previousMetadata,
+        "planTargetHistory",
+        writer,
+        options.changedMapKeys?.planTargetHistory ?? null,
+      );
+    }
+    if (shouldStampMap("studyWindows", options)) {
+      stampMap(
+        windowsById(nextState.studyWindows),
+        windowsById(previous.studyWindows),
+        metadata,
+        previousMetadata,
+        "studyWindows",
+        writer,
+        options.changedMapKeys?.studyWindows ?? null,
+      );
+    }
+    if (shouldStampMap("dashboardEvents", options)) {
+      stampMap(
+        nextState.dashboardEvents ?? {},
+        previous.dashboardEvents ?? {},
+        metadata,
+        previousMetadata,
+        "dashboardEvents",
+        writer,
+        options.changedMapKeys?.dashboardEvents ?? null,
+      );
+    }
+    if (shouldStampMap("dashboardSnapshots", options)) {
+      stampMap(
+        nextState.dashboardSnapshots ?? {},
+        previous.dashboardSnapshots ?? {},
+        metadata,
+        previousMetadata,
+        "dashboardSnapshots",
+        writer,
+        options.changedMapKeys?.dashboardSnapshots ?? null,
+      );
+    }
+    if (shouldStampMap("confusionLinks", options)) {
+      stampMap(
+        nextState.confusionLinks ?? {},
+        previous.confusionLinks ?? {},
+        metadata,
+        previousMetadata,
+        "confusionLinks",
+        writer,
+        options.changedMapKeys?.confusionLinks ?? null,
+      );
+    }
     return nextState;
   }
 
@@ -795,6 +892,16 @@
     result.activityLog = activity.values;
     metadata.records.activityLog = activity.records;
 
+    const targetHistory = mergeMap(
+      "planTargetHistory",
+      left.planTargetHistory ?? {},
+      right.planTargetHistory ?? {},
+      leftMetadata.records.planTargetHistory,
+      rightMetadata.records.planTargetHistory,
+    );
+    result.planTargetHistory = targetHistory.values;
+    metadata.records.planTargetHistory = targetHistory.records;
+
     const windows = mergeMap(
       "studyWindows",
       windowsById(left.studyWindows),
@@ -872,6 +979,7 @@
     "introducedWords",
     "progress",
     "activityLog",
+    "planTargetHistory",
     "studyWindows",
     "dashboardEvents",
     "dashboardSnapshots",
@@ -915,6 +1023,16 @@
     };
   }
 
+  function hasMirroredRootKeys(value) {
+    return MIRRORED_SCOPE_KEYS.some((key) => hasOwn(value, key));
+  }
+
+  function rootStateForStamp(value) {
+    return isRootState(value) && !hasMirroredRootKeys(value)
+      ? value
+      : asRootState(value);
+  }
+
   function ensureMetadata(state) {
     if (!isRootState(state)) return ensureScopeMetadata(state);
     Object.values(state.bookStates).forEach((bookState) => {
@@ -923,12 +1041,12 @@
     return state;
   }
 
-  function stampChanges(nextState, previousState, writer = deviceId()) {
+  function stampChanges(nextState, previousState, writer = deviceId(), options = {}) {
     if (!isRootState(nextState) && !isRootState(previousState)) {
-      return stampScopeChanges(nextState, previousState, writer);
+      return stampScopeChanges(nextState, previousState, writer, options);
     }
-    const next = asRootState(nextState);
-    const previous = asRootState(previousState);
+    const next = rootStateForStamp(nextState);
+    const previous = rootStateForStamp(previousState);
     const bookIds = new Set([
       ...Object.keys(next.bookStates),
       ...Object.keys(previous.bookStates),
@@ -939,9 +1057,15 @@
         next.bookStates[bookId],
         previous.bookStates[bookId] ?? {},
         writer,
+        options.changedMapKeysByBook?.[bookId]
+          ? {
+            ...options,
+            changedMapKeys: options.changedMapKeysByBook[bookId],
+          }
+          : options,
       );
     });
-    Object.assign(nextState, next);
+    if (next !== nextState) Object.assign(nextState, next);
     return nextState;
   }
 
@@ -1125,6 +1249,26 @@
       }
     });
     result.introducedWords = [...introduced];
+
+    // Target history is derived from accepted learning evidence. A stale
+    // guest shell can carry only an old plan snapshot; treating that map as
+    // independent data would interrupt account bootstrap and offer a fake
+    // recovery prompt. Preserve the baseline shape, but import candidate
+    // history only when this scope contributed actual learning evidence.
+    const acceptedLearningEvidenceBeforeHistory = acceptedProgressKeys.size > 0 ||
+      acceptedDates.size > 0;
+    if (acceptedLearningEvidenceBeforeHistory &&
+        (hasOwn(candidate, "planTargetHistory") ||
+          hasOwn(baseline, "planTargetHistory"))) {
+      result.planTargetHistory = {
+        ...(baseline.planTargetHistory ?? {}),
+        ...(candidate.planTargetHistory ?? {}),
+      };
+    } else if (hasOwn(baseline, "planTargetHistory")) {
+      result.planTargetHistory = clone(baseline.planTargetHistory ?? {});
+    } else {
+      delete result.planTargetHistory;
+    }
 
     const candidateSession = candidate.session;
     const baselineSession = baseline.session;

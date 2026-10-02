@@ -48,14 +48,16 @@ async function waitForAccount(page) {
 }
 
 async function installFakeCloud(page, remote = null, options = {}) {
-  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs, getSessionFailures, loadStateFailures }) => {
+  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs, getSessionFailures, loadStateFailures, deltaTransport }) => {
     window.__fakeCloud = {
       remote: initialRemote,
       session: persistedSession,
       loadStateDelayMs,
       getSessionFailures,
       loadStateFailures,
+      deltaTransport,
       saves: [],
+      deltaSaves: [],
       signOuts: 0,
       signUps: [],
       signupOtpVerifications: [],
@@ -268,6 +270,31 @@ async function installFakeCloud(page, remote = null, options = {}) {
         };
         return { ok: true, conflict: false, revision };
       },
+      saveStateDelta: deltaTransport ? async (patch, expectedRevision, force = false, signal) => {
+        if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        const bytes = new TextEncoder().encode(JSON.stringify(patch)).byteLength;
+        window.__fakeCloud.deltaSaves.push({
+          patch: JSON.parse(JSON.stringify(patch)),
+          bytes,
+          expectedRevision,
+          force,
+        });
+        const currentRevision = window.__fakeCloud.remote?.revision ?? 0;
+        if (expectedRevision !== currentRevision) {
+          return {
+            ok: false,
+            conflict: true,
+            revision: currentRevision,
+          };
+        }
+        const revision = currentRevision + 1;
+        window.__fakeCloud.remote = {
+          ...(window.__fakeCloud.remote ?? { found: true, state: {} }),
+          found: true,
+          revision,
+        };
+        return { ok: true, conflict: false, revision };
+      } : undefined,
       async deleteAccount() {
         window.__fakeCloud.deleted = true;
         return { ok: true };
@@ -297,6 +324,7 @@ async function installFakeCloud(page, remote = null, options = {}) {
     loadStateDelayMs: options.loadStateDelayMs ?? 0,
     getSessionFailures: options.getSessionFailures ?? 0,
     loadStateFailures: options.loadStateFailures ?? 0,
+    deltaTransport: Boolean(options.deltaTransport),
   });
 }
 
@@ -407,6 +435,72 @@ test("cloud state reads use the manifest byte count for determinate progress", a
   expect(progressInput.loadCalls).toBe(1);
   expect(progressInput.expectedBytes).toHaveLength(1);
   expect(progressInput.expectedBytes[0]).toBeGreaterThan(0);
+});
+
+test("large account changes upload as ordered sub-4MB delta chunks", async ({ page }) => {
+  test.setTimeout(180000);
+  const remote = makeState(20);
+  await installFakeCloud(page, {
+    found: true,
+    revision: 20,
+    state: remote,
+  }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+    deltaTransport: true,
+  });
+  await page.addInitScript(({ key, state }) => {
+    localStorage.setItem(key, JSON.stringify(state));
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:user-1", "completed");
+    localStorage.setItem(
+      "sense-vocab-cloud-sync-v1:user-1",
+      JSON.stringify({ revision: 20, dirty: false }),
+    );
+  }, { key: ACCOUNT_KEY, state: remote });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.waitForFunction(() => window.SenseVocabApp.isPersistenceSafe(), null, {
+    timeout: 120000,
+  });
+
+  await page.evaluate(async () => {
+    const app = window.SenseVocabApp;
+    const next = app.getState();
+    const vocabulary = await fetch("./data/vocabulary-index.json").then((response) => response.json());
+    const book = vocabulary.books.find((entry) => entry.id === next.activeBookId);
+    const progress = Object.fromEntries(book.entries.flatMap((entry) => {
+      return entry.senseIds.map((senseId) => [
+        `${entry.wordId}:${senseId}`,
+        {
+          status: "mastered",
+          lastSeenActual: "2026-10-01",
+          updatedAt: "2026-10-01T12:00:00.000Z",
+          lastLearningDay: 1,
+          transportPadding: "x".repeat(520),
+        },
+      ]);
+    }));
+    next.progress = progress;
+    next.bookStates[next.activeBookId].progress = progress;
+    app.replaceActiveState(next);
+  });
+
+  await page.locator("#globalSettingsNavButton").click();
+  await page.locator("#dataButton").click();
+  await expect(page.locator("#syncNowButton")).toBeVisible();
+  await page.locator("#syncNowButton").click({ force: true });
+
+  await expect.poll(
+    () => page.evaluate(() => window.__fakeCloud.deltaSaves.length),
+    { timeout: 120000 },
+  ).toBeGreaterThan(1);
+  const chunks = await page.evaluate(() => window.__fakeCloud.deltaSaves);
+  expect(chunks.every((entry) => entry.bytes < 3500000)).toBe(true);
+  expect(chunks.every((entry) => entry.patch.version === 1)).toBe(true);
+  expect(chunks.map((entry) => entry.expectedRevision)).toEqual(
+    chunks.map((_, index) => 20 + index),
+  );
+  expect(chunks.at(-1).bytes).toBeGreaterThan(0);
 });
 
 test("timed-out cloud reads are aborted once without a blind retry", async ({ page }) => {
@@ -643,6 +737,7 @@ test("a localStorage quota error does not abort an authenticated cloud sync", as
   await expect(page.locator("#accountUserView")).toBeVisible();
   await expect(page.locator("#accountSyncStatus")).toHaveText("云端记录已同步");
   await page.locator("#closeAccountButton").click();
+  await page.locator("#globalHomeNavButton").click();
 
   await page.evaluate(() => {
     window.__forceAccountQuota = true;
@@ -973,6 +1068,7 @@ test("an expired signed-in membership disables study while guest mode stays avai
   await expect(page.locator("#startStudyButton")).toBeEnabled();
   await login(page);
   await page.locator("#closeAccountButton").click();
+  await page.locator("#globalHomeNavButton").click();
   await expect(page.locator("#startStudyButton")).toHaveText("会员已到期");
   await expect(page.locator("#startStudyButton")).toBeDisabled();
 });
@@ -1018,6 +1114,7 @@ test("background cloud refresh preserves an active study page on mobile", async 
   await waitForAccount(page);
   await login(page);
   await page.locator("#closeAccountButton").click();
+  await page.locator("#globalHomeNavButton").click();
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#studyPanel")).toBeVisible();
   const currentWord = await page.locator("#wordText").textContent();
@@ -1928,6 +2025,7 @@ test("confusing-word links follow the account to a fresh mobile device", async (
   await login(page);
   await expect(page.locator("#accountUserView")).toBeVisible();
   await page.locator("#closeAccountButton").click();
+  await page.locator("#globalHomeNavButton").click();
 
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#wordText")).toHaveText("act");
@@ -1968,6 +2066,7 @@ test("confusing-word links follow the account to a fresh mobile device", async (
     await login(mobilePage);
     await expect(mobilePage.locator("#accountUserView")).toBeVisible();
     await mobilePage.locator("#closeAccountButton").click();
+    await mobilePage.locator("#globalHomeNavButton").click();
 
     await mobilePage.locator("#wordListButton").click();
     await mobilePage.locator("#wordSearchInput").fill("act");
@@ -2117,6 +2216,7 @@ test("study feedback binds the current word and stays a compact secondary action
 
   await login(page);
   await page.locator("#closeAccountButton").click();
+  await page.locator("#globalHomeNavButton").click();
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#studyPanel")).toBeVisible();
   const word = await page.locator("#wordText").textContent();

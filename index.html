@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20260930-1" />
+    <link rel="stylesheet" href="./styles.css?v=20261002-1" />
   </head>
   <body aria-busy="true">
     <div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-atomic="true">
@@ -413,7 +413,14 @@
           </div>
         </div>
         <p class="word-list-empty" id="wordListEmpty" hidden>没有找到匹配的单词</p>
-        <div class="word-list" id="wordList"></div>
+        <div class="word-list" id="wordList">
+          <div class="word-list-more" id="wordListMore" hidden>
+            <span id="wordListSummary" aria-live="polite"></span>
+            <button class="secondary-button" id="wordListLoadMoreButton" type="button">
+              加载更多
+            </button>
+          </div>
+        </div>
         <nav class="page-bottom-nav word-list-bottom-nav" aria-label="单词列表页面导航">
           <button class="secondary-button word-list-back-button" id="wordListBackButton" type="button">
             返回学习页
@@ -1081,9 +1088,9 @@
 
     <script src="./cloud-config.js?v=20260728-2"></script>
     <script src="./legal-config.js?v=20260809-1"></script>
-    <script src="./cloud-client.js?v=20260930-1"></script>
-    <script src="./sync-state.js?v=20260824-2"></script>
-    <script src="./app.js?v=20260930-1"></script>
-    <script src="./account.js?v=20260930-1"></script>
+    <script src="./cloud-client.js?v=20261002-1"></script>
+    <script src="./sync-state.js?v=20261002-1"></script>
+    <script src="./app.js?v=20261002-1"></script>
+    <script src="./account.js?v=20261002-1"></script>
   </body>
 </html>

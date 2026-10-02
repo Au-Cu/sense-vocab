@@ -14,6 +14,19 @@ function normalizeExpectedBytes(value) {
   return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : null;
 }
 
+function utf8ByteLength(value) {
+  const text = String(value ?? "");
+  if (typeof TextEncoder === "function") {
+    return new TextEncoder().encode(text).byteLength;
+  }
+  if (typeof Blob === "function") return new Blob([text]).size;
+  try {
+    return encodeURIComponent(text).replace(/%[\da-f]{2}/gi, "x").length;
+  } catch {
+    return text.length;
+  }
+}
+
 function stateRpcKind(input) {
   const rawUrl = typeof input === "string" ? input : input?.url;
   if (!rawUrl) return null;
@@ -24,7 +37,11 @@ function stateRpcKind(input) {
     return null;
   }
   if (pathname.endsWith("/rpc/load_user_state")) return "load-state";
-  if (pathname.endsWith("/rpc/save_user_state")) return "save-state";
+  if (pathname.endsWith("/rpc/load_user_state_chunk")) return "load-state-chunk";
+  if (
+    pathname.endsWith("/rpc/save_user_state") ||
+    pathname.endsWith("/rpc/save_user_state_delta")
+  ) return "save-state";
   return null;
 }
 
@@ -153,6 +170,15 @@ window.SenseVocabCloud = {
         p_target_id: targetId,
         p_metadata: metadata,
       }));
+    }
+
+    async function loadStateChunk(revision, chunkIndex, signal = null) {
+      const request = client.rpc("load_user_state_chunk", {
+        p_revision: revision,
+        p_chunk_index: chunkIndex,
+      });
+      if (signal) request.abortSignal(signal);
+      return assertResult(await request);
     }
 
     return {
@@ -290,10 +316,86 @@ window.SenseVocabCloud = {
         try {
           const request = client.rpc("load_user_state");
           if (signal) request.abortSignal(signal);
-          return assertResult(await request);
+          const envelope = assertResult(await request);
+          if (!envelope?.chunked) return envelope;
+
+          const revision = Number(envelope.revision);
+          const chunkCount = Number(envelope.chunks);
+          if (!Number.isSafeInteger(revision) || revision < 0 ||
+              !Number.isSafeInteger(chunkCount) || chunkCount <= 0) {
+            throw new Error("云端记录分段清单无效，已保留本机记录。");
+          }
+
+          const requestId = ++cloudProgressRequestId;
+          const total = normalizeExpectedBytes(envelope.bytes) ?? expectedBytes;
+          let received = 0;
+          let exactChunkBytes = true;
+          let documentText = "";
+          emitCloudProgress({
+            operation: "load-state",
+            requestId,
+            received: 0,
+            total,
+          });
+          for (let index = 0; index < chunkCount; index += 1) {
+            const chunk = await loadStateChunk(revision, index, signal);
+            if (!chunk?.found || Number(chunk.revision) !== revision ||
+                Number(chunk.chunkIndex) !== index ||
+                Number(chunk.chunkCount) !== chunkCount ||
+                typeof chunk.data !== "string") {
+              throw new Error(`云端记录分段 ${index + 1}/${chunkCount} 无效，已保留本机记录。`);
+            }
+            documentText += chunk.data;
+            const actualBytes = utf8ByteLength(chunk.data);
+            const chunkBytes = Number(chunk.bytes);
+            if (Number.isFinite(chunkBytes) && chunkBytes >= 0) {
+              if (Math.floor(chunkBytes) !== chunkBytes || chunkBytes !== actualBytes) {
+                throw new Error(`云端记录分段 ${index + 1}/${chunkCount} 长度校验失败，已保留本机记录。`);
+              }
+              received += chunkBytes;
+            } else {
+              exactChunkBytes = false;
+              received += actualBytes;
+            }
+            if (total && exactChunkBytes && received > total) {
+              throw new Error("云端记录分段总长度超出清单，已保留本机记录。");
+            }
+            emitCloudProgress({
+              operation: "load-state",
+              requestId,
+              received: total ? Math.min(received, total) : received,
+              total,
+            });
+          }
+
+          let document;
+          try {
+            document = JSON.parse(documentText);
+          } catch {
+            throw new Error("云端记录分段无法还原，已保留本机记录。");
+          }
+          if (!document?.found || Number(document.revision) !== revision ||
+              !document.state || typeof document.state !== "object") {
+            throw new Error("云端记录分段校验失败，已保留本机记录。");
+          }
+          if (total && exactChunkBytes && received !== total) {
+            throw new Error("云端记录分段总长度校验失败，已保留本机记录。");
+          }
+          emitCloudProgress({
+            operation: "load-state",
+            requestId,
+            received: total ?? received,
+            total: total ?? received,
+            done: true,
+          });
+          return document;
         } finally {
           expectedLoadStateBytes = null;
         }
+      },
+
+      async loadStateChunk(revision, chunkIndex, signal = null) {
+        return loadStateChunk(revision, chunkIndex, signal);
       },
 
       async loadStateManifest(signal = null) {
@@ -305,6 +407,16 @@ window.SenseVocabCloud = {
       async saveState(state, expectedRevision = null, force = false, signal = null) {
         const request = client.rpc("save_user_state", {
           p_state: compactStateUpload(state),
+          p_expected_revision: expectedRevision,
+          p_force: Boolean(force),
+        });
+        if (signal) request.abortSignal(signal);
+        return assertResult(await request);
+      },
+
+      async saveStateDelta(patch, expectedRevision = null, force = false, signal = null) {
+        const request = client.rpc("save_user_state_delta", {
+          p_patch: patch,
           p_expected_revision: expectedRevision,
           p_force: Boolean(force),
         });
