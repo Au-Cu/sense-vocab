@@ -12,7 +12,7 @@
 | 分支 | `main` |
 | 最新标签 | `v1.11.1` |
 | 正式域名 | `https://sense-vocab.pages.dev/` |
-| 最近已验证部署 | `https://23f4734f.sense-vocab.pages.dev`，已同步正式域名 `https://sense-vocab.pages.dev/`；`dist` SHA-256 `f32aec52d585811a3e4b9f2510f717e4c87123b1e3995ff03b9c6f995fbfe188`，公网 `index.html`、`app.js`、`account.js`、`cloud-client.js`、`sync-state.js`、`styles.css` 均返回 200 且 SHA-256 与本地一致（2026-10-02） |
+| 最近已验证部署 | `https://7e7d2f12.sense-vocab.pages.dev`，已同步正式域名 `https://sense-vocab.pages.dev/`；`dist` SHA-256 `0e6b59405b6b8334050081dced899ae2e426ce93ca347bfd91adc7a3a94ca212`，公网 `index.html`、`app.js`、`account.js`、`cloud-client.js`、`sync-state.js`、`styles.css` 均返回 200 且 SHA-256 与本地一致（2026-10-02） |
 | 最近数据库迁移 | `20260929151638_optimize_user_state_sync` 至 `20261001203000_fix_state_learning_evidence` 的状态同步迁移均已应用远端；当前客户端将增量按每段不超过约 3.5 MB 顺序写入，服务端逐段继续执行 CAS、异常缩减保护和恢复快照。大型状态按固定修订号与约 400,000 字符的不可变传输段读取并核对段序、段数和 UTF-8 字节；新增量路径的最终状态安全上限为 64 MiB，旧客户端的兼容全量写入仍保留 12 MiB 安全门，不再是当前客户端的单次传输方式 |
 | 后台 | `https://sense-vocab.pages.dev/admin.html`，无前台入口 |
 | 工作区 | `D:\Files\sense-vocab-mvp` |
@@ -45,7 +45,7 @@
 
 ## 验证基线
 
-- 当前正式发布输入 SHA-256 `8e9e5d0791b0fa69b271a087136c913f00bec813eec62e0ab06807e486dcad03`：`op:freeze` 后 `verify:release` 的最终 `build:web` 和完整 Playwright 158/158 通过，`dist` SHA-256 为 `f32aec52d585811a3e4b9f2510f717e4c87123b1e3995ff03b9c6f995fbfe188`；账户同步、学习流程、桌面与移动视口及安全回归均通过。已部署至 `https://23f4734f.sense-vocab.pages.dev` 并核验正式域名，关键资源均返回 200 且公网 SHA-256 与本地一致。未声称 iPhone 或鸿蒙真机性能验证。
+- 当前正式发布输入 SHA-256 `b73965ed3df4fc6087847f0c827405f894b5632d7651586ddc97095dbbdb707e`：`op:freeze` 后 `verify:release` 的最终 `build:web` 和完整 Playwright 158/158 通过，`dist` SHA-256 为 `0e6b59405b6b8334050081dced899ae2e426ce93ca347bfd91adc7a3a94ca212`；账户同步、学习流程、桌面与移动视口及安全回归均通过。已部署至 `https://7e7d2f12.sense-vocab.pages.dev` 并核验正式域名，关键资源均返回 200 且公网 SHA-256 与本地一致。未声称 iPhone 或鸿蒙真机性能验证。
 - 所有浮动窗口已统一挂载到正文级弹窗层；打开时主页和底部导航共同位于遮罩下并进入 `inert`，关闭按钮不会再被导航遮挡。账户页不显示无法可靠代表本应用实际可写空间的浏览器存储容量或占用估算，实际写入失败仍通过同步状态和错误提示处理。时序图日期位于标题行，数值详情统一对齐；义项状态流转默认完整容纳全图，终点标签不裁切，手机仍支持有界缩放和拖动。
 - 正式发布仍至少要求最终候选完成 `npm run build:web` 与完整 Playwright 门禁；OP 通过 `op:freeze` 和 `verify:release` 执行，不对同一输入机械重复。
 - 词库改动仍要求内容身份、内容质量、字段级权利链及范围适用的 Python 审计；数据库、安全、同步或构建链变化仍运行对应专项门禁。
