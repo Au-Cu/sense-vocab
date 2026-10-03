@@ -1,5 +1,12 @@
 const { defineConfig } = require("@playwright/test");
 
+const requestedPort = Number(process.env.SENSE_VOCAB_TEST_PORT);
+const testPort = Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535
+  ? requestedPort
+  : 4173;
+const testUrl = `http://127.0.0.1:${testPort}/`;
+process.env.APP_URL ||= testUrl;
+
 module.exports = defineConfig({
   testDir: "./tools",
   testMatch: [
@@ -22,8 +29,8 @@ module.exports = defineConfig({
   fullyParallel: false,
   workers: 1,
   webServer: {
-    command: `${process.env.SENSE_VOCAB_PYTHON || "py -3"} -m http.server 4173 --bind 127.0.0.1`,
-    url: "http://127.0.0.1:4173/",
+    command: `${process.env.SENSE_VOCAB_PYTHON || "py -3"} -m http.server ${testPort} --bind 127.0.0.1`,
+    url: testUrl,
     reuseExistingServer: false,
     timeout: 30_000,
   },

@@ -22,7 +22,10 @@
     "20261001203000_fix_state_learning_evidence.sql",
     "20261002090000_repair_chunk_transport_and_admin_dashboard.sql",
     "20261002100000_fix_chunk_repair_hot_path.sql",
-    "20261002130000_staged_state_uploads.sql"
+    "20261002130000_staged_state_uploads.sql",
+    "20261003035519_fix_staged_upload_progress_and_throughput.sql",
+    "20261003090913_fix_compact_full_upload_deletion_guard.sql",
+    "20261003091607_avoid_duplicate_transport_chunk_rebuild.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -34,9 +37,9 @@
     "defaultFunctionExposureRevoked": true
   },
   "counts": {
-    "discoveredFunctionSignatures": 79,
+    "discoveredFunctionSignatures": 80,
     "securityDefinerSignatures": 66,
-    "explicitFinalGrants": 69,
+    "explicitFinalGrants": 71,
     "browserRpcNames": 42
   },
   "grants": [
@@ -455,6 +458,18 @@
       "roles": [
         "authenticated"
       ]
+    },
+    {
+      "signature": "public.put_user_state_upload_part(uuid, integer, integer, text)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.save_user_state(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
     }
   ],
   "functions": [
@@ -846,6 +861,15 @@
       "checksCallerIdentity": false
     },
     {
+      "key": "public.expand_user_state_transport(p_state jsonb)",
+      "schema": "public",
+      "name": "expand_user_state_transport",
+      "latestMigration": "20261003090913_fix_compact_full_upload_deletion_guard.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
       "key": "public.finalize_user_state_upload(p_upload_id uuid)",
       "schema": "public",
       "name": "finalize_user_state_upload",
@@ -993,7 +1017,7 @@
       "key": "public.put_user_state_upload_part(p_upload_id uuid, p_chunk_index integer, p_chunk_count integer, p_chunk_data text)",
       "schema": "public",
       "name": "put_user_state_upload_part",
-      "latestMigration": "20261002130000_staged_state_uploads.sql",
+      "latestMigration": "20261003035519_fix_staged_upload_progress_and_throughput.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": true
@@ -1056,7 +1080,7 @@
       "key": "public.save_user_state(p_state jsonb, p_expected_revision bigint default null, p_force boolean default false)",
       "schema": "public",
       "name": "save_user_state",
-      "latestMigration": "20261001180000_compact_session_and_delta_guards.sql",
+      "latestMigration": "20261003090913_fix_compact_full_upload_deletion_guard.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": true
@@ -1083,9 +1107,9 @@
       "key": "public.state_has_undeclared_deletions(p_existing jsonb, p_incoming jsonb)",
       "schema": "public",
       "name": "state_has_undeclared_deletions",
-      "latestMigration": "20260808150845_confusion_links_account_sync_guard.sql",
+      "latestMigration": "20261003090913_fix_compact_full_upload_deletion_guard.sql",
       "securityDefiner": false,
-      "declaredEmptySearchPath": false,
+      "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
     },
     {
@@ -1155,7 +1179,7 @@
       "key": "public.user_state_upload_progress(p_user_id uuid, p_upload_id uuid)",
       "schema": "public",
       "name": "user_state_upload_progress",
-      "latestMigration": "20261002130000_staged_state_uploads.sql",
+      "latestMigration": "20261003035519_fix_staged_upload_progress_and_throughput.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": false

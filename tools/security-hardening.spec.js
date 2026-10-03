@@ -156,6 +156,47 @@ test("staged upload progress excludes null indexes and permits one-megabyte part
   expect(account).toContain("Number.isInteger(index)");
 });
 
+test("compact full uploads compare and persist the expanded multi-book state", async () => {
+  const migration = await read(
+    "supabase/migrations/20261003090913_fix_compact_full_upload_deletion_guard.sql",
+  );
+  expect(migration).toContain(
+    "create or replace function public.expand_user_state_transport",
+  );
+  expect(migration).toContain(
+    "public.state_has_undeclared_deletions_unexpanded(",
+  );
+  expect(migration).toContain(
+    "v_authoritative := public.expand_user_state_transport(v_input)",
+  );
+  expect(migration).toContain("set extra_state = v_authoritative");
+  expect(migration).toContain("State exceeds the 64 MB transport safety limit");
+  expect(migration).toContain(
+    "Equivalent compact transport was classified as destructive",
+  );
+  expect(migration).toContain(
+    "A durable progress deletion bypassed the state guard",
+  );
+  expect(migration).toContain(
+    "revoke all on function public.expand_user_state_transport(jsonb)",
+  );
+});
+
+test("full state saves rebuild transport chunks only after materialization", async () => {
+  const migration = await read(
+    "supabase/migrations/20261003091607_avoid_duplicate_transport_chunk_rebuild.sql",
+  );
+  expect(migration).toContain(
+    "before insert or update of transport_state, transport_bytes",
+  );
+  expect(migration).not.toMatch(
+    /before insert or update of[^;]*(?:revision|updated_at)/i,
+  );
+  expect(migration).toContain(
+    "Transport chunk trigger still rebuilds on metadata-only updates",
+  );
+});
+
 test("confusing-word account snapshots validate and guard every book", async () => {
   const migration = await read(
     "supabase/migrations/20260808150845_confusion_links_account_sync_guard.sql",
