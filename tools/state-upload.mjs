@@ -84,7 +84,7 @@ function hashBytes(bytes) {
   return `${first.toString(16).padStart(8, "0")}${second.toString(16).padStart(8, "0")}`;
 }
 
-export function splitStateUpload(state, maxBytes = 320000) {
+export function splitStateUpload(state, maxBytes = 1000000) {
   if (!Number.isInteger(maxBytes) || maxBytes < 1024) {
     throw new Error("Invalid staged upload chunk size");
   }

@@ -20148,7 +20148,7 @@ ${suffix}`;
     }
     return `${first.toString(16).padStart(8, "0")}${second.toString(16).padStart(8, "0")}`;
   }
-  function splitStateUpload(state, maxBytes = 32e4) {
+  function splitStateUpload(state, maxBytes = 1e6) {
     if (!Number.isInteger(maxBytes) || maxBytes < 1024) {
       throw new Error("Invalid staged upload chunk size");
     }
@@ -20524,7 +20524,7 @@ ${suffix}`;
           if (signal) request.abortSignal(signal);
           return assertResult(await request);
         },
-        prepareStateUpload(state, maxBytes = 32e4) {
+        prepareStateUpload(state, maxBytes = 1e6) {
           return splitStateUpload(state, maxBytes);
         },
         async beginStateUpload(uploadId, expectedRevision, force, manifest, chunkCount, totalBytes, signal = null) {

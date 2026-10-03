@@ -302,7 +302,7 @@ async function installFakeCloud(page, remote = null, options = {}) {
         };
         return { ok: true, conflict: false, revision };
       } : undefined,
-      prepareStateUpload: stagedTransport ? (state, maxBytes = 320000) => {
+      prepareStateUpload: stagedTransport ? (state, maxBytes = 1000000) => {
         const serialized = JSON.stringify(state);
         const bytes = new TextEncoder().encode(serialized);
         const chunks = [];
@@ -337,7 +337,9 @@ async function installFakeCloud(page, remote = null, options = {}) {
           revision: currentRevision,
           chunkCount,
           totalBytes,
-          receivedIndexes: indexes,
+          // Reproduce the old LEFT JOIN aggregate response. The browser must
+          // never coerce this null sentinel into the valid chunk index zero.
+          receivedIndexes: indexes.length ? indexes : [null],
           receivedChunks: indexes.length,
           receivedBytes: indexes.reduce((sum, index) => sum + existing.parts[index].bytes, 0),
         };

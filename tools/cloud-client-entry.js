@@ -437,7 +437,7 @@ window.SenseVocabCloud = {
         return assertResult(await request);
       },
 
-      prepareStateUpload(state, maxBytes = 320000) {
+      prepareStateUpload(state, maxBytes = 1000000) {
         return splitStateUpload(state, maxBytes);
       },
 

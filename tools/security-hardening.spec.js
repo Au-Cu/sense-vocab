@@ -142,6 +142,20 @@ test("staged account uploads keep transport parts private and commit once", asyn
   expect(migration).not.toMatch(/\bexecute\s+(?:format|\w+\s*\|\|)/i);
 });
 
+test("staged upload progress excludes null indexes and permits one-megabyte parts", async () => {
+  const [migration, account] = await Promise.all([
+    read(
+      "supabase/migrations/20261003035519_fix_staged_upload_progress_and_throughput.sql",
+    ),
+    read("account.js"),
+  ]);
+  expect(migration).toContain("filter (where p.chunk_index is not null)");
+  expect(migration).toContain("chunk_bytes between 1 and 1250000");
+  expect(migration).toContain("v_bytes > 1250000");
+  expect(account).toContain("const STAGED_UPLOAD_CHUNK_BYTES = 1000000");
+  expect(account).toContain("Number.isInteger(index)");
+});
+
 test("confusing-word account snapshots validate and guard every book", async () => {
   const migration = await read(
     "supabase/migrations/20260808150845_confusion_links_account_sync_guard.sql",

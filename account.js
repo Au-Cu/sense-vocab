@@ -161,7 +161,7 @@
   // Staged parts are deliberately much smaller than the database limit. Each
   // request only inserts one text row; the expensive full-state rebuild is
   // deferred to the single finalize call.
-  const STAGED_UPLOAD_CHUNK_BYTES = 320000;
+  const STAGED_UPLOAD_CHUNK_BYTES = 1000000;
   const SYNC_DIAGNOSTICS_PREFIX = "sense-vocab-sync-diagnostics-v1:";
   const SYNC_DIAGNOSTICS_LIMIT = 40;
   const CLOUD_LOAD_CACHE_MS = 4000;
@@ -2246,7 +2246,9 @@
 
     const receivedIndexes = new Set(
       Array.isArray(begun.receivedIndexes)
-        ? begun.receivedIndexes.map((index) => Number(index))
+        ? begun.receivedIndexes
+          .filter((index) => Number.isInteger(index) &&
+            index >= 0 && index < prepared.chunks.length)
         : [],
     );
     let receivedBytes = Number(begun.receivedBytes);
