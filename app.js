@@ -390,6 +390,7 @@ const cancelReplayTutorialButton = document.querySelector("#cancelReplayTutorial
 
 let words = [];
 let wordById = new Map();
+let knownSenseKeySet = new Set();
 let state = null;
 let rootState = null;
 let vocabularyBundle = null;
@@ -919,6 +920,9 @@ function activateBookScope(bookId, options = {}) {
   state = rootState.bookStates[targetId];
   words = wordsForBook(targetId);
   wordById = new Map(words.map((word) => [word.id, word]));
+  knownSenseKeySet = new Set(
+    words.flatMap((word) => allSenseKeysForWord(word)),
+  );
   if (options.sanitize !== false && isPersistenceSafe()) {
     sanitizeState();
     ensureTodaySession();
@@ -967,8 +971,7 @@ function getSense(key) {
 }
 
 function isKnownSenseKey(key) {
-  const { word, sense } = getSense(key);
-  return Boolean(word && sense);
+  return knownSenseKeySet.has(key);
 }
 
 function allSenseKeysForWord(word) {
@@ -3836,6 +3839,7 @@ function currentQueueCounts() {
 
   if (!session.reinforcementAdded) {
     const alreadyReinforced = new Set(session.reinforcedKeys);
+    const learningDay = activeLearningDay();
     const dueReinforcementCount = Object.entries(state.progress).filter(
       ([key, progress]) => {
         return isKnownSenseKey(key) &&
@@ -3843,7 +3847,7 @@ function currentQueueCounts() {
           !alreadyReinforced.has(key) &&
           (
             !Number.isFinite(progress.dueLearningDay) ||
-            progress.dueLearningDay <= activeLearningDay()
+            progress.dueLearningDay <= learningDay
           );
       },
     ).length;
@@ -8978,6 +8982,7 @@ function completeCurrentSelection() {
     session.cardPhase = "examples";
     render();
     saveStateAfterMotion(340, {
+      journal: false,
       syncChangeOptions: { changedMaps: [], stampScalars: false },
     });
   }, { scope: "reveal" });

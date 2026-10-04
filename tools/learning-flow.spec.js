@@ -202,6 +202,44 @@ test("study progress separates stage words from combined sense progress", async 
   expect(pageErrors).toEqual([]);
 });
 
+test("completing a selection does not block the input frame on journal storage", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("1");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await reveal(page);
+  await page.waitForTimeout(900);
+
+  await page.evaluate(() => {
+    const originalGetItem = Storage.prototype.getItem;
+    window.__learningJournalReads = 0;
+    Storage.prototype.getItem = function getItemWithoutBlockingInput(key) {
+      if (String(key).includes(":learning-journal-v1:")) {
+        window.__learningJournalReads += 1;
+        const blockedUntil = performance.now() + 250;
+        while (performance.now() < blockedUntil) {
+          // Simulate a large journal decode on a slower mobile browser.
+        }
+      }
+      return originalGetItem.call(this, key);
+    };
+  });
+
+  const elapsed = await page.evaluate(() => {
+    const startedAt = performance.now();
+    document.querySelector("#nextButton").click();
+    return performance.now() - startedAt;
+  });
+
+  expect(elapsed).toBeLessThan(150);
+  expect(await page.evaluate(() => window.__learningJournalReads)).toBe(0);
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+});
+
 test("mobile completion feedback stays within the viewport without vibration support", async ({ page }) => {
   const pageErrors = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));

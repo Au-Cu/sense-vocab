@@ -803,6 +803,61 @@ test("a failed cloud read keeps guest progress and exposes a read-only compariso
   await expect(page.locator("#resolveDataDifferenceButton")).toBeVisible();
 });
 
+test("cloud comparison includes the top-level active book from compact transport", async ({ page }) => {
+  const remote = makeState(55);
+  remote.activeBookId = "kaoyan";
+  remote.bookStates = {
+    ielts: makeState(18),
+  };
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = { status: "mastered" };
+  remote.progress["act:v-2"] = { status: "review" };
+  remote.activityLog["2026-10-04"] = {
+    newWords: ["act"],
+    reviewWords: [],
+    newCount: 1,
+    reviewCount: 0,
+    target: 55,
+  };
+
+  await installFakeCloud(page, {
+    found: true,
+    revision: 9,
+    state: remote,
+    updatedAt: "2026-10-04T04:43:16.000Z",
+  }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.evaluate(() => {
+    const local = window.SenseVocabApp.getState();
+    const activeBookId = local.activeBookId;
+    const inactiveBooks = Object.fromEntries(
+      Object.entries(local.bookStates).filter(([bookId]) => bookId !== activeBookId),
+    );
+    window.__fakeCloud.remote.state = {
+      ...local.bookStates[activeBookId],
+      schemaVersion: local.schemaVersion,
+      activeBookId,
+      bookStates: inactiveBooks,
+    };
+  });
+  await openData(page);
+  await page.locator("#compareDataButton").click();
+
+  await expect(page.locator("#dataComparison")).toBeVisible();
+  await expect(page.locator("#dataCloudRecordSummary")).toContainText("1已学单词");
+  await expect(page.locator("#dataCloudRecordSummary")).toContainText("1掌握义项");
+  await expect(page.locator("#dataCloudRecordSummary")).toContainText("1待巩固义项");
+  await expect(page.locator("#dataCloudRecordSummary")).toContainText("1学习天数");
+  await expect(page.locator("#dataCloudRecordPlan")).toContainText("考研词汇：每天 55 词");
+  await expect(page.locator("#dataComparisonStatus")).toHaveText(
+    "本机账户记录与云端记录一致。",
+  );
+  await expect(page.locator("#resolveDataDifferenceButton")).toBeHidden();
+});
+
 test("large learning history remains durable under a local storage quota", async ({ page }) => {
   const keys = require("../data/vocabulary-bundle.json").books.find((book) => book.id === "kaoyan")
     .entries.flatMap((entry) => entry.senseIds.map((id) => `${entry.wordId}:${id}`)).slice(0, 4000);

@@ -762,15 +762,35 @@
     return `${Number(match[2])}月${Number(match[3])}日`;
   }
 
-  function stateBookEntries(candidate) {
+  function stateActiveBook(candidate) {
+    const activeBookId = candidate?.activeBookId || "kaoyan";
+    const bookStates = candidate?.bookStates;
     if (
-      candidate?.bookStates &&
-      typeof candidate.bookStates === "object" &&
-      !Array.isArray(candidate.bookStates)
+      bookStates &&
+      typeof bookStates === "object" &&
+      !Array.isArray(bookStates) &&
+      Object.prototype.hasOwnProperty.call(bookStates, activeBookId)
     ) {
-      return Object.entries(candidate.bookStates);
+      return bookStates[activeBookId] ?? {};
     }
-    return [[candidate?.activeBookId || "kaoyan", candidate ?? {}]];
+    return candidate ?? {};
+  }
+
+  function stateBookEntries(candidate) {
+    const activeBookId = candidate?.activeBookId || "kaoyan";
+    const bookStates = candidate?.bookStates;
+    if (!bookStates || typeof bookStates !== "object" || Array.isArray(bookStates)) {
+      return [[activeBookId, stateActiveBook(candidate)]];
+    }
+
+    const entries = Object.entries(bookStates);
+    if (Object.prototype.hasOwnProperty.call(bookStates, activeBookId)) {
+      return entries;
+    }
+
+    // Compact cloud transport keeps the active book at the top level and only
+    // stores inactive books under bookStates.
+    return [[activeBookId, stateActiveBook(candidate)], ...entries];
   }
 
   function bookLabel(bookId) {
@@ -1906,11 +1926,7 @@
   }
 
   function cloudStateSignature(candidate) {
-    const scope = candidate?.bookStates &&
-      typeof candidate.bookStates === "object" &&
-      !Array.isArray(candidate.bookStates)
-      ? candidate.bookStates[candidate.activeBookId ?? activeBookId()] ?? {}
-      : candidate ?? {};
+    const scope = stateActiveBook(candidate);
     const dateKey = (value) => String(value ?? "").match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? "";
     const progressEvidenceDate = (progress) => {
       const dates = [
