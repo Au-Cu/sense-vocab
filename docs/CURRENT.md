@@ -12,7 +12,7 @@
 | 分支 | `main` |
 | 最新标签 | `v1.11.3` |
 | 正式域名 | `https://sense-vocab.pages.dev/` |
-| 最近已验证部署 | `https://fa96f8d7.sense-vocab.pages.dev`，已同步正式域名 `https://sense-vocab.pages.dev/`；`dist` SHA-256 `830cc6cfba515e53e5021a33bd2ddeeaffb43aed71179eb8e64dc416f6dcb409`，公网资源核验通过（2026-10-03，归属 2026-10-02 发布批次） |
+| 最近已验证部署 | `https://b441a76e.sense-vocab.pages.dev`，已同步正式域名 `https://sense-vocab.pages.dev/`；`dist` SHA-256 `2c5f3a9d611d80bb2108f05d7a12148c50e10cbab623c01aec6bd3158dbd24cd`，入口页与账户同步脚本公网哈希核验通过（2026-10-04 完成，归属 2026-10-03 发布批次） |
 | 最近数据库迁移 | `20260929151638_optimize_user_state_sync` 至 `20261003091607_avoid_duplicate_transport_chunk_rebuild` 的状态同步迁移均已应用远端；大型账户上传先写入账户隔离的可恢复临时分片，服务端只在全部分片校验通过后执行一次 CAS 权威写入，中断后按服务端确认分片续传。压缩传输会在删除保护和权威存储前恢复当前词书，避免等价的顶层表示被误判为整本删除；下载分片只在新传输快照物化后重建一次。大型状态读取仍按固定修订号、段序、段数和 UTF-8 字节校验，最终状态安全上限为 64 MiB |
 | 后台 | `https://sense-vocab.pages.dev/admin.html`，无前台入口 |
 | 工作区 | `D:\Files\sense-vocab-mvp` |
@@ -45,7 +45,7 @@
 
 ## 验证基线
 
-- `v1.11.3` 正式候选输入 SHA-256 `3fa18651129dac09686a3d08d7d0e3955088f205ad47ec94d8ce577ae3d60670`：`op:freeze` 后 `verify:release` 的最终 `build:web` 和完整 Playwright 165/165 通过，`dist` SHA-256 为 `2c5f3a9d611d80bb2108f05d7a12148c50e10cbab623c01aec6bd3158dbd24cd`；账户同步、学习流程、桌面与移动视口及安全回归均通过。未声称 iPhone 或鸿蒙真机性能验证。
+- `v1.11.3` 正式输入 SHA-256 `3fa18651129dac09686a3d08d7d0e3955088f205ad47ec94d8ce577ae3d60670`：`op:freeze` 后 `verify:release` 的最终 `build:web` 和完整 Playwright 165/165 通过，`dist` SHA-256 为 `2c5f3a9d611d80bb2108f05d7a12148c50e10cbab623c01aec6bd3158dbd24cd`；账户同步、学习流程、桌面与移动视口及安全回归均通过。已部署至 `https://b441a76e.sense-vocab.pages.dev`，正式域名入口页与同步脚本哈希一致。未声称 iPhone 或鸿蒙真机性能验证。
 - 所有浮动窗口已统一挂载到正文级弹窗层；打开时主页和底部导航共同位于遮罩下并进入 `inert`，关闭按钮不会再被导航遮挡。账户页不显示无法可靠代表本应用实际可写空间的浏览器存储容量或占用估算，实际写入失败仍通过同步状态和错误提示处理。时序图日期位于标题行，数值详情统一对齐；义项状态流转默认完整容纳全图，终点标签不裁切，手机仍支持有界缩放和拖动。
 - 正式发布仍至少要求最终候选完成 `npm run build:web` 与完整 Playwright 门禁；OP 通过 `op:freeze` 和 `verify:release` 执行，不对同一输入机械重复。
 - 词库改动仍要求内容身份、内容质量、字段级权利链及范围适用的 Python 审计；数据库、安全、同步或构建链变化仍运行对应专项门禁。
