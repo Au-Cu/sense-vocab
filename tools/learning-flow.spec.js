@@ -105,7 +105,11 @@ async function completeAndAdvance(page) {
 }
 
 async function readState(page) {
-  return page.evaluate((key) => window.SenseVocabApp.decodeStorageValue(localStorage.getItem(key)), STORAGE_KEY);
+  return page.evaluate(() => {
+    const root = window.SenseVocabApp.getGuestState();
+    const activeBook = root?.bookStates?.[root.activeBookId] ?? {};
+    return { ...root, ...activeBook };
+  });
 }
 
 async function waitForState(page, predicate) {
@@ -202,13 +206,13 @@ test("study progress separates stage words from combined sense progress", async 
   expect(pageErrors).toEqual([]);
 });
 
-test("completing a selection does not block the input frame on journal storage", async ({ page }) => {
+test("study interactions do not block input frames on learning-journal storage", async ({ page }) => {
   await page.goto(APP_URL);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
   await page.locator("#planButton").click();
-  await page.locator("#dailyTargetInput").fill("1");
+  await page.locator("#dailyTargetInput").fill("2");
   await page.locator("#savePlanButton").click();
   await page.locator("#startStudyButton").click();
   await reveal(page);
@@ -216,28 +220,232 @@ test("completing a selection does not block the input frame on journal storage",
 
   await page.evaluate(() => {
     const originalGetItem = Storage.prototype.getItem;
-    window.__learningJournalReads = 0;
-    Storage.prototype.getItem = function getItemWithoutBlockingInput(key) {
-      if (String(key).includes(":learning-journal-v1:")) {
-        window.__learningJournalReads += 1;
-        const blockedUntil = performance.now() + 250;
-        while (performance.now() < blockedUntil) {
-          // Simulate a large journal decode on a slower mobile browser.
-        }
+    const originalSetItem = Storage.prototype.setItem;
+    window.__learningJournalAccesses = 0;
+    const blockJournalAccess = (key) => {
+      if (!String(key).includes(":learning-journal-v1:")) return;
+      window.__learningJournalAccesses += 1;
+      const blockedUntil = performance.now() + 250;
+      while (performance.now() < blockedUntil) {
+        // Simulate a large journal encode/decode on a slower mobile browser.
       }
+    };
+    Storage.prototype.getItem = function getItemWithoutBlockingInput(key) {
+      blockJournalAccess(key);
       return originalGetItem.call(this, key);
+    };
+    Storage.prototype.setItem = function setItemWithoutBlockingInput(key, value) {
+      blockJournalAccess(key);
+      return originalSetItem.call(this, key, value);
     };
   });
 
-  const elapsed = await page.evaluate(() => {
+  const senseTiming = await page.evaluate(() => new Promise((resolve) => {
+    const item = document.querySelector(
+      "#senseList .sense-item:not(:disabled):not(.is-collapsible)",
+    );
+    const accessesBefore = window.__learningJournalAccesses;
+    const startedAt = performance.now();
+    item.click();
+    const clickElapsed = performance.now() - startedAt;
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve({
+      clickElapsed,
+      twoFramesElapsed: performance.now() - startedAt,
+      accesses: window.__learningJournalAccesses - accessesBefore,
+    })));
+  }));
+
+  expect(senseTiming.clickElapsed).toBeLessThan(150);
+  expect(senseTiming.twoFramesElapsed).toBeLessThan(150);
+  expect(senseTiming.accesses).toBe(0);
+  await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await page.waitForTimeout(1200);
+
+  const nextTiming = await page.evaluate(() => {
+    const accessesBefore = window.__learningJournalAccesses;
     const startedAt = performance.now();
     document.querySelector("#nextButton").click();
-    return performance.now() - startedAt;
+    return {
+      elapsed: performance.now() - startedAt,
+      accesses: window.__learningJournalAccesses - accessesBefore,
+    };
   });
 
-  expect(elapsed).toBeLessThan(150);
-  expect(await page.evaluate(() => window.__learningJournalReads)).toBe(0);
+  expect(nextTiming.elapsed).toBeLessThan(150);
+  expect(nextTiming.accesses).toBe(0);
+  await expect(page.locator("#wordText")).not.toHaveText("act");
+});
+
+test("pagehide restores a completed card phase before advancing", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("2");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("act");
+  await reveal(page);
+  await page.waitForTimeout(900);
+
+  await page.locator("#nextButton").click();
   await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+
+  const recovered = await page.evaluate(() => {
+    const root = window.SenseVocabApp.getState();
+    const session = root.bookStates[root.activeBookId].session;
+    return {
+      cardPhase: session.cardPhase,
+      currentIndex: session.currentIndex,
+      queueLength: session.queue.length,
+    };
+  });
+  expect(recovered).toMatchObject({ cardPhase: "examples", currentIndex: 0 });
+  expect(recovered.queueLength).toBeGreaterThan(1);
+
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("act");
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+});
+
+test("advancing stamps the session so a stale completed cloud session cannot win", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("2");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 2");
+  const baseline = await page.evaluate(() => window.SenseVocabApp.getState());
+
+  await reveal(page);
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#queueProgress")).toHaveText("2 / 2");
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  const advanced = await waitForState(page, (saved) => saved.session?.currentIndex === 1);
+
+  const result = await page.evaluate(({ baselineState, advancedState }) => {
+    const bookId = advancedState.activeBookId;
+    const staleCloud = structuredClone(baselineState);
+    const staleSession = staleCloud.session;
+    staleSession.currentIndex = staleSession.queue.length;
+    staleSession.baseCompleted = true;
+    const merged = window.SenseVocabSync.mergeStates(advancedState, staleCloud);
+    return {
+      baselineVector: baselineState._sync.records.session.vector,
+      advancedVector: advancedState._sync.records.session.vector,
+      mergedIndex: merged.bookStates[bookId].session.currentIndex,
+    };
+  }, { baselineState: baseline, advancedState: advanced });
+
+  expect(result.advancedVector).not.toEqual(result.baselineVector);
+  expect(result.mergedIndex).toBe(1);
+});
+
+test("an active study round journals interactions and seals one sync-relevant save", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("2");
+  await page.locator("#savePlanButton").click();
+  await page.evaluate(() => {
+    window.__roundSaveEvents = [];
+    window.addEventListener("sensevocab:state-saved", (event) => {
+      window.__roundSaveEvents.push({
+        persisted: event.detail?.persisted,
+        syncRelevant: event.detail?.syncRelevant,
+      });
+    });
+  });
+
+  await page.locator("#startStudyButton").click();
+  await reveal(page);
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#queueProgress")).toHaveText("2 / 2");
+  await page.waitForTimeout(1400);
+
+  const beforeSeal = await page.evaluate(() => ({
+    events: window.__roundSaveEvents,
+    journalKeys: Object.keys(localStorage).filter((key) => (
+      key.includes(":learning-journal-v1:")
+    )).length,
+  }));
+  expect(beforeSeal.events.filter((event) => event.syncRelevant !== false)).toEqual([]);
+  expect(beforeSeal.journalKeys).toBe(1);
+
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  const afterSeal = await page.evaluate(() => ({
+    events: window.__roundSaveEvents,
+    journalKeys: Object.keys(localStorage).filter((key) => (
+      key.includes(":learning-journal-v1:")
+    )).length,
+  }));
+  expect(afterSeal.events.filter((event) => event.syncRelevant !== false)).toHaveLength(1);
+  expect(afterSeal.journalKeys).toBe(0);
+  expect((await readState(page)).session.currentIndex).toBe(1);
+});
+
+test("returning home renders the sealed round immediately and emits one sync save", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("1");
+  await page.locator("#savePlanButton").click();
+  await page.evaluate(() => {
+    window.__roundSaveEvents = [];
+    window.addEventListener("sensevocab:state-saved", (event) => {
+      window.__roundSaveEvents.push({
+        persisted: event.detail?.persisted,
+        syncRelevant: event.detail?.syncRelevant,
+      });
+    });
+  });
+
+  await page.locator("#startStudyButton").click();
+  await reveal(page);
+  await page.locator('[data-key="act:v-1"]').click();
+  await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+  await completeAndAdvance(page);
+
+  // The reinforcement queue must use the live statuses before the round is sealed.
+  await expect(page.locator("#cardMode")).toHaveText("强化");
+  expect(await page.evaluate(() => (
+    window.__roundSaveEvents.filter((event) => event.syncRelevant !== false).length
+  ))).toBe(0);
+
+  await page.locator("#exitStudyButton").click();
+  await page.locator("#returnHomeButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
+  await expect(page.locator("#homeCompletedWords")).toHaveText("1");
+  await expect(page.locator("#todayReinforceCount")).toHaveText("1");
+  await expect.poll(() => page.evaluate(() => (
+    window.__roundSaveEvents.filter((event) => event.syncRelevant !== false).length
+  ))).toBe(1);
+
+  const sealed = await page.evaluate(() => ({
+    syncEvents: window.__roundSaveEvents.filter((event) => event.syncRelevant !== false),
+    journalKeys: Object.keys(localStorage).filter((key) => (
+      key.includes(":learning-journal-v1:")
+    )).length,
+  }));
+  expect(sealed.syncEvents).toHaveLength(1);
+  expect(sealed.journalKeys).toBe(0);
 });
 
 test("mobile completion feedback stays within the viewport without vibration support", async ({ page }) => {
@@ -339,6 +547,7 @@ test("sense states follow new, reinforcement, review, and double-check mastery",
   expect(state.progress["act:n-4"].status).toBe("reinforce");
 
   // Keep the next days focused on review by marking the full word list as introduced.
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
   await page.evaluate(async ({ key, addedSenseKeys }) => {
     const entries = await fetch("./data/kaoyan-words.json", { cache: "no-store" }).then((response) => response.json());
     const saved = JSON.parse(localStorage.getItem(key));
@@ -572,6 +781,7 @@ test("advance runs the full next plan day while incremental only adds new words"
 
   async function restoreSeed() {
     await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
     await page.evaluate(({ key, value }) => {
       localStorage.setItem(key, JSON.stringify(value));
     }, { key: STORAGE_KEY, value: seedState });
@@ -1052,7 +1262,8 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
   const resetState = await readState(page);
   expect(resetState.plan).toBeNull();
   expect(resetState.introducedWords).toEqual([]);
-  expect(resetState.bookStates.kaoyan).toBeUndefined();
+  expect(resetState.bookStates.kaoyan.progress).toEqual({});
+  expect(resetState.bookStates.kaoyan.activityLog).toEqual({});
 });
 
 test("a scrolled mobile study card returns to the top when the word changes", async ({ page }) => {

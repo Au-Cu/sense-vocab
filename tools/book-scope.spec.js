@@ -162,7 +162,10 @@ test("a Wikimedia pronunciation keeps long attribution off the learning card", a
   for (let pageIndex = 0; pageIndex < 10 && await targetWord.count() === 0; pageIndex += 1) {
     const loadMore = page.locator("#wordListLoadMoreButton");
     if (!(await loadMore.isVisible())) break;
-    await loadMore.click();
+    const itemCount = await page.locator("#wordList .word-list-item").count();
+    await loadMore.evaluate((button) => button.click());
+    await expect.poll(() => page.locator("#wordList .word-list-item").count())
+      .toBeGreaterThan(itemCount);
   }
   await expect(targetWord).toHaveCount(1);
   await targetWord.click();

@@ -1156,8 +1156,6 @@
       .forEach((studyWindow) => dates.push(dateKey(studyWindow?.activityDate)));
     Object.values(value?.dashboardEvents ?? {})
       .forEach((event) => dates.push(dateKey(event?.date ?? event?.observedAt)));
-    Object.values(value?.dashboardSnapshots ?? {})
-      .forEach((snapshot) => dates.push(dateKey(snapshot?.date ?? snapshot?.observedAt)));
     return maximumDate(...dates) ?? "";
   }
 

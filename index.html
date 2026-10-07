@@ -3,9 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f7f4ee" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <link rel="stylesheet" href="./styles.css?v=20261002-1" />
+    <script src="./ui-theme.js?v=20261004-1"></script>
+    <link rel="stylesheet" href="./styles.css?v=20261004-1" />
   </head>
   <body aria-busy="true">
     <div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-atomic="true">
@@ -242,9 +244,33 @@
         <header class="dashboard-page-header settings-page-header">
           <div>
             <p class="word-label">偏好与支持</p>
-            <h1>设置</h1>
+            <h1>更多</h1>
           </div>
         </header>
+        <section class="interface-setting" aria-labelledby="interfaceSettingTitle">
+          <div class="interface-setting-copy">
+            <div class="interface-setting-heading">
+              <h2 id="interfaceSettingTitle">用户界面</h2>
+              <span class="interface-theme-badge" id="uiThemeBadge">经典</span>
+            </div>
+            <p id="uiThemeDescription" aria-live="polite">
+              经典界面已开启：保持原有简洁、稳定的纸面风格。
+            </p>
+            <small>仅保存在当前设备，不影响学习记录或账户同步。</small>
+          </div>
+          <label class="ui-theme-switch" for="liquidGlassToggle">
+            <input
+              id="liquidGlassToggle"
+              type="checkbox"
+              role="switch"
+              aria-describedby="uiThemeDescription"
+            />
+            <span class="ui-theme-switch-track" aria-hidden="true">
+              <span class="ui-theme-switch-thumb"></span>
+            </span>
+            <span class="ui-theme-switch-label">液态玻璃</span>
+          </label>
+        </section>
         <div class="settings-action-list">
           <button class="settings-action settings-action-primary" id="dataButton" type="button">
             <span class="settings-action-copy">
@@ -1080,7 +1106,7 @@
         <span class="nav-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 .6l-.04.08H10l-.04-.08a1.7 1.7 0 0 0-1-.6 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-.6-1L3.92 14v-4L4 9.96a1.7 1.7 0 0 0 .6-1 1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-.6l.04-.08h3.92L14 4a1.7 1.7 0 0 0 1 .6 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9c.1.4.31.74.6 1l.08.04v3.92L20 14c-.29.26-.5.6-.6 1Z"></path></svg>
         </span>
-        <span>设置</span>
+        <span>更多</span>
       </button>
     </nav>
 

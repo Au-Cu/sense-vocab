@@ -25,6 +25,7 @@ module.exports = defineConfig({
     "compliance-rights.spec.js",
     "public-attribution.spec.js",
     "dashboard.spec.js",
+    "ui-theme.spec.js",
   ],
   fullyParallel: false,
   workers: 1,

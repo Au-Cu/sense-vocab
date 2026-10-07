@@ -821,9 +821,18 @@
         }
       });
 
-      Object.keys(bookState?.activityLog ?? {})
-        .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
-        .forEach((date) => studyDates.add(date));
+      Object.entries(bookState?.activityLog ?? {})
+        .filter(([date, activity]) => {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+          return (Array.isArray(activity?.newWords) && activity.newWords.length > 0) ||
+            (Array.isArray(activity?.reviewWords) && activity.reviewWords.length > 0) ||
+            (Array.isArray(activity?.learningDays) && activity.learningDays.length > 0) ||
+            Number(activity?.newCount) > 0 ||
+            Number(activity?.reviewCount) > 0 ||
+            activity?.baseCompleted === true ||
+            activity?.overtime === true;
+        })
+        .forEach(([date]) => studyDates.add(date));
       (Array.isArray(bookState?.studyWindows) ? bookState.studyWindows : [])
         .forEach((studyWindow) => {
           if (/^\d{4}-\d{2}-\d{2}$/.test(studyWindow?.activityDate ?? "")) {

@@ -16,6 +16,7 @@ test("the public UI avoids executable HTML sinks", async () => {
     read("app.js"),
     read("account.js"),
     read("admin.js"),
+    read("ui-theme.js"),
   ]);
   const source = sources.join("\n");
   expect(source).not.toMatch(/\b(?:innerHTML|outerHTML)\s*=/);

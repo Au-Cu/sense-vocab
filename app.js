@@ -455,6 +455,13 @@ let deferredUiStateSaveFrame = null;
 let deferredUiStateSaveTimer = null;
 let deferredUiStateSaveIdle = null;
 let deferredUiStateSaveOptions = {};
+let deferredLearningJournalPending = false;
+let deferredLearningJournalFrame = null;
+let deferredLearningJournalTimer = null;
+let deferredLearningJournalIdle = null;
+let deferredLearningJournalOptions = {};
+let learningSessionCommitOptions = {};
+const learningJournalCache = new Map();
 let dirtyDashboardSnapshots = new Map();
 let studyHierarchyOrigin = null;
 let wordListHierarchyOrigin = null;
@@ -1372,14 +1379,31 @@ function compactStateSessions(candidate, { forCloud = false } = {}) {
 }
 
 function readLearningJournal(storageKey = activeStorageKey) {
+  const key = learningJournalStorageKey(storageKey);
+  if (learningJournalCache.has(key)) return learningJournalCache.get(key);
   try {
-    const raw = localStorage.getItem(learningJournalStorageKey(storageKey));
-    if (!raw) return null;
-    const journal = JSON.parse(raw);
-    return journal?.version === 1 && typeof journal === "object" ? journal : null;
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      learningJournalCache.set(key, null);
+      return null;
+    }
+    const journal = decodeStorageValue(raw);
+    const normalized = journal?.version === 1 && typeof journal === "object"
+      ? journal
+      : null;
+    learningJournalCache.set(key, normalized);
+    return normalized;
   } catch {
+    learningJournalCache.set(key, null);
     return null;
   }
+}
+
+function serializeLearningJournal(journal) {
+  const json = JSON.stringify(journal);
+  if (json.length < 65536) return json;
+  const packed = LOCAL_STORAGE_COMPRESSION_PREFIX + compressStorageText(json);
+  return packed.length < json.length ? packed : json;
 }
 
 function mergeJournalMaps(previous, next) {
@@ -1426,6 +1450,9 @@ function writeLearningJournal(options = {}) {
   });
   const introducedWords = new Set(previous.introducedWords ?? []);
   (changed.introducedWords ?? []).forEach((wordId) => introducedWords.add(String(wordId)));
+  const dashboardEvents = Object.fromEntries(
+    Object.entries(state.dashboardEvents ?? {}).filter(([, event]) => event?.date === date),
+  );
   const journal = {
     version: 1,
     updatedAt: new Date().toISOString(),
@@ -1433,6 +1460,7 @@ function writeLearningJournal(options = {}) {
     session: compactSessionForPersistence(state.session),
     progress: mergeJournalMaps(previous.progress, progress),
     activityLog: mergeJournalMaps(previous.activityLog, activityLog),
+    dashboardEvents: mergeJournalMaps(previous.dashboardEvents, dashboardEvents),
     introducedWords: [...introducedWords],
     studyWindows: mergeJournalWindows(previous.studyWindows, state.studyWindows?.slice(-3)),
     learningDayCounter: Math.max(
@@ -1446,7 +1474,9 @@ function writeLearningJournal(options = {}) {
     ),
   };
   try {
-    localStorage.setItem(learningJournalStorageKey(), JSON.stringify(journal));
+    const key = learningJournalStorageKey();
+    localStorage.setItem(key, serializeLearningJournal(journal));
+    learningJournalCache.set(key, journal);
     return true;
   } catch (error) {
     window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
@@ -1483,6 +1513,10 @@ function applyLearningJournal(storageKey, candidate) {
     ...(bookState.activityLog ?? {}),
     ...(journal.activityLog ?? {}),
   };
+  bookState.dashboardEvents = {
+    ...(bookState.dashboardEvents ?? {}),
+    ...(journal.dashboardEvents ?? {}),
+  };
   bookState.introducedWords = [...new Set([
     ...(bookState.introducedWords ?? []),
     ...(journal.introducedWords ?? []),
@@ -1504,8 +1538,10 @@ function applyLearningJournal(storageKey, candidate) {
 }
 
 function clearLearningJournal(storageKey = activeStorageKey) {
+  const key = learningJournalStorageKey(storageKey);
+  learningJournalCache.set(key, null);
   try {
-    localStorage.removeItem(learningJournalStorageKey(storageKey));
+    localStorage.removeItem(key);
   } catch {
     // A stale journal is harmless if the browser refuses the cleanup write.
   }
@@ -1839,7 +1875,11 @@ function saveState(options = {}) {
       { prune: options.persistAllSnapshots === true },
     );
     writeStoredState(activeStorageKey, serialized);
+    discardDeferredLearningJournalWrite();
     clearLearningJournal(activeStorageKey);
+    if (options.sealLearningSession === true || !options.syncChangeOptions) {
+      learningSessionCommitOptions = {};
+    }
     // nextRootState is already detached from the live state, so retaining it
     // avoids a second full clone after the write has completed.
     persistedStateBaseline = { key: activeStorageKey, raw: serialized, parsed: nextRootState };
@@ -1875,8 +1915,7 @@ function saveState(options = {}) {
   return persisted;
 }
 
-function mergeDeferredUiStateSaveOptions(nextOptions = {}) {
-  const current = deferredUiStateSaveOptions;
+function mergeStateSaveOptions(current = {}, nextOptions = {}) {
   const merged = { ...current, ...nextOptions };
   ["recordDashboardSnapshot", "persistAllSnapshots"].forEach((name) => {
     if (current[name] === true || nextOptions[name] === true) merged[name] = true;
@@ -1886,7 +1925,14 @@ function mergeDeferredUiStateSaveOptions(nextOptions = {}) {
   const nextChanges = nextOptions.syncChangeOptions;
   if (currentChanges || nextChanges) {
     const combined = { ...(currentChanges ?? {}), ...(nextChanges ?? {}) };
-    if (currentChanges?.stampScalars === false || nextChanges?.stampScalars === false) {
+    const changedScalars = [
+      ...(Array.isArray(currentChanges?.changedScalars) ? currentChanges.changedScalars : []),
+      ...(Array.isArray(nextChanges?.changedScalars) ? nextChanges.changedScalars : []),
+    ];
+    if (changedScalars.length) {
+      combined.changedScalars = [...new Set(changedScalars)];
+      combined.stampScalars = true;
+    } else if (currentChanges?.stampScalars === false || nextChanges?.stampScalars === false) {
       combined.stampScalars = false;
     }
     const changedMaps = [
@@ -1925,6 +1971,141 @@ function mergeDeferredUiStateSaveOptions(nextOptions = {}) {
   return merged;
 }
 
+function mergeDeferredUiStateSaveOptions(nextOptions = {}) {
+  return mergeStateSaveOptions(deferredUiStateSaveOptions, nextOptions);
+}
+
+function hasLearningSessionCommit() {
+  return Object.keys(learningSessionCommitOptions).length > 0;
+}
+
+function learningTransactionActive() {
+  return Boolean(
+    state?.session &&
+    !state.wordBrowse &&
+    (["study", "confusion"].includes(state.view) || activeStudyWindow()),
+  );
+}
+
+function prepareLearningSaveOptions(options = {}) {
+  let prepared = {
+    recordDashboardSnapshot: false,
+    ...options,
+  };
+  const active = learningTransactionActive();
+  if (active) {
+    const commitOptions = { ...prepared };
+    [
+      "journalOnly",
+      "sealLearningSession",
+      "persistUiOnly",
+      "syncRelevant",
+      "notify",
+    ].forEach((name) => delete commitOptions[name]);
+    learningSessionCommitOptions = mergeStateSaveOptions(
+      learningSessionCommitOptions,
+      commitOptions,
+    );
+  }
+  if (prepared.sealLearningSession === true && hasLearningSessionCommit()) {
+    prepared = mergeStateSaveOptions(learningSessionCommitOptions, prepared);
+  }
+  if (prepared.sealLearningSession === true) {
+    prepared.journalOnly = false;
+  } else if (prepared.journalOnly === undefined) {
+    prepared.journalOnly = active && prepared.sealLearningSession !== true;
+  }
+  return prepared;
+}
+
+function discardDeferredLearningJournalWrite() {
+  if (deferredLearningJournalFrame !== null) {
+    window.cancelAnimationFrame(deferredLearningJournalFrame);
+    deferredLearningJournalFrame = null;
+  }
+  if (deferredLearningJournalTimer !== null) {
+    window.clearTimeout(deferredLearningJournalTimer);
+    deferredLearningJournalTimer = null;
+  }
+  if (
+    deferredLearningJournalIdle !== null &&
+    typeof window.cancelIdleCallback === "function"
+  ) {
+    window.cancelIdleCallback(deferredLearningJournalIdle);
+    deferredLearningJournalIdle = null;
+  }
+  deferredLearningJournalPending = false;
+  deferredLearningJournalOptions = {};
+}
+
+function runDeferredLearningJournalWrite() {
+  deferredLearningJournalFrame = null;
+  deferredLearningJournalTimer = null;
+  deferredLearningJournalIdle = null;
+  if (!deferredLearningJournalPending) return false;
+  deferredLearningJournalPending = false;
+  const options = deferredLearningJournalOptions;
+  deferredLearningJournalOptions = {};
+  return writeLearningJournal(options);
+}
+
+function scheduleDeferredLearningJournalWrite(options = {}) {
+  if (options.journal === false || tutorialRuntime?.active) return false;
+  if (
+    options.journalOnly !== true &&
+    !learningTransactionActive() &&
+    !hasLearningSessionCommit()
+  ) return false;
+  deferredLearningJournalOptions = mergeStateSaveOptions(
+    deferredLearningJournalOptions,
+    options,
+  );
+  deferredLearningJournalPending = true;
+  if (document.visibilityState === "hidden") {
+    return runDeferredLearningJournalWrite();
+  }
+  if (
+    deferredLearningJournalFrame !== null ||
+    deferredLearningJournalTimer !== null ||
+    deferredLearningJournalIdle !== null
+  ) return true;
+
+  deferredLearningJournalFrame = window.requestAnimationFrame(() => {
+    deferredLearningJournalFrame = null;
+    deferredLearningJournalTimer = window.setTimeout(() => {
+      deferredLearningJournalTimer = null;
+      if (typeof window.requestIdleCallback === "function") {
+        deferredLearningJournalIdle = window.requestIdleCallback(
+          runDeferredLearningJournalWrite,
+          { timeout: 800 },
+        );
+      } else {
+        runDeferredLearningJournalWrite();
+      }
+    }, 120);
+  });
+  return true;
+}
+
+function flushDeferredLearningJournalWrite() {
+  if (deferredLearningJournalFrame !== null) {
+    window.cancelAnimationFrame(deferredLearningJournalFrame);
+    deferredLearningJournalFrame = null;
+  }
+  if (deferredLearningJournalTimer !== null) {
+    window.clearTimeout(deferredLearningJournalTimer);
+    deferredLearningJournalTimer = null;
+  }
+  if (
+    deferredLearningJournalIdle !== null &&
+    typeof window.cancelIdleCallback === "function"
+  ) {
+    window.cancelIdleCallback(deferredLearningJournalIdle);
+    deferredLearningJournalIdle = null;
+  }
+  return runDeferredLearningJournalWrite();
+}
+
 function runDeferredUiStateSave() {
   deferredUiStateSaveFrame = null;
   deferredUiStateSaveTimer = null;
@@ -1933,6 +2114,15 @@ function runDeferredUiStateSave() {
   deferredUiStateSavePending = false;
   const options = deferredUiStateSaveOptions;
   deferredUiStateSaveOptions = {};
+  flushDeferredLearningJournalWrite();
+  if (options.journalOnly === true) {
+    saveState({
+      ...options,
+      persistUiOnly: true,
+      syncRelevant: false,
+    });
+    return;
+  }
   saveState(options);
 }
 
@@ -1956,7 +2146,7 @@ function scheduleIdleUiStateSave(timeout = 700, options = {}) {
   );
 }
 
-function flushDeferredUiStateSave() {
+function cancelDeferredUiStateSave() {
   if (deferredUiStateSaveFrame !== null) {
     window.cancelAnimationFrame(deferredUiStateSaveFrame);
     deferredUiStateSaveFrame = null;
@@ -1969,15 +2159,44 @@ function flushDeferredUiStateSave() {
     window.cancelIdleCallback(deferredUiStateSaveIdle);
     deferredUiStateSaveIdle = null;
   }
+}
+
+function flushDeferredUiStateSave() {
+  cancelDeferredUiStateSave();
+  flushDeferredLearningJournalWrite();
   runDeferredUiStateSave();
 }
 
-function saveStateAfterInteractionFrame(options = {}) {
-  const saveOptions = {
-    recordDashboardSnapshot: false,
+function sealLearningSessionForLifecycle() {
+  cancelDeferredUiStateSave();
+  const pendingOptions = deferredUiStateSavePending
+    ? deferredUiStateSaveOptions
+    : {};
+  const journalWasPending = deferredLearningJournalPending;
+  deferredUiStateSavePending = false;
+  deferredUiStateSaveOptions = {};
+  flushDeferredLearningJournalWrite();
+  const shouldSeal = (
+    hasLearningSessionCommit() ||
+    journalWasPending ||
+    pendingOptions.journalOnly === true
+  );
+  if (!shouldSeal) {
+    if (Object.keys(pendingOptions).length) saveState(pendingOptions);
+    return;
+  }
+  const options = mergeStateSaveOptions(learningSessionCommitOptions, pendingOptions);
+  saveState({
     ...options,
-  };
-  if (saveOptions.journal !== false) writeLearningJournal(saveOptions);
+    journalOnly: false,
+    sealLearningSession: true,
+    recordDashboardSnapshot: false,
+  });
+}
+
+function saveStateAfterInteractionFrame(options = {}) {
+  const saveOptions = prepareLearningSaveOptions(options);
+  scheduleDeferredLearningJournalWrite(saveOptions);
   deferredUiStateSaveOptions = mergeDeferredUiStateSaveOptions(saveOptions);
   if (document.visibilityState === "hidden") {
     const immediateOptions = deferredUiStateSaveOptions;
@@ -1997,11 +2216,8 @@ function saveStateAfterInteractionFrame(options = {}) {
 }
 
 function saveStateAfterMotion(delay = 380, options = {}) {
-  const saveOptions = {
-    recordDashboardSnapshot: false,
-    ...options,
-  };
-  if (saveOptions.journal !== false) writeLearningJournal(saveOptions);
+  const saveOptions = prepareLearningSaveOptions(options);
+  scheduleDeferredLearningJournalWrite(saveOptions);
   deferredUiStateSaveOptions = mergeDeferredUiStateSaveOptions(saveOptions);
   if (document.visibilityState === "hidden") {
     const immediateOptions = deferredUiStateSaveOptions;
@@ -2028,9 +2244,15 @@ function saveStateAfterMotion(delay = 380, options = {}) {
   return true;
 }
 
-window.addEventListener("pagehide", flushDeferredUiStateSave);
+window.addEventListener("pagehide", sealLearningSessionForLifecycle);
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") flushDeferredUiStateSave();
+  if (document.visibilityState === "hidden") sealLearningSessionForLifecycle();
+});
+document.addEventListener("freeze", sealLearningSessionForLifecycle);
+window.addEventListener("storage", (event) => {
+  if (event.key?.includes(LEARNING_JOURNAL_STORAGE_SEGMENT)) {
+    learningJournalCache.delete(event.key);
+  }
 });
 
 function normalizeActivityEntry(entry = {}) {
@@ -2276,6 +2498,16 @@ function migrateLegacyActivity() {
   const target = state.plan?.dailyTarget ?? DEFAULT_DAILY_TARGET;
   const startedOn = state.plan?.startedOn ?? currentDate();
   const inferredDateByWord = new Map();
+  const recordedActivityDateByWord = new Map();
+  Object.entries(state.activityLog)
+    .sort(([leftDate], [rightDate]) => leftDate.localeCompare(rightDate))
+    .forEach(([date, activity]) => {
+      [...activity.newWords, ...activity.reviewWords].forEach((wordId) => {
+        if (!recordedActivityDateByWord.has(wordId)) {
+          recordedActivityDateByWord.set(wordId, date);
+        }
+      });
+    });
 
   state.introducedWords.forEach((wordId, index) => {
     const word = wordById.get(wordId);
@@ -2285,7 +2517,7 @@ function migrateLegacyActivity() {
       .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ""))
       .sort();
     const distributed = addDays(startedOn, Math.floor(index / Math.max(1, target)));
-    const inferredDate = seenDates[0] ?? (
+    const inferredDate = seenDates[0] ?? recordedActivityDateByWord.get(wordId) ?? (
       distributed <= currentDate() ? distributed : currentDate()
     );
     inferredDateByWord.set(wordId, inferredDate);
@@ -6435,7 +6667,11 @@ function renderHome() {
   renderHeatmap();
   const dashboardSnapshotChanged = dashboardRecordSnapshot(activeBookId());
   if (dashboardSnapshotChanged && isPersistenceSafe()) {
-    saveState({ notify: false });
+    saveStateAfterMotion(120, {
+      notify: hasLearningSessionCommit(),
+      recordDashboardSnapshot: false,
+      syncChangeOptions: { changedMaps: ["dashboardSnapshots"] },
+    });
   }
   if (state.view === "dashboard") renderDashboard();
   startStudyButton.textContent = button.label;
@@ -8363,6 +8599,7 @@ function exitStudy(transitionOrigin = null) {
     scope: "hierarchy",
     origin: returnOrigin,
     afterStart: () => saveStateAfterMotion(520, {
+      sealLearningSession: true,
       syncChangeOptions: { changedMaps: ["studyWindows", "dashboardSnapshots"] },
     }),
     after: () => {
@@ -8829,7 +9066,7 @@ function markSenseFamiliar(key, options = {}) {
   // full multi-book cache before the pressed state can paint.
   const syncChangeOptions = {
     changedMaps: ["progress", "dashboardEvents"],
-    stampScalars: false,
+    changedScalars: ["session"],
     changedMapKeysByBook: {
       [activeBookId()]: { progress: [key] },
     },
@@ -8882,7 +9119,7 @@ function animateSenseMastered(item) {
       reorder();
       return;
     }
-    window.setTimeout(reorder, Math.max(0, 150 - (performance.now() - startedAt)));
+    window.setTimeout(reorder, Math.max(0, 100 - (performance.now() - startedAt)));
   };
   if (reducedMotion) {
     const previousLayout = new Map(
@@ -8982,7 +9219,6 @@ function completeCurrentSelection() {
     session.cardPhase = "examples";
     render();
     saveStateAfterMotion(340, {
-      journal: false,
       syncChangeOptions: { changedMaps: [], stampScalars: false },
     });
   }, { scope: "reveal" });
@@ -9035,7 +9271,7 @@ function nextWord() {
   const cardKeys = activeSenseKeysForCard(completedCard);
   const syncChangeOptions = {
     changedMaps: ["progress", "introducedWords", "activityLog", "dashboardEvents"],
-    stampScalars: false,
+    changedScalars: ["session"],
     changedMapKeysByBook: {
       [activeBook]: {
         progress: cardKeys,
@@ -9091,7 +9327,14 @@ function nextWord() {
     if (!currentCard()) triggerStudyCompletionCue();
   }, {
     scope: "card",
-    afterStart: () => saveStateAfterMotion(460, { syncChangeOptions }),
+    afterStart: () => {
+      const sessionFinished = !currentCard();
+      saveStateAfterMotion(sessionFinished ? 160 : 460, {
+        syncChangeOptions,
+        journalOnly: !sessionFinished,
+        sealLearningSession: sessionFinished,
+      });
+    },
   });
 }
 

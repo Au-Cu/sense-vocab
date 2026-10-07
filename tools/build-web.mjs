@@ -23,6 +23,7 @@ await mkdir(path.join(distDir, "data"), { recursive: true });
 for (const file of [
   "index.html",
   "styles.css",
+  "ui-theme.js",
   "sync-state.js",
   "confusion-globe.js",
   "app.js",
