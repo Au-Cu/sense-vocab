@@ -22,10 +22,12 @@
   const overviewUpdatedAt = document.querySelector("#overviewUpdatedAt");
   const metricGrid = document.querySelector("#metricGrid");
   const usersTab = document.querySelector("#usersTab");
+  const triageTab = document.querySelector("#triageTab");
   const feedbackTab = document.querySelector("#feedbackTab");
   const announcementsTab = document.querySelector("#announcementsTab");
   const complianceTab = document.querySelector("#complianceTab");
   const usersSection = document.querySelector("#usersSection");
+  const triageSection = document.querySelector("#triageSection");
   const feedbackSection = document.querySelector("#feedbackSection");
   const announcementsSection = document.querySelector("#announcementsSection");
   const complianceSection = document.querySelector("#complianceSection");
@@ -36,6 +38,11 @@
   const previousUsersButton = document.querySelector("#previousUsersButton");
   const nextUsersButton = document.querySelector("#nextUsersButton");
   const usersPageLabel = document.querySelector("#usersPageLabel");
+  const refreshTriageButton = document.querySelector("#refreshTriageButton");
+  const triageTotal = document.querySelector("#triageTotal");
+  const triageSummary = document.querySelector("#triageSummary");
+  const triageTableBody = document.querySelector("#triageTableBody");
+  const triageExport = document.querySelector("#triageExport");
   const feedbackStatusFilter = document.querySelector("#feedbackStatusFilter");
   const feedbackTotal = document.querySelector("#feedbackTotal");
   const adminFeedbackList = document.querySelector("#adminFeedbackList");
@@ -233,6 +240,7 @@
   );
 
   const USER_PAGE_SIZE = 100;
+  const TRIAGE_PAGE_SIZE = 200;
   const metricDefinitions = [
     ["registeredUsers", "注册用户"],
     ["todayNewUsers", "今日新增"],
@@ -250,6 +258,9 @@
   let usersResult = { items: [], total: 0 };
   let activeSection = "users";
   let loading = false;
+  let triageLoading = false;
+  let triageLoaded = false;
+  let feedbackLoaded = false;
   let selectedUser = null;
   let selectedUserDetail = null;
   let announcementBusy = false;
@@ -367,6 +378,7 @@
     activeSection = section;
     const sections = {
       users: [usersSection, usersTab],
+      triage: [triageSection, triageTab],
       feedback: [feedbackSection, feedbackTab],
       announcements: [announcementsSection, announcementsTab],
       compliance: [complianceSection, complianceTab],
@@ -523,6 +535,111 @@
       appendDetail(userDetailGrid, "读取失败", error?.message ?? "未知错误");
       setMembershipButton.disabled = true;
     }
+  }
+
+  function normalizeTriageItem(item, fallbackStatus) {
+    const anonymousId = String(item?.anonymousId ?? "").trim().toLowerCase();
+    if (!/^[0-9a-f]{32}$/.test(anonymousId)) return null;
+    const status = item?.status === "in_progress" ? "in_progress" : fallbackStatus;
+    const type = String(item?.type ?? "general").trim().slice(0, 80) || "general";
+    const rawContentId = String(item?.contentId ?? "").trim().slice(0, 400);
+    return {
+      anonymousId,
+      status,
+      type,
+      contentId: rawContentId || null,
+    };
+  }
+
+  function appendTriageStat(value, label) {
+    const card = document.createElement("div");
+    card.className = "triage-stat";
+    const amount = document.createElement("strong");
+    amount.textContent = new Intl.NumberFormat("zh-CN").format(value);
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    card.append(amount, caption);
+    triageSummary.append(card);
+  }
+
+  function renderTriage(result) {
+    const items = (result?.items ?? []).filter(Boolean);
+    const counts = {
+      new: Math.max(0, Number(result?.counts?.new) || 0),
+      inProgress: Math.max(0, Number(result?.counts?.inProgress) || 0),
+    };
+    const groups = new Map();
+    items.forEach((item) => {
+      const key = `${item.type}\u0000${item.contentId ?? ""}`;
+      const group = groups.get(key) ?? {
+        type: item.type,
+        contentId: item.contentId,
+        statuses: { new: 0, in_progress: 0 },
+        anonymousIds: [],
+      };
+      group.statuses[item.status] += 1;
+      group.anonymousIds.push(item.anonymousId);
+      groups.set(key, group);
+    });
+    const grouped = [...groups.values()].sort((left, right) => {
+      const countDifference = right.anonymousIds.length - left.anonymousIds.length;
+      if (countDifference) return countDifference;
+      return `${left.type}:${left.contentId ?? ""}`.localeCompare(
+        `${right.type}:${right.contentId ?? ""}`,
+        "zh-CN",
+      );
+    });
+
+    triageTotal.textContent = `${items.length} 条未结反馈，${grouped.length} 个分组`;
+    triageSummary.replaceChildren();
+    appendTriageStat(counts.new, "待处理");
+    appendTriageStat(counts.inProgress, "处理中");
+    appendTriageStat(grouped.length, "去重分组");
+    appendTriageStat(
+      items.filter((item) => !item.contentId).length,
+      "缺少内容 ID",
+    );
+
+    triageTableBody.replaceChildren();
+    if (!grouped.length) {
+      const row = document.createElement("tr");
+      const cell = makeCell("当前没有待分诊反馈", "empty-row");
+      cell.colSpan = 5;
+      row.append(cell);
+      triageTableBody.append(row);
+    } else {
+      grouped.forEach((group) => {
+        const row = document.createElement("tr");
+        const statuses = [
+          group.statuses.new ? `待处理 ${group.statuses.new}` : "",
+          group.statuses.in_progress ? `处理中 ${group.statuses.in_progress}` : "",
+        ].filter(Boolean).join(" / ");
+        const contentCell = document.createElement("td");
+        const content = document.createElement("code");
+        content.className = "triage-content-id";
+        content.textContent = group.contentId ?? "—";
+        contentCell.append(content);
+        const idCell = document.createElement("td");
+        const idList = document.createElement("div");
+        idList.className = "triage-id-list";
+        group.anonymousIds.forEach((anonymousId) => {
+          const code = document.createElement("code");
+          code.textContent = anonymousId;
+          idList.append(code);
+        });
+        idCell.append(idList);
+        row.append(
+          makeCell(statuses),
+          makeCell(group.type),
+          contentCell,
+          makeCell(String(group.anonymousIds.length)),
+          idCell,
+        );
+        triageTableBody.append(row);
+      });
+    }
+
+    triageExport.textContent = JSON.stringify({ counts, items }, null, 2);
   }
 
   function renderFeedback(result) {
@@ -1649,9 +1766,56 @@
     renderUsers(result);
   }
 
+  async function loadTriageStatus(status) {
+    const items = [];
+    let total = 0;
+    let offset = 0;
+    do {
+      const result = await cloud.loadAdminFeedbackTriage(
+        status,
+        TRIAGE_PAGE_SIZE,
+        offset,
+      );
+      const pageItems = Array.isArray(result?.items) ? result.items : [];
+      total = Math.max(0, Number(result?.total) || 0);
+      pageItems.forEach((item) => {
+        const normalized = normalizeTriageItem(item, status);
+        if (normalized) items.push(normalized);
+      });
+      offset += pageItems.length;
+      if (!pageItems.length) break;
+    } while (offset < total);
+    return { items, total };
+  }
+
+  async function loadFeedbackTriage() {
+    if (triageLoading) return;
+    if (typeof cloud.loadAdminFeedbackTriage !== "function") {
+      throw new Error("匿名分诊接口尚未部署。");
+    }
+    triageLoading = true;
+    refreshTriageButton.disabled = true;
+    try {
+      const newResult = await loadTriageStatus("new");
+      const inProgressResult = await loadTriageStatus("in_progress");
+      renderTriage({
+        counts: {
+          new: newResult.total,
+          inProgress: inProgressResult.total,
+        },
+        items: [...newResult.items, ...inProgressResult.items],
+      });
+      triageLoaded = true;
+    } finally {
+      triageLoading = false;
+      refreshTriageButton.disabled = false;
+    }
+  }
+
   async function loadFeedback() {
     const status = feedbackStatusFilter.value || null;
     renderFeedback(await cloud.loadAdminFeedback(status, 100, 0));
+    feedbackLoaded = true;
   }
 
   async function loadAnnouncements() {
@@ -1676,18 +1840,17 @@
     refreshAdminButton.disabled = true;
     setMessage("正在读取后台数据……");
     try {
-      // These RPCs all expand or aggregate account data.  Running them at
-      // once made the dashboard compete with itself and amplified statement
-      // timeouts on accounts with large historical state.  Keep each section
-      // independently useful while avoiding a burst of heavyweight queries.
+      // Load only the visible section. Hidden admin panels previously competed
+      // for the same database budget and amplified statement timeouts.
       const errors = [];
-      for (const loader of [
-        loadOverview,
-        loadUsers,
-        loadFeedback,
-        loadAnnouncements,
-        loadCompliance,
-      ]) {
+      const sectionLoaders = {
+        users: loadUsers,
+        triage: loadFeedbackTriage,
+        feedback: loadFeedback,
+        announcements: loadAnnouncements,
+        compliance: loadCompliance,
+      };
+      for (const loader of [loadOverview, sectionLoaders[activeSection]]) {
         try {
           await loader();
         } catch (error) {
@@ -1986,9 +2149,55 @@
   deniedLogoutButton.addEventListener("click", logout);
   refreshAdminButton.addEventListener("click", refreshAdminData);
   usersTab.addEventListener("click", () => setActiveSection("users"));
-  feedbackTab.addEventListener("click", () => setActiveSection("feedback"));
-  announcementsTab.addEventListener("click", () => setActiveSection("announcements"));
-  complianceTab.addEventListener("click", () => setActiveSection("compliance"));
+  triageTab.addEventListener("click", async () => {
+    setActiveSection("triage");
+    if (triageLoaded) return;
+    try {
+      setMessage("正在读取匿名反馈队列……");
+      await loadFeedbackTriage();
+      setMessage();
+    } catch (error) {
+      setMessage(error?.message ?? "匿名反馈队列读取失败。", "error");
+    }
+  });
+  feedbackTab.addEventListener("click", async () => {
+    setActiveSection("feedback");
+    if (feedbackLoaded) return;
+    try {
+      setMessage("正在读取完整反馈……");
+      await loadFeedback();
+      setMessage();
+    } catch (error) {
+      setMessage(error?.message ?? "反馈读取失败。", "error");
+    }
+  });
+  announcementsTab.addEventListener("click", async () => {
+    setActiveSection("announcements");
+    try {
+      await loadAnnouncements();
+      setMessage();
+    } catch (error) {
+      setMessage(error?.message ?? "公告读取失败。", "error");
+    }
+  });
+  complianceTab.addEventListener("click", async () => {
+    setActiveSection("compliance");
+    try {
+      await loadCompliance();
+      setMessage();
+    } catch (error) {
+      setMessage(error?.message ?? "合规数据读取失败。", "error");
+    }
+  });
+  refreshTriageButton.addEventListener("click", async () => {
+    try {
+      setMessage("正在刷新匿名反馈队列……");
+      await loadFeedbackTriage();
+      setMessage();
+    } catch (error) {
+      setMessage(error?.message ?? "匿名反馈队列读取失败。", "error");
+    }
+  });
   extendAllMembershipsButton.addEventListener("click", extendAllMemberships);
   announcementForm.addEventListener("submit", publishAnnouncement);
   announcementImageInput.addEventListener("change", async () => {

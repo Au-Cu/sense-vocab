@@ -364,6 +364,70 @@ button {
   text-align: center;
 }
 
+.triage-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.triage-stat {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 12px 14px;
+}
+
+.triage-stat strong {
+  color: var(--accent-strong);
+  font-size: 1.2rem;
+}
+
+.triage-stat span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.triage-id-list {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.triage-id-list code,
+.triage-content-id {
+  overflow-wrap: anywhere;
+  font-size: 0.76rem;
+}
+
+.triage-export-details {
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.triage-export-details summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.triage-export {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 12px;
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .feedback-list {
   display: grid;
   gap: 10px;
@@ -1367,6 +1431,10 @@ button {
   }
 
   .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .triage-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow,noarchive" />
     <title>后台管理</title>
-    <link rel="stylesheet" href="./admin.css?v=20260809-1" />
+    <link rel="stylesheet" href="./admin.css?v=20261008-1" />
   </head>
   <body>
     <main class="admin-shell">
@@ -80,6 +80,14 @@
           </button>
           <button
             class="admin-tab"
+            id="triageTab"
+            type="button"
+            aria-selected="false"
+          >
+            匿名分诊
+          </button>
+          <button
+            class="admin-tab"
             id="feedbackTab"
             type="button"
             aria-selected="false"
@@ -146,6 +154,46 @@
               下一页
             </button>
           </div>
+        </section>
+
+        <section
+          class="admin-section"
+          id="triageSection"
+          aria-labelledby="triageTitle"
+          hidden
+        >
+          <div class="section-heading controls-heading">
+            <div>
+              <h2 id="triageTitle">匿名反馈分诊</h2>
+              <span id="triageTotal">只读取数量、匿名 ID、类型和内容 ID</span>
+            </div>
+            <button
+              class="admin-button secondary"
+              id="refreshTriageButton"
+              type="button"
+            >
+              刷新匿名队列
+            </button>
+          </div>
+          <div class="triage-summary" id="triageSummary"></div>
+          <div class="table-scroll">
+            <table class="admin-table" aria-label="匿名反馈分诊分组">
+              <thead>
+                <tr>
+                  <th>状态</th>
+                  <th>类型</th>
+                  <th>内容 ID</th>
+                  <th>数量</th>
+                  <th>匿名 ID</th>
+                </tr>
+              </thead>
+              <tbody id="triageTableBody"></tbody>
+            </table>
+          </div>
+          <details class="triage-export-details">
+            <summary>机器可读 JSON</summary>
+            <pre class="triage-export" id="triageExport"></pre>
+          </details>
         </section>
 
         <section
@@ -780,6 +828,6 @@
 
     <script src="./cloud-config.js?v=20260729-2"></script>
     <script src="./cloud-client.js?v=20260809-1"></script>
-    <script src="./admin.js?v=20260809-1"></script>
+    <script src="./admin.js?v=20261008-1"></script>
   </body>
 </html>

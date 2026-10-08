@@ -27,9 +27,23 @@ async function installAdminCloud(page, isAdmin = true) {
       complianceSnapshotUpdates: [],
       complianceReleaseUpdates: [],
       membershipUpdates: [],
+      triageCalls: [],
+      fullFeedbackLoads: 0,
       extendAllCalls: 0,
       signedOut: false,
     };
+    const triageItems = Array.from({ length: 201 }, (_, index) => ({
+      anonymousId: index.toString(16).padStart(32, "0"),
+      status: "new",
+      type: "missing-sense",
+      contentId: "word-1:sense-1",
+    }));
+    triageItems.push({
+      anonymousId: "33333333333333333333333333333333",
+      status: "in_progress",
+      type: "general",
+      contentId: null,
+    });
     const complianceIssues = [{
       id: "22222222-2222-4222-8222-222222222221",
       issueKey: "LC-RISK-001",
@@ -220,7 +234,20 @@ async function installAdminCloud(page, isAdmin = true) {
           },
         };
       },
+      async loadAdminFeedbackTriage(status, limit, offset) {
+        window.__fakeAdmin.triageCalls.push({ status, limit, offset });
+        const filtered = triageItems.filter((item) => item.status === status);
+        return {
+          total: filtered.length,
+          counts: {
+            new: triageItems.filter((item) => item.status === "new").length,
+            inProgress: triageItems.filter((item) => item.status === "in_progress").length,
+          },
+          items: filtered.slice(offset, offset + limit),
+        };
+      },
       async loadAdminFeedback() {
+        window.__fakeAdmin.fullFeedbackLoads += 1;
         return {
           total: 1,
           items: [{
@@ -463,6 +490,46 @@ test("the admin dashboard renders metrics, user details, and feedback", async ({
   await expect(page.locator(".metric-card").first()).toContainText("12");
   await expect(page.locator("#usersTableBody")).toContainText("learner@example.com");
   await expect(page.locator("#usersTableBody")).toContainText("10 天");
+  await expect.poll(async () => page.evaluate(() => ({
+    triageCalls: window.__fakeAdmin.triageCalls,
+    fullFeedbackLoads: window.__fakeAdmin.fullFeedbackLoads,
+  }))).toEqual({ triageCalls: [], fullFeedbackLoads: 0 });
+
+  await page.locator("#triageTab").click();
+  await expect(page.locator("#triageSection")).toBeVisible();
+  await expect(page.locator("#triageTotal")).toHaveText("202 条未结反馈，2 个分组");
+  await expect(page.locator("#triageTableBody tr")).toHaveCount(2);
+  await expect(page.locator("#triageTableBody")).toContainText("missing-sense");
+  await expect(page.locator("#triageTableBody")).toContainText(
+    "00000000000000000000000000000000",
+  );
+  const triageExport = await page.locator("#triageExport").evaluate((element) => {
+    return JSON.parse(element.textContent);
+  });
+  expect(triageExport.counts).toEqual({ new: 201, inProgress: 1 });
+  expect(triageExport.items).toHaveLength(202);
+  triageExport.items.forEach((item) => {
+    expect(Object.keys(item).sort()).toEqual([
+      "anonymousId",
+      "contentId",
+      "status",
+      "type",
+    ]);
+  });
+  expect(JSON.stringify(triageExport)).not.toContain("learner@example.com");
+  expect(JSON.stringify(triageExport)).not.toContain("学习记录需要核对");
+  await expect.poll(async () => page.evaluate(() => {
+    return window.__fakeAdmin.triageCalls;
+  })).toEqual([
+    { status: "new", limit: 200, offset: 0 },
+    { status: "new", limit: 200, offset: 200 },
+    { status: "in_progress", limit: 200, offset: 0 },
+  ]);
+  await expect.poll(async () => {
+    return page.evaluate(() => window.__fakeAdmin.fullFeedbackLoads);
+  }).toBe(0);
+
+  await page.locator("#usersTab").click();
 
   await page.locator(".user-link").click();
   await expect(page.locator("#userDetailDialog")).toBeVisible();
@@ -482,6 +549,9 @@ test("the admin dashboard renders metrics, user details, and feedback", async ({
 
   await page.locator("#feedbackTab").click();
   await expect(page.locator("#feedbackSection")).toBeVisible();
+  await expect.poll(async () => {
+    return page.evaluate(() => window.__fakeAdmin.fullFeedbackLoads);
+  }).toBe(1);
   await expect(page.locator(".feedback-item")).toContainText("学习记录需要核对");
   await expect(page.locator(".feedback-images img")).toHaveCount(1);
   await expect(page.locator(".feedback-word-link")).toHaveText("查看单词：shepherd");
