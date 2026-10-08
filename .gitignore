@@ -7,6 +7,14 @@ data/.content-batch-cache/
 data/.semantic-embedding-cache/
 .wrangler/
 .wrangler-x64/
+platform/.build/
+platform/artifacts/
+platform/**/artifacts/
+platform/**/app/build/
+platform/**/bin/
+platform/**/obj/
+.tooling/
+platform/**/.gradle/
 .supabase/
 supabase/.temp/
 supabase/.branches/

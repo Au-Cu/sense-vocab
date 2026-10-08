@@ -1,0 +1,14 @@
+{
+  "targetId": "windows-x86_64",
+  "entry": "src/Program.cs",
+  "sourceReady": true,
+  "sourceStatus": "project-source",
+  "productVersion": "0.0.0",
+  "buildNumber": 0,
+  "packageFormat": "msix-or-exe",
+  "build": { "command": "powershell -NoProfile -ExecutionPolicy Bypass -File platform/windows-x86_64/build.ps1 -Publish", "output": "artifacts/win-x64/" },
+  "buildEvidence": { "status": "verified", "tool": ".NET SDK 8.0.425", "artifact": "artifacts/win-x64/SenseVocab.Windows.x64.exe", "sha256": "507594B638639250F3398A9DF5682ED2DF5AE09651C322B406794DCE8558FCF4" },
+  "requiredTools": [{ "name": ".NET SDK", "available": true, "reason": "D:\\Files\\sense-vocab-mvp\\.tooling\\dotnet-full\\sdk\\8.0.425" }],
+  "releaseRequirements": [{ "name": "Windows signing certificate", "available": false, "reason": "credential not provided" }],
+  "update": { "scope": "target-scoped", "rollback": "retain-previous-installable-artifact" }
+}

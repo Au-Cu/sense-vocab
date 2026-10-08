@@ -19,6 +19,7 @@ if (path.dirname(distDir) !== rootDir || path.basename(distDir) !== "dist") {
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(path.join(distDir, "data"), { recursive: true });
+await mkdir(path.join(distDir, "platform"), { recursive: true });
 
 for (const file of [
   "index.html",
@@ -46,6 +47,11 @@ for (const file of [
 ]) {
   await copyFile(path.join(rootDir, file), path.join(distDir, file));
 }
+
+await copyFile(
+  path.join(rootDir, "platform", "durable-storage.js"),
+  path.join(distDir, "platform", "durable-storage.js"),
+);
 
 await cp(path.join(rootDir, "assets"), path.join(distDir, "assets"), {
   recursive: true,

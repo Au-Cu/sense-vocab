@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "adapters": {
+    "storage": ["read", "write"],
+    "navigation": ["openWindow", "closeWindow"],
+    "permissions": ["request"]
+  },
+  "rule": "platform implementations may reject unavailable capabilities with adapter-unavailable; they must not silently fall back to browser globals"
+}

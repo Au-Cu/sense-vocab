@@ -1,0 +1,8 @@
+{
+  "app": {
+    "signingConfigs": [],
+    "products": [{ "name": "default", "compileSdkVersion": "API12", "compatibleSdkVersion": "API12", "runtimeOS": "HarmonyOS" }],
+    "buildModeSet": [{ "name": "debug" }, { "name": "release" }]
+  },
+  "modules": [{ "name": "entry", "srcPath": "./entry" }]
+}

@@ -1,0 +1,9 @@
+# Native platform foundation
+
+The platform matrix is defined in `platform-matrix.json`. It is a source of build metadata, not a claim that every target is installable or publicly distributable.
+
+Native targets use independent product-version sequences, each starting at `0.0.0` with build `0`. A source/content revision may produce more than one target, but only targets affected by a user-visible, compatibility, or installer change advance their own version/build. Unaffected targets retain their current values. Artifact names follow `sense-vocab-{targetId}-v{productVersion}-b{buildNumber}`; updates and rollback are target-scoped and retain the previous installable artifact. Web continues to take its version from `package.json` and its deployment rollback from Cloudflare Pages.
+
+`durable-storage.js` is the shared storage kernel. Web and native shells use the same namespaced record envelope and explicit legacy import path. IndexedDB is the browser/native-WebView durable backend; a shell must provide an equivalent durable backend before it can claim offline support. Legacy `localStorage` data is read only through `migrateLegacy()` and is never deleted unless a caller explicitly requests removal after verifying the durable copy.
+
+The repository now has real Windows `.csproj` projects, an Android Gradle project, and a HarmonyOS DevEco project preparation. Windows x86_64 and ARM64 development publishes are currently build-verified with the D-drive .NET SDK. Android's Gradle build reaches the Android plugin but stops because the required Google SDK licenses were not accepted; HarmonyOS stops until DevEco/hvigor is installed. macOS and iOS remain contract-only by policy. No target is installable, signed/notarized, device-verified, or website-ready merely because its source project exists.

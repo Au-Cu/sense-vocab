@@ -1,0 +1,16 @@
+{
+  "targetId": "macos-x86_64",
+  "entry": "src/entry.mjs",
+  "sourceReady": false,
+  "sourceStatus": "contract-only",
+  "productVersion": "0.0.0",
+  "buildNumber": 0,
+  "packageFormat": "dmg-or-pkg",
+  "build": { "command": "node tools/platform-target.mjs --target macos-x86_64", "output": "artifacts/macos-x86_64/" },
+  "requiredTools": [
+    { "name": "macOS/Xcode", "available": false, "reason": "macOS host and Xcode unavailable" },
+    { "name": "Developer ID certificate", "available": false, "reason": "credential not provided" },
+    { "name": "notarization credentials", "available": false, "reason": "credential not provided" }
+  ],
+  "update": { "scope": "target-scoped", "rollback": "retain-previous-installable-artifact" }
+}

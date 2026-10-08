@@ -1,0 +1,8 @@
+plugins { id 'com.android.application' }
+
+android { namespace 'com.sensevocab.android'; compileSdk 35
+    // Android requires a positive integer; product build 0 maps to package versionCode 1.
+    defaultConfig { applicationId 'com.sensevocab.android'; minSdk 26; targetSdk 35; versionCode 1; versionName '0.0.0' }
+    buildTypes { debug { debuggable true }; release { minifyEnabled false } }
+    sourceSets { main { assets.srcDirs += [rootProject.file('../../.build/android')] } }
+}

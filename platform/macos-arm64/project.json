@@ -1,0 +1,17 @@
+{
+  "targetId": "macos-arm64",
+  "entry": "src/entry.mjs",
+  "sourceReady": false,
+  "sourceStatus": "contract-only",
+  "productVersion": "0.0.0",
+  "buildNumber": 0,
+  "packageFormat": "dmg-or-pkg",
+  "build": { "command": "node tools/platform-target.mjs --target macos-arm64", "output": "artifacts/macos-arm64/" },
+  "requiredTools": [
+    { "name": "macOS/Xcode", "available": false, "reason": "macOS host and Xcode unavailable" },
+    { "name": "Developer ID certificate", "available": false, "reason": "credential not provided" },
+    { "name": "notarization credentials", "available": false, "reason": "credential not provided" },
+    { "name": "Apple Silicon validation", "available": false, "reason": "device validation unavailable" }
+  ],
+  "update": { "scope": "target-scoped", "rollback": "retain-previous-installable-artifact" }
+}

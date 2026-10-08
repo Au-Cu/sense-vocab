@@ -1,0 +1,20 @@
+{
+  "targetId": "harmonyos",
+  "entry": "entry/src/main/ets/entryability/EntryAbility.ets",
+  "sourceReady": true,
+  "sourceStatus": "project-source",
+  "nativeImplementation": "paused-short-medium-term",
+  "compatibilityRoute": "android-apk-via-droitong",
+  "compatibilityStatus": "planned-blocked-until-android-apk-and-device-validation",
+  "productVersion": "0.0.0",
+  "buildNumber": 0,
+  "packageFormat": "official-format-to-verify",
+  "build": { "command": "powershell -NoProfile -ExecutionPolicy Bypass -File platform/harmonyos/build.ps1 -Variant debug", "output": "build/default/outputs/default/entry-default-signed.hap" },
+  "buildEvidence": { "status": "blocked-toolchain", "reason": "DevEco hvigorw is not installed; HarmonyOS command-line tools alone do not provide the project build host" },
+  "requiredTools": [
+    { "name": "HarmonyOS SDK/build tools", "available": false, "reason": "SDK unavailable in current host" },
+    { "name": "official package/signing policy", "available": false, "reason": "format and policy require external verification" },
+    { "name": "real-device validation", "available": false, "reason": "device unavailable" }
+  ],
+  "update": { "scope": "target-scoped", "rollback": "retain-previous-installable-artifact" }
+}

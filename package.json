@@ -1,6 +1,6 @@
 {
   "name": "sense-vocab-mvp",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "private": true,
   "scripts": {
     "build:cloud-client": "esbuild tools/cloud-client-entry.js --bundle --format=iife --platform=browser --target=es2020 --outfile=cloud-client.js",
@@ -27,6 +27,10 @@
     "deploy:verified": "node tools/deploy-verified.mjs",
     "test:op-tools": "node --test tools/op-tooling.test.mjs",
     "build:web": "npm run build:cloud-client && npm run build:confusion-globe && npm run build:vocabulary-index && npm run verify:content-identity && npm run audit:content && npm run verify:rights-ledger && npm run build:public-attributions && npm run build:third-party-compliance && node tools/build-web.mjs",
+    "verify:platform-matrix": "node tools/platform-matrix.mjs",
+    "verify:platform-targets": "node tools/platform-targets.mjs",
+    "build:offline-resources": "node tools/package-offline-resources.mjs",
+    "test:platform": "node --test tools/platform-core.test.mjs",
     "package:web": "npm run build:web && powershell -NoProfile -ExecutionPolicy Bypass -File tools/package-web.ps1",
     "test": "playwright test",
     "cloudflare:login": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-wrangler.ps1 login",

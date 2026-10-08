@@ -1,0 +1,21 @@
+{
+  "targetId": "android",
+  "entry": "app/src/main/java/com/sensevocab/android/MainActivity.java",
+  "sourceReady": true,
+  "sourceStatus": "project-source",
+  "productVersion": "0.0.0",
+  "buildNumber": 0,
+  "packageFormat": "apk",
+  "build": { "command": "powershell -NoProfile -ExecutionPolicy Bypass -File platform/android/build.ps1 -Variant debug", "output": "app/build/outputs/apk/debug/app-debug.apk" },
+  "buildEvidence": { "status": "verified", "variant": "debug", "artifact": "app/build/outputs/apk/debug/app-debug.apk", "sha256": "85B7447D61D20E3DCE650A7EEAAA5110E573FC51E9397EFFB9108FCE7411775D", "lastCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File platform/android/build.ps1 -Variant debug", "notes": "Unsigned debug APK; release signing and device validation remain outstanding" },
+  "requiredTools": [
+    { "name": "Android SDK/build tools", "available": true, "reason": "D:\\Files\\sense-vocab-mvp\\.tooling\\android-sdk; SDK licenses accepted" },
+    { "name": "Java 17+", "available": true, "reason": "D:\\Files\\sense-vocab-mvp\\.tooling\\jdk17" },
+    { "name": "Gradle 8.7+", "available": true, "reason": "D:\\Files\\sense-vocab-mvp\\.tooling\\gradle-8.7" }
+  ],
+  "releaseRequirements": [
+    { "name": "release signing key", "available": false, "reason": "credential not provided" },
+    { "name": "real-device validation", "available": false, "reason": "device unavailable" }
+  ],
+  "update": { "scope": "target-scoped", "rollback": "retain-previous-installable-artifact" }
+}

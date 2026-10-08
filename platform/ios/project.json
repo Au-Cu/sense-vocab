@@ -1,0 +1,17 @@
+{
+  "targetId": "ios",
+  "entry": "src/entry.mjs",
+  "sourceReady": false,
+  "sourceStatus": "contract-only",
+  "productVersion": "0.0.0",
+  "buildNumber": 0,
+  "packageFormat": "ipa",
+  "build": { "command": "node tools/platform-target.mjs --target ios", "output": "artifacts/ios/" },
+  "requiredTools": [
+    { "name": "macOS/Xcode", "available": false, "reason": "macOS host and Xcode unavailable" },
+    { "name": "Apple developer account", "available": false, "reason": "account not provided" },
+    { "name": "public website distribution eligibility", "available": false, "reason": "distribution policy requires external verification" },
+    { "name": "real-device validation", "available": false, "reason": "device unavailable" }
+  ],
+  "update": { "scope": "target-scoped", "rollback": "retain-previous-installable-artifact" }
+}

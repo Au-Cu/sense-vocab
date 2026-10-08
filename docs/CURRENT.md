@@ -30,6 +30,19 @@
 - 管理员合规看板已部署，支持风险/权利链卡片、追加快照、历史、筛选和发行结论；后台只是台账入口，不自动形成法律意见。
 - CD 本地批量内容工具已可用，支持稳定 ID、批处理、缓存、断点续跑、持久 embedding 和矩阵化匹配；只生成候选或审核文件，不直接应用正式内容。
 
+## 跨平台 App 研发状态
+
+- 用户已确认 D-027 的未来发行矩阵：Web 加七个官网安装包目标，即 Windows `x86_64`/`ARM64`、macOS `x86_64`/`ARM64`、iOS、Android、HarmonyOS。五部门保持不变，平台是研发、验证和发行维度，不增设或复制部门。
+- 本轮先建立共享基础层：`platform/platform-matrix.json` 固化 Web 加七个原生目标、包格式、架构和官网直发边界；`platform/durable-storage.js` 提供统一的版本化、命名空间隔离、IndexedDB 耐久后端和显式 Web `localStorage` 迁移接口；Web 产物会携带同一共享存储内核。该基础层不计作原生平台完成；真实项目源代码与开发构建状态按下列目标分别记录，安装器、签名/公证、自动更新、官网安装页和移动真机验证仍未完成，本轮没有发布原生安装包。
+- 七个原生目标各自从产品版本 `0.0.0`、构建号 `0` 起步，采用目标独立递增；未受用户可见、兼容性或安装器改动影响的目标不递增。包名模板为 `sense-vocab-{targetId}-v{productVersion}-b{buildNumber}`，更新与回滚按目标隔离并保留上一份可安装产物；Web 版本继续取自 `package.json`，不被原生版本改写。
+- 原生平台审计已纠正此前过度表述：共享逻辑与平台目录只能分别标为 `project-source` 或 `contract-only`，不等同于可安装平台。Windows x86_64/ARM64 已增加真实 `.csproj`、C# 入口、架构 RID 和 PowerShell 发布入口；Android 已增加真实 Gradle 工程、Manifest、Java Activity、资源和构建入口；HarmonyOS 已增加 DevEco/Hvigor 工程准备文件与独立工具探测。macOS x86_64/ARM64、iOS 暂停专用实现，保持 `contract-only`，不安装或申请 Apple 工具链。
+- D 盘工具链：`.tooling/dotnet-full` 的 .NET SDK 8.0.425、`.tooling/jdk17` 的 Microsoft OpenJDK 17.0.20.1、`.tooling/gradle-8.7` 的 Gradle 8.7、`.tooling/android-sdk/cmdline-tools/latest` 的 Android command-line tools 22.0，以及华为官方 `.tooling/harmony-commandline/command-line-tools` 2.0.0.2（SHA-256 已按官方页核验）。Windows 两架构已实际发布成功；x86_64 和 ARM64 的 EXE 哈希记录在本轮交付报告中。Android SDK 许可已按用户明确授权接受，SDK 组件安装成功，Gradle debug APK 已构建：`platform/android/app/build/outputs/apk/debug/app-debug.apk`，SHA-256 `85B7447D61D20E3DCE650A7EEAAA5110E573FC51E9397EFFB9108FCE7411775D`；该包仍未完成 release 签名和真机验证。HarmonyOS command-line tools 已能列出 API 9 toolchains，但 DevEco/hvigor 和 SDK 组件仍未安装，构建入口会非零失败。
+- 离线词库入口 `npm run build:offline-resources -- --target <target> --out platform/.build/<target>` 会复制当前词库并生成实际字节数与 SHA-256 清单；本轮 Android 构建前已生成资源哈希，但未把生成物写入正式词库或安装包。HarmonyOS 原生与卓易通 Android-compat 分开记录，官方证据与限制见 `platform/harmonyos/compatibility.md`。
+- 用户已决定短中期暂停 macOS、iOS 和 HarmonyOS 原生 DevEco/HAP 实现；HarmonyOS 暂采用“Android APK → 卓易通兼容分发”路线。该路线不等同于原生 HarmonyOS APP/HAP，仍须先完成 Android APK、卓易通 exact version/device、权限、文件、通知、后台和更新连续性验证；Apple 与原生 HarmonyOS 工具、账号和证书不再作为当前阶段阻断项。
+- 当前工具链审计：本机有 Node/npm、.NET SDK、Java 17、Gradle 和 Android SDK；仍没有 Rust/Cargo、Xcode/macOS 主机、HarmonyOS SDK 或可用签名凭据。Windows 两架构已有未签名开发发布物；macOS 两架构和 iOS 阻断于 macOS/Xcode 与 Apple 资格；Android 已有未签名 debug APK，仍阻断于 release 签名和真机；HarmonyOS 阻断于官方包格式/签名政策、SDK 和真机。七目标仍保持 `website-only`，未改为商店发行。
+- 官网直发仍有待验证的外部约束。macOS 需要适用于站外分发的签名与公证；Android 官网 APK 需要签名、用户侧来源授权及适用的开发者验证；iOS 面向公众的官网分发受地域、开发者资格、Apple 审核/公证和网站登记等限制，不能先验地当作全球可用；HarmonyOS 的对外包格式、签名、设备安装策略和官网直发可行性仍须用当前官方规则和真机验证确认。任一目标无法满足时，应向用户报告阻断，不得静默改为商店发行、缩减平台或伪报七包齐备。
+- `npm run verify:platform-matrix` 与 `npm run test:platform` 已通过；共享存储测试覆盖跨实例恢复、账户/词书命名空间隔离、显式迁移不删除、损坏/不兼容记录安全回退。完整词库离线打包、断网重启、联网 CAS 收敛、升级/卸载/回滚和真机安装仍待原生壳与对应平台工具链完成。首批八目标基线正式上线前，OP 仍按现行规则只发布 Web。
+
 ## 自动化
 
 - `sense-vocab` 状态为 `ACTIVE`，每天 23:30（Asia/Hong_Kong）运行，当前目标任务 ID 为 `019fd28c-40a0-7b71-9ab0-a17ad7af8968`。

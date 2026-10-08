@@ -1,0 +1,17 @@
+{
+  "targetId": "windows-arm64",
+  "entry": "src/Program.cs",
+  "sourceReady": true,
+  "sourceStatus": "project-source",
+  "productVersion": "0.0.0",
+  "buildNumber": 0,
+  "packageFormat": "msix-or-exe",
+  "build": { "command": "powershell -NoProfile -ExecutionPolicy Bypass -File platform/windows-arm64/build.ps1 -Publish", "output": "artifacts/win-arm64/" },
+  "buildEvidence": { "status": "verified", "tool": ".NET SDK 8.0.425", "artifact": "artifacts/win-arm64/SenseVocab.Windows.ARM64.exe", "sha256": "885F9ED8C0F4104EF442802D79B085BD10775D58321C47EF6FE5D9C7378C9010" },
+  "requiredTools": [
+    { "name": ".NET SDK", "available": true, "reason": "D:\\Files\\sense-vocab-mvp\\.tooling\\dotnet-full\\sdk\\8.0.425" },
+    { "name": "ARM64 build validation", "available": true, "reason": "current host is Windows ARM64; publish succeeded" }
+  ],
+  "releaseRequirements": [{ "name": "Windows signing certificate", "available": false, "reason": "credential not provided" }],
+  "update": { "scope": "target-scoped", "rollback": "retain-previous-installable-artifact" }
+}

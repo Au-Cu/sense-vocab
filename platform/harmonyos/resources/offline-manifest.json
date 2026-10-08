@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "targetId": "harmonyos",
+  "verification": "pending-until-native-build",
+  "resources": [
+    { "path": "data/vocabulary-bundle.json", "bytes": 0, "sha256": "pending-build-hash", "required": true },
+    { "path": "data/vocabulary-index.json", "bytes": 0, "sha256": "pending-build-hash", "required": true }
+  ]
+}
