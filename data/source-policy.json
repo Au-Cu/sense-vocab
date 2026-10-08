@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "policyDate": "2026-07-29",
+  "compatibilityRule": "Existing book membership, word order, word IDs and sense IDs are immutable unless an explicit progress migration has been designed and tested.",
+  "sources": {
+    "kaoyan-source.json": {
+      "status": "quarantined",
+      "permittedUses": [
+        "internal provenance audit only"
+      ],
+      "prohibitedUses": [
+        "public distribution",
+        "new content generation",
+        "commercial publication"
+      ],
+      "reason": "The historical source has no documented commercial rights chain. It is not copied into the public web release."
+    },
+    "vocabulary-bundle.json": {
+      "status": "compatibility-frozen",
+      "notes": "Published temporarily for the free beta. Text items identified by content-rights-audit.json still require licensing or independent rewriting before paid release."
+    },
+    "Wikimedia Commons audio": {
+      "status": "rights-enrichment-in-progress",
+      "permittedUses": [
+        "free beta pronunciation playback"
+      ],
+      "prohibitedUses": [
+        "paid release before per-file author, license and source-page verification"
+      ],
+      "notes": "Existing links are retained to avoid feature loss. tools/enrich-audio-rights.mjs supplements per-file metadata from the official Commons API when network access is available."
+    },
+    "dict.youdao.com/dictvoice": {
+      "status": "temporary-compatibility-only",
+      "permittedUses": [
+        "free beta pronunciation fallback while a commercially cleared replacement is evaluated"
+      ],
+      "prohibitedUses": [
+        "paid commercial release without written permission"
+      ],
+      "notes": "Retained because removing it caused pronunciation coverage to regress. Browser speech synthesis remains the final fallback."
+    },
+    "Argos OPUS English-Chinese model 1.9": {
+      "status": "licensed-maintenance-tool",
+      "license": "CC BY 4.0",
+      "notes": "Used locally for English-to-Chinese maintenance translation with attribution in THIRD_PARTY_NOTICES.md."
+    },
+    "translate.googleapis.com/translate_a/single": {
+      "status": "temporary-compatibility-only",
+      "permittedUses": [
+        "Chinese-to-English maintenance translation only when no licensed local model supports that direction"
+      ],
+      "prohibitedUses": [
+        "paid commercial content generation without a formal provider agreement"
+      ],
+      "notes": "English-to-Chinese maintenance translation has been replaced by the licensed local Argos/OPUS model."
+    }
+  }
+}

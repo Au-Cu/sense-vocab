@@ -1425,6 +1425,33 @@ function mergeJournalWindows(previous, next) {
   }).slice(-20);
 }
 
+function learningJournalSyncChangeOptions(journal = {}) {
+  const bookId = String(journal.bookId || activeBookId());
+  const changedMapKeys = {
+    progress: Object.keys(journal.progress ?? {}),
+    activityLog: Object.keys(journal.activityLog ?? {}),
+    dashboardEvents: Object.keys(journal.dashboardEvents ?? {}),
+    introducedWords: [...new Set(journal.introducedWords ?? [])],
+    studyWindows: (journal.studyWindows ?? []).map((entry, index) => (
+      String(entry?.id ?? `${entry?.startedAt ?? ""}-${index}`)
+    )),
+    planTargetHistory: Object.keys(journal.planTargetHistory ?? {}),
+  };
+  const derived = {
+    changedMaps: Object.entries(changedMapKeys)
+      .filter(([, keys]) => keys.length > 0)
+      .map(([name]) => name),
+    changedScalars: ["session", "learningDayCounter", "plan"],
+    changedMapKeysByBook: {
+      [bookId]: changedMapKeys,
+    },
+  };
+  return mergeStateSaveOptions(
+    { syncChangeOptions: derived },
+    { syncChangeOptions: journal.syncChangeOptions },
+  ).syncChangeOptions;
+}
+
 function writeLearningJournal(options = {}) {
   if (tutorialRuntime?.active || !state || !isPersistenceSafe()) return false;
   const bookId = activeBookId();
@@ -1472,10 +1499,21 @@ function writeLearningJournal(options = {}) {
       previous.planTargetHistory,
       state.planTargetHistory,
     ),
+    syncChangeOptions: mergeStateSaveOptions(
+      { syncChangeOptions: previous.syncChangeOptions },
+      { syncChangeOptions: options.syncChangeOptions },
+    ).syncChangeOptions,
   };
   try {
     const key = learningJournalStorageKey();
-    localStorage.setItem(key, serializeLearningJournal(journal));
+    const serialized = serializeLearningJournal(journal);
+    try {
+      localStorage.setItem(key, serialized);
+    } catch (error) {
+      if (!isStorageQuotaError(error)) throw error;
+      compactKnownStateCaches();
+      localStorage.setItem(key, serialized);
+    }
     learningJournalCache.set(key, journal);
     return true;
   } catch (error) {
@@ -1494,6 +1532,7 @@ function writeLearningJournal(options = {}) {
 function applyLearningJournal(storageKey, candidate) {
   const journal = readLearningJournal(storageKey);
   if (!journal || !candidate?.bookStates) return candidate;
+  const baseline = cloneSerializable(candidate);
   if (!candidate.bookStates[journal.bookId]) {
     // A crash can happen before the main root write creates the selected
     // book scope.  Keep the journal as the recovery source instead of
@@ -1534,6 +1573,14 @@ function applyLearningJournal(storageKey, candidate) {
     ...(journal.planTargetHistory ?? {}),
   });
   candidate.activeBookId = journal.bookId;
+  if (window.SenseVocabSync) {
+    window.SenseVocabSync.stampChanges(
+      candidate,
+      baseline,
+      undefined,
+      learningJournalSyncChangeOptions(journal),
+    );
+  }
   return candidate;
 }
 
@@ -2175,7 +2222,6 @@ function sealLearningSessionForLifecycle() {
   const journalWasPending = deferredLearningJournalPending;
   deferredUiStateSavePending = false;
   deferredUiStateSaveOptions = {};
-  flushDeferredLearningJournalWrite();
   const shouldSeal = (
     hasLearningSessionCommit() ||
     journalWasPending ||
@@ -2186,12 +2232,15 @@ function sealLearningSessionForLifecycle() {
     return;
   }
   const options = mergeStateSaveOptions(learningSessionCommitOptions, pendingOptions);
-  saveState({
-    ...options,
-    journalOnly: false,
-    sealLearningSession: true,
-    recordDashboardSnapshot: false,
-  });
+  deferredLearningJournalOptions = mergeStateSaveOptions(
+    deferredLearningJournalOptions,
+    options,
+  );
+  deferredLearningJournalPending = true;
+  // Browsers can freeze a hidden page before a full clone/compression or a
+  // network request finishes. The compact journal is the durable checkpoint;
+  // the full local/cloud commit happens after the round is explicitly ended.
+  flushDeferredLearningJournalWrite();
 }
 
 function saveStateAfterInteractionFrame(options = {}) {
@@ -3405,6 +3454,9 @@ window.SenseVocabApp = {
     if (!window.SenseVocabSync) return false;
     return window.SenseVocabSync.hasIndependentChanges(candidate, baseline);
   },
+  hasActiveLearningTransaction: () => Boolean(
+    learningTransactionActive() && currentCard()
+  ),
   getCurrentWordContext: () => currentFeedbackContext(),
   activateGuest: (options = {}) => applyStateToStorage(STORAGE_KEY, null, options),
   activateAccount: (userId, nextState = null) => {
@@ -3427,6 +3479,14 @@ window.SenseVocabApp = {
     const navigation = options.preserveNavigation
       ? captureActiveNavigation()
       : null;
+    const previousRootState = rootState;
+    const previousDirtyDashboardSnapshots = dirtyDashboardSnapshots;
+    const restorePreviousState = () => {
+      rootState = previousRootState;
+      dirtyDashboardSnapshots = previousDirtyDashboardSnapshots;
+      activateBookScope(rootState.activeBookId);
+      restoreActiveNavigation(navigation);
+    };
     rootState = normalizeRootState(cloneSerializable(nextState));
     dirtyDashboardSnapshots = new Map();
     markAllDashboardSnapshotsDirty(rootState);
@@ -3436,18 +3496,29 @@ window.SenseVocabApp = {
     activateBookScope(rootState.activeBookId);
     restoreActiveNavigation(navigation);
     applyWordDeepLink();
-    const persisted = saveState({
-      notify: options.notify !== false,
-      stampSync: options.stampSync !== false,
-      // Replacing the active state is normally a real data mutation, even
-      // when the caller deliberately avoids stamping a sync revision. Remote
-      // reconciliation paths opt out explicitly; local recovery and imports
-      // must still schedule a cloud verification/upload.
-      syncRelevant: options.syncRelevant ?? true,
-      persistAllSnapshots: true,
-    });
-    render();
-    return persisted;
+    try {
+      const persisted = saveState({
+        notify: options.notify !== false,
+        stampSync: options.stampSync !== false,
+        // Replacing the active state is normally a real data mutation, even
+        // when the caller deliberately avoids stamping a sync revision. Remote
+        // reconciliation paths opt out explicitly; local recovery and imports
+        // must still schedule a cloud verification/upload.
+        syncRelevant: options.syncRelevant ?? true,
+        persistAllSnapshots: true,
+      });
+      if (persisted === false) {
+        restorePreviousState();
+        render();
+        return false;
+      }
+      render();
+      return true;
+    } catch (error) {
+      restorePreviousState();
+      render();
+      throw error;
+    }
   },
   removeAccountCache: (userId) => {
     const storageKey = accountStorageKey(userId);

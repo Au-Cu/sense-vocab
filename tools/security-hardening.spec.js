@@ -8,7 +8,10 @@ const root = path.resolve(__dirname, "..");
 const execFileAsync = promisify(execFile);
 
 async function read(relativePath) {
-  return readFile(path.join(root, relativePath), "utf8");
+  return (await readFile(path.join(root, relativePath), "utf8")).replace(
+    /\r\n/g,
+    "\n",
+  );
 }
 
 test("the public UI avoids executable HTML sinks", async () => {

@@ -2584,6 +2584,15 @@
     announceAccountReady();
     refreshNotifications({ silent: true }).catch(() => {});
 
+    if (app.hasActiveLearningTransaction?.()) {
+      const syncMeta = loadSyncMeta(user.id);
+      cloudRevision = syncMeta.revision;
+      saveSyncMeta(user.id, { dirty: true });
+      setSyncStatus("本轮学习结束后核对云端记录", "pending");
+      setMessage();
+      return;
+    }
+
     try {
       const remoteResult = await loadCloudState(
         "云端学习记录读取",
@@ -2701,6 +2710,11 @@
 
   function scheduleSync() {
     if (!currentUser || tutorialActive() || hasBlockingConflict() || pendingConsentSession) return;
+    if (app.hasActiveLearningTransaction?.()) {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+      return;
+    }
     if (syncPromise) {
       syncRequestedWhileBusy = true;
       return;
@@ -2727,6 +2741,14 @@
   async function syncNow(options = {}) {
     if (!cloud || !currentUser || tutorialActive() || hasBlockingConflict() || pendingConsentSession) {
       return null;
+    }
+    if (app.hasActiveLearningTransaction?.() && options.allowDuringLearning !== true) {
+      setSyncStatus("本轮学习结束后同步云端记录", "pending");
+      return {
+        ok: false,
+        skipped: true,
+        reason: "active_learning",
+      };
     }
     if (typeof app.isPersistenceSafe === "function" && !app.isPersistenceSafe()) {
       setSyncStatus("完整词库尚未载入，云端同步已暂停", "pending");
@@ -3069,6 +3091,9 @@
 
   async function refreshFromCloud(options = {}) {
     if (!cloud || !currentUser || tutorialActive() || hasBlockingConflict() || pendingConsentSession) {
+      return null;
+    }
+    if (app.hasActiveLearningTransaction?.()) {
       return null;
     }
     if (refreshPromise) return refreshPromise;
@@ -4084,7 +4109,9 @@
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      if (currentUser && !tutorialActive()) syncNow();
+      if (currentUser && !tutorialActive() && !app.hasActiveLearningTransaction?.()) {
+        syncNow();
+      }
     } else {
       if (tutorialActive()) return;
       if (!currentUser || sessionResolutionUncertain) {

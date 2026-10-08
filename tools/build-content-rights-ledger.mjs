@@ -31,6 +31,10 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function normalizeLineEndings(value) {
+  return value.replace(/\r\n/g, "\n");
+}
+
 function fieldHash(value) {
   return sha256(JSON.stringify(value ?? null));
 }
@@ -279,7 +283,10 @@ if (check) {
     readFile(ledgerPath, "utf8"),
     readFile(summaryPath, "utf8"),
   ]);
-  if (existingLedger !== ledgerContents || existingSummary !== summaryContents) {
+  if (
+    normalizeLineEndings(existingLedger) !== ledgerContents ||
+    normalizeLineEndings(existingSummary) !== summaryContents
+  ) {
     console.error("Content-rights ledger is stale. Run npm run build:rights-ledger.");
     process.exit(1);
   }

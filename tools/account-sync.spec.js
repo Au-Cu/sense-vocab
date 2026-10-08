@@ -1350,6 +1350,7 @@ test("background cloud refresh preserves an active study page on mobile", async 
   await page.locator("#startStudyButton").click();
   await expect(page.locator("#studyPanel")).toBeVisible();
   const currentWord = await page.locator("#wordText").textContent();
+  const cloudReadsBeforeFocus = await page.evaluate(() => window.__fakeCloud.loadStateCalls);
 
   await page.waitForTimeout(1_000);
   await page.evaluate(() => {
@@ -1367,6 +1368,157 @@ test("background cloud refresh preserves an active study page on mobile", async 
   await expect(page.locator("#studyPanel")).toBeVisible();
   await expect(page.locator("#homePanel")).toBeHidden();
   await expect(page.locator("#wordText")).toHaveText(currentWord);
+  expect(await page.evaluate(() => window.__fakeCloud.loadStateCalls))
+    .toBe(cloudReadsBeforeFocus);
+});
+
+test("account bootstrap keeps a journaled active round ahead of a stale completed cloud round", async ({ page }) => {
+  const today = new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Hong_Kong",
+  });
+  const queue = [
+    {
+      wordId: "act",
+      type: "review",
+      senseKeys: ["act:v-1"],
+      activeSenseKeys: ["act:v-1"],
+    },
+    {
+      wordId: "ability",
+      type: "review",
+      senseKeys: ["ability:n-1"],
+      activeSenseKeys: ["ability:n-1"],
+    },
+  ];
+  const local = makeState(2);
+  local.view = "study";
+  local.session = {
+    date: today,
+    activePlanDate: today,
+    activeLearningDay: 1,
+    baseLearningDay: 1,
+    activeBatchType: "planned",
+    queue,
+    currentIndex: 0,
+    revealed: false,
+    cardPhase: "hidden",
+    baseCompleted: false,
+  };
+  local.studyWindows = [{
+    id: "round-1",
+    startedAt: `${today}T08:00:00.000Z`,
+    activityDate: today,
+    endedAt: null,
+  }];
+  const recoveredSession = {
+    ...local.session,
+    currentIndex: 1,
+  };
+  const staleCloud = structuredClone(local);
+  staleCloud.session.currentIndex = queue.length;
+  staleCloud.session.baseCompleted = true;
+  staleCloud.studyWindows[0].endedAt = `${today}T08:05:00.000Z`;
+
+  await installFakeCloud(page, {
+    found: true,
+    revision: 8,
+    state: staleCloud,
+    updatedAt: `${today}T08:05:00.000Z`,
+  });
+  await page.addInitScript(({ accountKey, mainState, session }) => {
+    if (sessionStorage.getItem("journal-bootstrap-seeded") === "true") return;
+    localStorage.clear();
+    localStorage.setItem(accountKey, JSON.stringify(mainState));
+    const journalKey = `${accountKey}:learning-journal-v1:`;
+    localStorage.setItem(journalKey, JSON.stringify({
+      version: 1,
+      updatedAt: `${mainState.session.date}T08:06:00.000Z`,
+      bookId: "kaoyan",
+      session,
+      progress: {},
+      activityLog: {},
+      dashboardEvents: {},
+      introducedWords: [],
+      studyWindows: mainState.studyWindows,
+      learningDayCounter: 1,
+      plan: mainState.plan,
+      planTargetHistory: {},
+    }));
+    sessionStorage.setItem("journal-bootstrap-seeded", "true");
+  }, { accountKey: ACCOUNT_KEY, mainState: local, session: recoveredSession });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  const preLoginState = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const state = app.getAccountState("user-1");
+    const active = state.bookStates[state.activeBookId];
+    return {
+      currentIndex: active.session.currentIndex,
+      studyWindows: active.studyWindows,
+      queueLength: active.session.queue.length,
+    };
+  });
+  expect(preLoginState).toMatchObject({
+    currentIndex: 1,
+    queueLength: 2,
+  });
+  expect(preLoginState.studyWindows.at(-1)?.endedAt).toBeNull();
+  await login(page);
+  await expect(page.locator("#accountStateBadge")).toHaveText("已登录");
+  await page.waitForTimeout(300);
+
+  const result = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const active = app.getState();
+    const bookId = active.activeBookId;
+    const merged = app.mergeStates(active, window.__fakeCloud.remote.state);
+    const stored = app.decodeStorageValue(localStorage.getItem(app.getActiveStorageKey()));
+    return {
+      currentIndex: active.bookStates[bookId].session.currentIndex,
+      queueLength: active.bookStates[bookId].session.queue.length,
+      mergedIndex: merged.bookStates[bookId].session.currentIndex,
+      cloudReads: window.__fakeCloud.loadStateCalls,
+      storedIndex: stored?.bookStates?.[bookId]?.session?.currentIndex ?? stored?.session?.currentIndex,
+      journalKeys: Object.keys(localStorage).filter((key) => (
+        key.includes(":learning-journal-v1:")
+      )),
+    };
+  });
+
+  expect(result).toMatchObject({
+    currentIndex: 1,
+    mergedIndex: 1,
+    cloudReads: 0,
+    storedIndex: 1,
+    journalKeys: [],
+  });
+  expect(result.currentIndex).toBeLessThan(result.queueLength);
+
+  await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const completed = app.getState();
+    const bookId = completed.activeBookId;
+    const scope = completed.bookStates[bookId];
+    scope.session.currentIndex = scope.session.queue.length;
+    scope.session.baseCompleted = true;
+    scope.studyWindows = scope.studyWindows.map((window) => ({
+      ...window,
+      endedAt: window.endedAt ?? new Date().toISOString(),
+    }));
+    Object.assign(completed, scope);
+    app.replaceActiveState(completed, { preserveNavigation: true });
+  });
+  await expect.poll(() => page.evaluate(() => window.__fakeCloud.saves.length))
+    .toBeGreaterThan(0);
+  const uploaded = await page.evaluate(() => {
+    const remote = window.__fakeCloud.remote.state;
+    const scope = remote.bookStates?.[remote.activeBookId] ?? remote;
+    return {
+      currentIndex: scope.session.currentIndex,
+      queueLength: scope.session.queue.length,
+    };
+  });
+  expect(uploaded.currentIndex).toBe(uploaded.queueLength);
 });
 
 test("first login copies guest history into an isolated account cache and uploads it", async ({ page }) => {
@@ -2271,6 +2423,28 @@ test("confusing-word links follow the account to a fresh mobile device", async (
   await page.locator("#confusionSearchInput").fill("abandon");
   await page.locator('.confusion-search-action[data-word-id="abandon"]').click();
 
+  const linkStatusDuringRound = await page.evaluate(() => {
+    const snapshot = window.SenseVocabApp.getState();
+    const active = snapshot?.bookStates?.[snapshot.activeBookId] ?? snapshot;
+    const localHasLink = Object.values(active?.confusionLinks ?? {}).some((link) => {
+      return new Set([link.left, link.right]).has("act") &&
+        new Set([link.left, link.right]).has("abandon");
+    });
+    const remoteSnapshot = window.__fakeCloud.remote?.state;
+    const remoteActive = remoteSnapshot?.bookStates?.[remoteSnapshot.activeBookId] ?? remoteSnapshot;
+    const remoteHasLink = Object.values(remoteActive?.confusionLinks ?? {}).some((link) => {
+      return new Set([link.left, link.right]).has("act") &&
+        new Set([link.left, link.right]).has("abandon");
+    });
+    return { localHasLink, remoteHasLink };
+  });
+  expect(linkStatusDuringRound).toEqual({ localHasLink: true, remoteHasLink: false });
+
+  await page.locator("#confusionBackButton").click();
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  await page.locator("#exitStudyButton").click();
+  await page.locator("#returnHomeButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
   await expect.poll(async () => page.evaluate(() => {
     const snapshot = window.__fakeCloud.remote?.state;
     const active = snapshot?.bookStates?.[snapshot.activeBookId] ?? snapshot;

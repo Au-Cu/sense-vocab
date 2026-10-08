@@ -352,7 +352,7 @@ test("advancing stamps the session so a stale completed cloud session cannot win
   expect(result.mergedIndex).toBe(1);
 });
 
-test("an active study round journals interactions and seals one sync-relevant save", async ({ page }) => {
+test("pagehide keeps an active round in the compact journal without a full-state save", async ({ page }) => {
   await page.goto(APP_URL);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -394,9 +394,66 @@ test("an active study round journals interactions and seals one sync-relevant sa
       key.includes(":learning-journal-v1:")
     )).length,
   }));
-  expect(afterSeal.events.filter((event) => event.syncRelevant !== false)).toHaveLength(1);
-  expect(afterSeal.journalKeys).toBe(0);
+  expect(afterSeal.events.filter((event) => event.syncRelevant !== false)).toEqual([]);
+  expect(afterSeal.journalKeys).toBe(1);
+
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
   expect((await readState(page)).session.currentIndex).toBe(1);
+});
+
+test("a failed cloud replacement rolls back the live learning round", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("2");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 2");
+
+  const result = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const before = app.getState();
+    const bookId = before.activeBookId;
+    const replacement = structuredClone(before);
+    const replacementSession = replacement.bookStates[bookId].session;
+    replacementSession.currentIndex = replacementSession.queue.length;
+    replacementSession.baseCompleted = true;
+    Object.assign(replacement, replacement.bookStates[bookId]);
+    const activeKey = app.getActiveStorageKey();
+    const nativeSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function setItemWithQuota(key, value) {
+      if (key === activeKey) {
+        throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+      }
+      return nativeSetItem.call(this, key, value);
+    };
+    try {
+      const persisted = app.replaceActiveState(replacement, {
+        notify: false,
+        stampSync: false,
+        preserveNavigation: true,
+      });
+      const after = app.getState();
+      return {
+        persisted,
+        beforeIndex: before.bookStates[bookId].session.currentIndex,
+        afterIndex: after.bookStates[bookId].session.currentIndex,
+        queueLength: after.bookStates[bookId].session.queue.length,
+      };
+    } finally {
+      Storage.prototype.setItem = nativeSetItem;
+    }
+  });
+
+  expect(result.persisted).toBe(false);
+  expect(result.beforeIndex).toBe(0);
+  expect(result.afterIndex).toBe(0);
+  expect(result.afterIndex).toBeLessThan(result.queueLength);
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  await expect(page.locator("#nextButton")).not.toHaveText("返回主页");
 });
 
 test("returning home renders the sealed round immediately and emits one sync save", async ({ page }) => {
@@ -781,12 +838,14 @@ test("advance runs the full next plan day while incremental only adds new words"
 
   async function restoreSeed() {
     await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
-    await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
-    await page.evaluate(({ key, value }) => {
-      localStorage.setItem(key, JSON.stringify(value));
-    }, { key: STORAGE_KEY, value: seedState });
-    await page.reload();
-    await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+    const persisted = await page.evaluate((value) => {
+      return window.SenseVocabApp.replaceActiveState(value, {
+        notify: false,
+        stampSync: false,
+        syncRelevant: false,
+      });
+    }, seedState);
+    expect(persisted).toBe(true);
     await page.waitForFunction((key) => {
       const saved = JSON.parse(localStorage.getItem(key));
       return saved?.introducedWords?.includes("act");
