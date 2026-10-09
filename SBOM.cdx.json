@@ -1,7 +1,7 @@
 {
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:9b2fee57-ed21-5077-a4fd-60fb518f61d7",
+  "serialNumber": "urn:uuid:7730c0df-a8b7-5ca6-a3e1-107a1c6c2055",
   "version": 1,
   "metadata": {
     "timestamp": "2026-08-09T00:00:00+08:00",
@@ -17,11 +17,11 @@
     "component": {
       "type": "application",
       "name": "sense-vocab-mvp",
-      "version": "1.12.0",
+      "version": "1.13.0",
       "hashes": [
         {
           "alg": "SHA-256",
-          "content": "dfe5f7443fa7d0acfa40fdb784237f9cdf18aba59cda7e1c37c0ef53f92b4aec"
+          "content": "270da1fa67ceb52ed4746458e9354bfa09e0775be508013628423dd9059c6720"
         }
       ]
     },
