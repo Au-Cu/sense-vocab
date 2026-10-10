@@ -352,6 +352,42 @@ test("advancing stamps the session so a stale completed cloud session cannot win
   expect(result.mergedIndex).toBe(1);
 });
 
+test("journal recovery keeps the full history beyond the bounded journal window", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.evaluate((key) => {
+    localStorage.clear();
+    const root = window.SenseVocabApp.getState();
+    const scope = root.bookStates[root.activeBookId];
+    scope.studyWindows = Array.from({ length: 50 }, (_, index) => ({
+      id: `history-${index}`,
+      startedAt: `2026-08-01T08:${String(index).padStart(2, "0")}:00.000Z`,
+      endedAt: `2026-08-01T08:${String(index).padStart(2, "0")}:30.000Z`,
+      activityDate: "2026-08-01",
+      endedDate: "2026-08-01",
+      endedReason: "return-home",
+    }));
+    Object.assign(root, scope);
+    localStorage.setItem(key, JSON.stringify(root));
+    localStorage.setItem(`${key}:learning-journal-v1:`, JSON.stringify({
+      version: 1,
+      bookId: root.activeBookId,
+      studyWindows: [{
+        id: "interrupted-round",
+        startedAt: new Date().toISOString(),
+        endedAt: null,
+        activityDate: new Date().toLocaleDateString("sv-SE"),
+      }],
+    }));
+  }, STORAGE_KEY);
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const windows = await page.evaluate(() => window.SenseVocabApp.getGuestState().bookStates.kaoyan.studyWindows);
+  expect(windows).toHaveLength(51);
+  expect(windows[0].id).toBe("history-0");
+  expect(windows.at(-1).id).toBe("interrupted-round");
+});
+
 test("pagehide keeps an active round in the compact journal without a full-state save", async ({ page }) => {
   await page.goto(APP_URL);
   await page.evaluate(() => localStorage.clear());
@@ -400,6 +436,199 @@ test("pagehide keeps an active round in the compact journal without a full-state
   await page.reload();
   await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
   expect((await readState(page)).session.currentIndex).toBe(1);
+});
+
+test("quota-blocked journals survive repeated cold page reopens", async ({ page, context }) => {
+  test.setTimeout(90000);
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("3");
+  await page.locator("#savePlanButton").click();
+  await context.addInitScript((key) => {
+    const originalSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function setItemWithFullLearningStorage(name, value) {
+      if (name === key || String(name).startsWith(`${key}:`)) {
+        throw new DOMException("Learning storage is full", "QuotaExceededError");
+      }
+      return originalSet.call(this, name, value);
+    };
+  }, STORAGE_KEY);
+  await page.reload();
+  let current = page;
+  const completedWords = [];
+  for (let round = 0; round < 2; round += 1) {
+    await current.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+    await current.locator("#startStudyButton").click();
+    await expect(current.locator("#queueProgress")).toHaveText(`${round + 1} / 3`);
+    completedWords.push(await current.locator("#wordText").textContent());
+    await reveal(current);
+    await current.locator("#nextButton").click();
+    await expect(current.locator("#nextButton")).toHaveText("下一词");
+    await current.locator("#nextButton").click();
+    await expect(current.locator("#queueProgress")).toHaveText(`${round + 2} / 3`);
+    await current.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    await expect.poll(() => current.evaluate(async () => {
+      const backend = window.SenseVocabDurableStorage.createIndexedDbBackend({
+        databaseName: "sense-vocab-learning-journal-v1",
+        storeName: "journals",
+      });
+      const record = await backend.get(window.SenseVocabApp.getActiveStorageKey());
+      return record?.journal?.session?.currentIndex;
+    })).toBe(round + 1);
+    await current.close();
+    current = await context.newPage();
+    await current.goto(APP_URL);
+  }
+  await current.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const restored = await current.evaluate(() => window.SenseVocabApp.getState());
+  expect(restored.session.currentIndex).toBe(2);
+  expect(restored.activityLog[restored.session.activePlanDate].newWords).toEqual(
+    expect.arrayContaining(completedWords),
+  );
+  expect(Object.keys(restored.progress).some((key) => key.startsWith(`${completedWords[0]}:`))).toBe(true);
+  await current.locator("#startStudyButton").click();
+  await expect(current.locator("#queueProgress")).toHaveText("3 / 3");
+  await expect(current.locator("#nextButton")).not.toHaveText("返回主页");
+});
+
+test("an obsolete backup cannot roll back a successfully committed root", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.evaluate(async (key) => {
+    const raw = localStorage.getItem(key);
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw ?? ""));
+    const backend = window.SenseVocabDurableStorage.createIndexedDbBackend({
+      databaseName: "sense-vocab-learning-journal-v1", storeName: "journals",
+    });
+    await backend.set(key, {
+      version: 1, storageKey: key,
+      baseHash: [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join(""),
+      journal: { version: 1, bookId: "kaoyan", progress: { "act:v-1": { status: "reinforce" } } },
+    });
+    const next = window.SenseVocabApp.getState();
+    next.bookStates.kaoyan.progress["act:v-1"] = { status: "mastered" };
+    Object.assign(next, next.bookStates.kaoyan);
+    window.SenseVocabApp.replaceActiveState(next, { notify: false });
+  }, STORAGE_KEY);
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  expect(await page.evaluate(() => window.SenseVocabApp.getState().progress["act:v-1"].status)).toBe("mastered");
+});
+
+test("production-sized chart history does not block input or lose the interrupted tail", async ({ page }) => {
+  test.setTimeout(120000);
+  const catalog = require("../data/vocabulary-index.json").books
+    .find((book) => book.id === "kaoyan").entries;
+  const queue = catalog.filter((entry) => ["act", "action", "activate"].includes(entry.wordId))
+    .map((entry) => ({
+      wordId: entry.wordId, type: "new",
+      activeSenseKeys: entry.senseIds.map((id) => `${entry.wordId}:${id}`),
+      senseKeys: entry.senseIds.map((id) => `${entry.wordId}:${id}`),
+    }));
+  const keys = catalog.filter((entry) => !queue.some((card) => card.wordId === entry.wordId))
+    .flatMap((entry) => entry.senseIds.map((id) => `${entry.wordId}:${id}`)).slice(0, 4450);
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const size = await page.evaluate(({ keys: senseKeys, key, queue }) => {
+    const app = window.SenseVocabApp;
+    const root = app.getState();
+    const scope = root.bookStates.kaoyan;
+    scope.plan = { dailyTarget: 3, startedOn: "2026-08-01", createdOn: "2026-08-01" };
+    scope.dataVersion = 10;
+    scope.introducedWords = [...new Set(senseKeys.map((senseKey) => senseKey.split(":")[0]))];
+    scope.progress = Object.fromEntries(senseKeys.map((senseKey) => [senseKey, {
+      status: "mastered", firstSeenActual: "2026-08-01", lastSeenActual: "2026-08-01",
+      statusEnteredAt: "2026-08-01T08:00:00.000Z", updatedAt: "2026-08-01T08:00:00.000Z",
+    }]));
+    const today = new Date().toLocaleDateString("sv-SE");
+    scope.session = {
+      date: today, activePlanDate: today, currentIndex: 0, cardPhase: "hidden", baseCompleted: false,
+      queue,
+    };
+    for (let index = 0; index < 65; index += 1) {
+      const date = new Date(Date.UTC(2026, 6, 1 + index)).toISOString().slice(0, 10);
+      scope.studyWindows.push({
+        id: `historical-${index}`, startedAt: `${date}T08:00:00.000Z`,
+        endedAt: `${date}T09:00:00.000Z`, activityDate: date, endedDate: date,
+      });
+      scope.activityLog[date] = { newWords: ["ability"], newCount: 1, target: 1, reviewWords: [] };
+      scope.dashboardSnapshots[`kaoyan:${date}`] = {
+        date, version: 1,
+        statuses: Object.fromEntries(senseKeys.map((senseKey) => [senseKey, "mastered"])),
+        enteredAt: Object.fromEntries(senseKeys.map((senseKey) => [senseKey, `${date}T08:00:00.000Z`])),
+      };
+    }
+    Object.assign(root, scope);
+    const bytes = new TextEncoder().encode(JSON.stringify(root)).byteLength;
+    if (!app.replaceActiveState(root, { notify: false })) throw new Error("Fixture could not be persisted");
+    const originalSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function failFullRoot(name, value) {
+      if (name === key) throw new DOMException("Root quota is full", "QuotaExceededError");
+      return originalSet.call(this, name, value);
+    };
+    return bytes;
+  }, { keys, queue, key: STORAGE_KEY });
+  expect(size).toBeGreaterThan(15_000_000);
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#queueProgress")).toHaveText("1 / 3");
+  const word = await page.locator("#wordText").textContent();
+  await page.locator("#audioButton").click();
+  const inputFrame = async (selector) => page.evaluate(async (target) => {
+    const started = performance.now();
+    document.querySelector(target).click();
+    return new Promise((resolve) => requestAnimationFrame(() => resolve(performance.now() - started)));
+  }, selector);
+  expect(await inputFrame("#revealButton")).toBeLessThan(200);
+  await expect(page.locator("#nextButton")).toHaveText("完成");
+  expect(await inputFrame("#nextButton")).toBeLessThan(200);
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+  expect(await inputFrame("#nextButton")).toBeLessThan(200);
+  await expect(page.locator("#queueProgress")).toHaveText("2 / 3");
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const restored = await page.evaluate((wordId) => {
+    const root = window.SenseVocabApp.getState();
+    return {
+      index: root.session.currentIndex,
+      introduced: root.introducedWords.includes(wordId),
+      tail: root.activityLog[root.session.activePlanDate]?.newWords,
+      windows: root.studyWindows.filter((entry) => entry.id.startsWith("historical-")).length,
+      snapshots: Object.keys(root.dashboardSnapshots).length,
+      progress: Object.keys(root.progress).length,
+    };
+  }, word);
+  expect(restored).toMatchObject({ index: 1, introduced: true, windows: 65 });
+  expect(restored.tail).toContain(word);
+  expect(restored.snapshots).toBeGreaterThanOrEqual(65);
+  expect(restored.progress).toBeGreaterThanOrEqual(4450);
+});
+
+test("vocabulary loading removes redundant owned caches without deleting learning records", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.evaluate(async () => {
+    const root = window.SenseVocabApp.getState();
+    root.bookStates.kaoyan.progress["act:v-1"] = { status: "mastered" };
+    Object.assign(root, root.bookStates.kaoyan);
+    if (!window.SenseVocabApp.replaceActiveState(root, { notify: false })) {
+      throw new Error("Learning fixture could not be persisted");
+    }
+    const owned = await caches.open("sense-vocab-vocabulary-obsolete");
+    await owned.put("./obsolete-vocabulary", new Response("obsolete"));
+    const unrelated = await caches.open("other-app-test");
+    await unrelated.put("./other-resource", new Response("retain"));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await expect.poll(() => page.evaluate(async () => (
+    (await caches.keys()).filter((name) => name.startsWith("sense-vocab-vocabulary-"))
+  ))).toEqual([]);
+  expect(await page.evaluate(async () => caches.has("other-app-test"))).toBe(true);
+  expect(await page.evaluate(() => window.SenseVocabApp.getState().progress["act:v-1"].status))
+    .toBe("mastered");
 });
 
 test("a failed cloud replacement rolls back the live learning round", async ({ page }) => {

@@ -306,6 +306,43 @@
     return `${SYNC_DIAGNOSTICS_PREFIX}${userId}`;
   }
 
+  function captureReconciliationContext() {
+    return {
+      userId: currentUser?.id,
+      storageKey: app.getActiveStorageKey(),
+      learningRevision: app.getLearningTransactionRevision?.(),
+    };
+  }
+
+  function reconciliationScopeIsCurrent(context) {
+    return currentUser?.id === context.userId &&
+      app.getActiveStorageKey() === context.storageKey &&
+      context.storageKey === app.accountStorageKey(context.userId) &&
+      !tutorialActive();
+  }
+
+  function deferChangedLearningRound(context, operation) {
+    if (!reconciliationScopeIsCurrent(context)) return true;
+    const active = app.hasActiveLearningTransaction?.();
+    if (!active && context.learningRevision === app.getLearningTransactionRevision?.()) {
+      return false;
+    }
+    // Home requests may finish after a round begins or seals. Never let that
+    // response replace the live cursor or clear the compact recovery journal.
+    cloudRevision = null;
+    saveSyncMeta(context.userId, { dirty: true });
+    recordSyncDiagnostic("deferred-round-reconciliation", null, {
+      operation,
+      active: Boolean(active),
+      startedRevision: context.learningRevision ?? null,
+      currentRevision: app.getLearningTransactionRevision?.() ?? null,
+    });
+    setSyncStatus("本轮记录已保留，退出学习后核对云端", "pending");
+    setOperationProgress(null, "本轮学习结束后继续核对云端");
+    if (!active) scheduleSync();
+    return true;
+  }
+
   function recordSyncDiagnostic(operation, error = null, detail = {}) {
     if (!currentUser?.id) return;
     const entry = {
@@ -2171,12 +2208,10 @@
       "load-state",
     );
     cloudLoadPromise = request.then((result) => {
-      cloudLoadCache = {
-        userId,
-        completedAt: Date.now(),
-        result,
-      };
-      rememberCloudBaseline(result);
+      if (currentUser?.id === userId) {
+        cloudLoadCache = { userId, completedAt: Date.now(), result };
+        rememberCloudBaseline(result);
+      }
       return result;
     }).finally(() => {
       if (cloudLoadUserId === userId) {
@@ -2364,6 +2399,7 @@
     force = false,
     delta = null,
   ) {
+    const userId = currentUser?.id;
     if (tutorialActive()) {
       throw new Error("教程演示记录不会上传到云端。");
     }
@@ -2487,10 +2523,10 @@
         "save-state",
       );
     }
-    if (result?.ok && !result.conflict && !result.destructiveBlocked) {
+    if (currentUser?.id === userId && result?.ok && !result.conflict && !result.destructiveBlocked) {
       cloudBaselineState = state;
     }
-    cloudLoadCache = null;
+    if (currentUser?.id === userId) cloudLoadCache = null;
     return result;
   }
 
@@ -2569,8 +2605,10 @@
 
     if (currentUser?.id !== user.id) clearCloudLoadCache();
     currentUser = user;
-    const accountCache = app.getAccountState(user.id);
-    app.activateAccount(user.id, accountCache);
+    const sameAccount = app.getActiveStorageKey() === app.accountStorageKey(user.id);
+    const accountCache = sameAccount ? app.getState() : app.getAccountState(user.id);
+    if (!sameAccount) app.activateAccount(user.id, accountCache);
+    const reconciliation = captureReconciliationContext();
     announceAccountScope(user);
     setSyncStatus("本机账户记录已加载，正在核对云端…", "pending");
     setMessage("正在读取云端记录……");
@@ -2584,11 +2622,8 @@
     announceAccountReady();
     refreshNotifications({ silent: true }).catch(() => {});
 
-    if (app.hasActiveLearningTransaction?.()) {
-      const syncMeta = loadSyncMeta(user.id);
-      cloudRevision = syncMeta.revision;
-      saveSyncMeta(user.id, { dirty: true });
-      setSyncStatus("本轮学习结束后核对云端记录", "pending");
+    if (!reconciliationScopeIsCurrent(reconciliation)) return;
+    if (deferChangedLearningRound(reconciliation, "account-bootstrap")) {
       setMessage();
       return;
     }
@@ -2599,6 +2634,7 @@
         { force: true },
       );
       if (currentUser?.id !== user.id) return;
+      if (deferChangedLearningRound(reconciliation, "account-bootstrap-read")) return;
       const remote = normalizedRemote(remoteResult);
       const guestState = app.getGuestState();
       // The dirty marker is a separate write and can be lost on quota failure
@@ -2658,7 +2694,10 @@
       rememberGuestDecision(user.id);
       await syncNow();
     } catch (error) {
-      const accountCache = app.getAccountState(user.id);
+      if (!reconciliationScopeIsCurrent(reconciliation)) return;
+      recordSyncDiagnostic("account-bootstrap-failed", error);
+      if (deferChangedLearningRound(reconciliation, "account-bootstrap-error")) return;
+      const accountCache = app.getState();
       const guestState = app.getGuestState();
       const syncMeta = loadSyncMeta(user.id);
       activateAccountState(
@@ -2764,6 +2803,7 @@
     syncTimer = null;
     lastSyncStartedAt = Date.now();
     const syncUserId = currentUser.id;
+    const reconciliation = captureReconciliationContext();
     const syncMeta = loadSyncMeta(syncUserId);
     // A manual sync must re-read the authoritative remote revision even when
     // the local dirty marker is clear. The old path trusted the marker and
@@ -2807,6 +2847,7 @@
           setOperationProgress(null, "正在检查云端是否已有记录");
           const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
           if (currentUser?.id !== syncUserId) return null;
+          if (deferChangedLearningRound(reconciliation, "sync-empty-read")) return null;
           if (remote.found && app.hasLearningData(remote.state) &&
               !app.hasLearningData(app.getState())) {
             cloudRevision = remote.revision;
@@ -2846,12 +2887,14 @@
 
         for (let attempt = 0; attempt < MAX_SYNC_RETRIES; attempt += 1) {
           if (currentUser?.id !== syncUserId) return null;
+          if (deferChangedLearningRound(reconciliation, "sync-attempt")) return null;
           let snapshot = app.getState();
 
           if (expectedRevision === null) {
             setOperationProgress(null, "正在读取最新云端版本");
             const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
             if (currentUser?.id !== syncUserId) return null;
+            if (deferChangedLearningRound(reconciliation, "sync-read")) return null;
             if (remote.found) {
               cloudRevision = remote.revision;
               expectedRevision = remote.revision;
@@ -2920,9 +2963,11 @@
             replaceRemote,
             delta,
           );
+          if (deferChangedLearningRound(reconciliation, "sync-write")) return null;
           if (result?.conflict) {
             setOperationProgress(null, "检测到其他设备更新，正在重新读取");
             const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
+            if (deferChangedLearningRound(reconciliation, "sync-conflict-read")) return null;
             if (replaceRemote) {
               queueRemoteConflict(remote, app.getState());
               return result;
@@ -2952,6 +2997,7 @@
           if (result?.destructiveBlocked) {
             setOperationProgress(null, "检测到异常缩减，正在恢复云端记录");
             const remote = normalizedRemote(await loadCloudState(undefined, { force: true }));
+            if (deferChangedLearningRound(reconciliation, "sync-recovery-read")) return null;
             if (!remote.found) {
               throw new Error("云端拒绝了异常缩减，但未能重新读取原记录。");
             }
@@ -3005,6 +3051,7 @@
           if (options.verifyPersistence) {
             setOperationProgress(null, "正在回读云端并核验完整性");
             const verifiedRemote = normalizedRemote(await loadCloudState(undefined, { force: true }));
+            if (deferChangedLearningRound(reconciliation, "sync-verify-read")) return null;
             if (!verifiedRemote.found || verifiedRemote.revision < cloudRevision) {
               throw new Error("云端回读未确认刚刚保存的学习记录。");
             }
@@ -3060,10 +3107,12 @@
         }
         throw new Error("多台设备更新过于频繁，请稍后再次同步。");
       } catch (error) {
+        if (!reconciliationScopeIsCurrent(reconciliation)) return null;
         recordSyncDiagnostic("sync-failed", error, {
           revision: Number(cloudRevision) || 0,
           dirty: true,
         });
+        if (deferChangedLearningRound(reconciliation, "sync-error")) return null;
         saveSyncMeta(syncUserId, { dirty: true });
         setSyncStatus(
           localQuotaWarning
@@ -3098,10 +3147,12 @@
     }
     if (refreshPromise) return refreshPromise;
     const refreshUserId = currentUser.id;
+    const reconciliation = captureReconciliationContext();
 
     refreshPromise = (async () => {
       try {
         if (syncPromise) await syncPromise;
+        if (deferChangedLearningRound(reconciliation, "refresh-wait")) return null;
         if (
           currentUser?.id !== refreshUserId ||
           hasBlockingConflict() ||
@@ -3118,6 +3169,7 @@
               "云端记录版本读取超时。",
               () => manifestController.abort(),
             );
+            if (deferChangedLearningRound(reconciliation, "refresh-manifest")) return null;
             const manifestRevision = Number(manifest?.revision) || 0;
             if (!manifest?.found || manifestRevision <= (cloudRevision ?? -1)) {
               cloudRevision = manifestRevision;
@@ -3138,6 +3190,7 @@
           force: Boolean(options.force) || manifest !== undefined,
           manifest,
         }));
+        if (deferChangedLearningRound(reconciliation, "refresh-read")) return null;
         if (!remote.found || remote.revision <= (cloudRevision ?? -1)) {
           return remote;
         }
@@ -3877,6 +3930,15 @@
       }
       if (["INITIAL_SESSION", "SIGNED_IN"].includes(event) && session?.user) {
         sessionResolutionUncertain = false;
+        if (event === "SIGNED_IN" && currentUser?.id === session.user.id &&
+            app.getActiveStorageKey() === app.accountStorageKey(session.user.id) &&
+            !pendingConsentSession) {
+          currentUser = session.user;
+          refreshFromCloud({ silent: true });
+          refreshAccountProfile({ silent: true });
+          refreshNotifications({ silent: true });
+          return;
+        }
         establishAccountSession(session)
           .then(() => {
             refreshAccountProfile({ silent: true });
@@ -4083,6 +4145,10 @@
   });
 
   window.addEventListener("sensevocab:storage-error", (event) => {
+    if (event.detail?.backupFailed) {
+      setMessage("学习日志的备用存储也未能写入，请勿关闭页面，请立即导出学习数据。", "error");
+      return;
+    }
     if (!event.detail?.quotaExceeded) {
       setMessage("浏览器存储写入失败，请立即导出学习数据。", "error");
       return;
@@ -4099,6 +4165,11 @@
       "浏览器本地空间已满，本次更新暂未写入本机。请先导出学习数据，再清理该网站的旧缓存。",
       "error",
     );
+  });
+
+  window.addEventListener("sensevocab:journal-durable", (event) => {
+    if (event.detail?.storageKey !== app.getActiveStorageKey()) return;
+    setMessage("本机普通存储已满，本轮记录已保存到备用学习日志。", "pending");
   });
 
   window.addEventListener("sensevocab:tutorial-finished", () => {
@@ -4150,6 +4221,7 @@
   window.addEventListener("storage", (event) => {
     if (!currentUser || tutorialActive() || event.key !== app.accountStorageKey(currentUser.id)) return;
     if (!event.newValue) return;
+    if (deferChangedLearningRound(captureReconciliationContext(), "other-tab")) return;
     try {
       const incoming = typeof app.getAccountState === "function"
         ? app.getAccountState(currentUser.id)

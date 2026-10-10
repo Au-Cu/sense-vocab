@@ -461,7 +461,12 @@ let deferredLearningJournalTimer = null;
 let deferredLearningJournalIdle = null;
 let deferredLearningJournalOptions = {};
 let learningSessionCommitOptions = {};
+let learningTransactionRevision = 0;
 const learningJournalCache = new Map();
+const learningJournalFallbacks = new Map();
+let learningJournalFallbackStore = null;
+let learningJournalFallbackWrites = Promise.resolve();
+let learningJournalFallbackError = null;
 let dirtyDashboardSnapshots = new Map();
 let studyHierarchyOrigin = null;
 let wordListHierarchyOrigin = null;
@@ -593,56 +598,28 @@ async function loadVocabularyIndex() {
   return data;
 }
 
-async function removeOldVocabularyCaches(currentName) {
+async function removeVocabularyCaches() {
   if (!("caches" in window)) return;
   const names = await caches.keys();
   await Promise.all(
     names
-      .filter((name) => (
-        name.startsWith(VOCABULARY_CACHE_PREFIX) && name !== currentName
-      ))
+      .filter((name) => name.startsWith(VOCABULARY_CACHE_PREFIX))
       .map((name) => caches.delete(name)),
   );
 }
 
 async function loadVocabularyBundle(index, { forceNetwork = false } = {}) {
   const version = index?.bundleVersion || "legacy";
-  const cacheName = `${VOCABULARY_CACHE_PREFIX}${version.slice(0, 16)}`;
   const url = new URL(VOCABULARY_BUNDLE_URL, window.location.href);
   url.searchParams.set("v", version);
   const request = new Request(url.href, { credentials: "same-origin" });
-  let cache = null;
-
-  if ("caches" in window) {
-    try {
-      cache = await caches.open(cacheName);
-      if (!forceNetwork) {
-        const cached = await cache.match(request);
-        if (cached) {
-          try {
-            return validateVocabularyData(
-              await cached.json(),
-              "Cached vocabulary bundle",
-            );
-          } catch (error) {
-            console.warn("Discarding an invalid cached vocabulary bundle.", error);
-            await cache.delete(request);
-          }
-        }
-      }
-    } catch (error) {
-      console.warn("Vocabulary cache is unavailable.", error);
-      cache = null;
-    }
-  }
-
+  // Versioned HTTP caching avoids a second full vocabulary copy in site storage.
   const response = await fetchWithTimeout(request, {
     cache: forceNetwork ? "reload" : "default",
   });
   if (!response.ok) {
     throw new Error(`Vocabulary bundle failed to load: ${response.status}`);
   }
-  const cacheCopy = response.clone();
   const data = validateVocabularyData(
     await readJsonResponse(response, {
       label: "正在载入完整学习内容",
@@ -651,13 +628,9 @@ async function loadVocabularyBundle(index, { forceNetwork = false } = {}) {
     "Vocabulary bundle",
   );
 
-  if (cache) {
-    cache.put(request, cacheCopy)
-      .then(() => removeOldVocabularyCaches(cacheName))
-      .catch((error) => {
-        console.warn("Vocabulary bundle could not be cached.", error);
-      });
-  }
+  removeVocabularyCaches().catch((error) => {
+    console.warn("Redundant vocabulary cache could not be removed.", error);
+  });
   return data;
 }
 
@@ -1383,20 +1356,80 @@ function readLearningJournal(storageKey = activeStorageKey) {
   if (learningJournalCache.has(key)) return learningJournalCache.get(key);
   try {
     const raw = localStorage.getItem(key);
-    if (!raw) {
-      learningJournalCache.set(key, null);
-      return null;
-    }
-    const journal = decodeStorageValue(raw);
-    const normalized = journal?.version === 1 && typeof journal === "object"
+    const journal = raw ? decodeStorageValue(raw) : null;
+    let normalized = journal?.version === 1 && typeof journal === "object"
       ? journal
       : null;
+    const fallback = learningJournalFallbacks.get(storageKey)?.journal;
+    if (fallback && (!normalized ||
+        Number(fallback.sequence ?? 0) > Number(normalized.sequence ?? 0) ||
+        (Number(fallback.sequence ?? 0) === Number(normalized.sequence ?? 0) &&
+         String(fallback.updatedAt ?? "") > String(normalized.updatedAt ?? "")))) {
+      normalized = fallback;
+    }
     learningJournalCache.set(key, normalized);
     return normalized;
   } catch {
-    learningJournalCache.set(key, null);
-    return null;
+    const fallback = learningJournalFallbacks.get(storageKey)?.journal ?? null;
+    learningJournalCache.set(key, fallback);
+    return fallback;
   }
+}
+
+async function learningJournalBaseHash(raw) {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw ?? ""));
+  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function loadLearningJournalFallbacks() {
+  try {
+    learningJournalFallbackStore = window.SenseVocabDurableStorage.createIndexedDbBackend({
+      databaseName: "sense-vocab-learning-journal-v1",
+      storeName: "journals",
+    });
+    const records = await learningJournalFallbackStore.getAll();
+    await Promise.all(records.map(async (record) => {
+      if (record?.version !== 1 || record.journal?.version !== 1 ||
+          typeof record.storageKey !== "string" ||
+          !(record.storageKey === STORAGE_KEY || record.storageKey.startsWith(ACCOUNT_STORAGE_PREFIX))) return;
+      // A committed full-state write invalidates an older backup even if the
+      // browser was killed before the asynchronous backup cleanup completed.
+      const hash = await learningJournalBaseHash(localStorage.getItem(record.storageKey));
+      if (hash === record.baseHash) learningJournalFallbacks.set(record.storageKey, record);
+    }));
+  } catch (error) {
+    learningJournalFallbackError = String(error?.name ?? "StorageError");
+  }
+}
+
+function queueLearningJournalFallback(storageKey, journal) {
+  const baseRaw = localStorage.getItem(storageKey);
+  const record = { version: 1, storageKey, journal };
+  learningJournalFallbacks.set(storageKey, record);
+  learningJournalFallbackWrites = learningJournalFallbackWrites.then(async () => {
+    if (!learningJournalFallbackStore) throw new Error("Journal backup storage is unavailable");
+    record.baseHash = await learningJournalBaseHash(baseRaw);
+    await learningJournalFallbackStore.set(storageKey, record);
+    learningJournalFallbackError = null;
+    if (learningJournalFallbacks.get(storageKey) === record) {
+      window.dispatchEvent(new CustomEvent("sensevocab:journal-durable", { detail: { storageKey } }));
+    }
+  }).catch((error) => {
+    learningJournalFallbackError = String(error?.name ?? "StorageError");
+    window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
+      detail: { error, storageKey, journal: true, backupFailed: true },
+    }));
+  });
+}
+
+function clearLearningJournalFallback(storageKey) {
+  if (!learningJournalFallbacks.has(storageKey)) return;
+  learningJournalFallbacks.delete(storageKey);
+  learningJournalFallbackWrites = learningJournalFallbackWrites.then(() => (
+    learningJournalFallbackStore?.delete(storageKey)
+  )).catch((error) => {
+    learningJournalFallbackError = String(error?.name ?? "StorageError");
+  });
 }
 
 function serializeLearningJournal(journal) {
@@ -1413,16 +1446,17 @@ function mergeJournalMaps(previous, next) {
   };
 }
 
-function mergeJournalWindows(previous, next) {
+function mergeJournalWindows(previous, next, limit = null) {
   const byId = new Map();
   [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(next) ? next : [])]
     .forEach((entry) => {
       if (!entry || typeof entry !== "object") return;
       byId.set(String(entry.id ?? `${entry.startedAt ?? ""}-${byId.size}`), entry);
     });
-  return [...byId.values()].sort((left, right) => {
+  const merged = [...byId.values()].sort((left, right) => {
     return String(left.startedAt ?? "").localeCompare(String(right.startedAt ?? ""));
-  }).slice(-20);
+  });
+  return limit === null ? merged : merged.slice(-limit);
 }
 
 function learningJournalSyncChangeOptions(journal = {}) {
@@ -1482,6 +1516,7 @@ function writeLearningJournal(options = {}) {
   );
   const journal = {
     version: 1,
+    sequence: (Number(previous.sequence) || 0) + 1,
     updatedAt: new Date().toISOString(),
     bookId,
     session: compactSessionForPersistence(state.session),
@@ -1515,8 +1550,13 @@ function writeLearningJournal(options = {}) {
       localStorage.setItem(key, serialized);
     }
     learningJournalCache.set(key, journal);
+    clearLearningJournalFallback(activeStorageKey);
     return true;
   } catch (error) {
+    // Keep cumulative deltas in memory while an asynchronous backup commits;
+    // otherwise the next failed write would forget the preceding operation.
+    learningJournalCache.set(learningJournalStorageKey(), journal);
+    queueLearningJournalFallback(activeStorageKey, journal);
     window.dispatchEvent(new CustomEvent("sensevocab:storage-error", {
       detail: {
         error,
@@ -1563,6 +1603,7 @@ function applyLearningJournal(storageKey, candidate) {
   bookState.studyWindows = mergeJournalWindows(
     bookState.studyWindows,
     journal.studyWindows,
+    null,
   );
   bookState.learningDayCounter = Math.max(
     Number(bookState.learningDayCounter) || 0,
@@ -1592,6 +1633,7 @@ function clearLearningJournal(storageKey = activeStorageKey) {
   } catch {
     // A stale journal is harmless if the browser refuses the cleanup write.
   }
+  clearLearningJournalFallback(storageKey);
 }
 
 function cloneStateForPersistence(candidate, changes = new Map()) {
@@ -2376,6 +2418,7 @@ function currentActivityDate() {
 function finishStudyWindow(reason) {
   const studyWindow = activeStudyWindow();
   if (!studyWindow) return null;
+  learningTransactionRevision += 1;
   studyWindow.endedAt = new Date().toISOString();
   studyWindow.endedDate = currentDate();
   studyWindow.endedReason = reason;
@@ -2421,6 +2464,7 @@ function ensurePlanTargetHistory(bookState) {
 
 function startStudyWindow() {
   finishStudyWindow("new-entry");
+  learningTransactionRevision += 1;
   const startedAt = new Date().toISOString();
   const activityDate = currentDate();
   const studyWindow = {
@@ -3375,14 +3419,16 @@ function applyStateToStorage(storageKey, nextState = null, options = {}) {
 function cloudStateSnapshot() {
   if (tutorialRuntime?.active) {
     return compactStateSessions(
-      cloneSerializable(tutorialRuntime.realRootState),
+      tutorialRuntime.realRootState,
       { forCloud: true },
     );
   }
-  const snapshot = compactStateSessions(cloneSerializable(rootState), { forCloud: true });
+  // compactStateSessions already detaches the full root. Do not clone the
+  // historical charts again or duplicate their active-book mirror in memory.
+  const snapshot = compactStateSessions(rootState, { forCloud: true });
   if (!isPersistenceSafe()) return snapshot;
   const activeScope = {
-    ...cloneSerializable(state),
+    ...snapshot.bookStates[activeBookId()],
     view: "home",
     wordBrowse: null,
   };
@@ -3455,8 +3501,15 @@ window.SenseVocabApp = {
     return window.SenseVocabSync.hasIndependentChanges(candidate, baseline);
   },
   hasActiveLearningTransaction: () => Boolean(
-    learningTransactionActive() && currentCard()
+    learningTransactionActive() && currentCard() &&
+    ["study", "confusion"].includes(state.view)
   ),
+  getLearningTransactionRevision: () => learningTransactionRevision,
+  flushLearningJournalBackup: () => learningJournalFallbackWrites,
+  getLearningJournalStorageStatus: () => ({
+    backupScopes: learningJournalFallbacks.size,
+    backupError: learningJournalFallbackError,
+  }),
   getCurrentWordContext: () => currentFeedbackContext(),
   activateGuest: (options = {}) => applyStateToStorage(STORAGE_KEY, null, options),
   activateAccount: (userId, nextState = null) => {
@@ -3523,6 +3576,7 @@ window.SenseVocabApp = {
   removeAccountCache: (userId) => {
     const storageKey = accountStorageKey(userId);
     localStorage.removeItem(storageKey);
+    clearLearningJournal(storageKey);
     removeDashboardSnapshotSidecars(storageKey);
   },
 };
@@ -10266,6 +10320,7 @@ function blockNonTutorialClick(event) {
 }
 
 async function initializeApp() {
+  const learningJournalFallbackReady = loadLearningJournalFallbacks();
   setBootProgress(0, "正在准备本机学习空间");
   wordText.textContent = "加载中";
   cardMode.textContent = "词汇学习";
@@ -10335,6 +10390,7 @@ async function initializeApp() {
   // resetting to 0 here would make initialization look like a fake second
   // download.
   setBootProgress(100, "词库索引已载入，正在读取本机学习记录");
+  await learningJournalFallbackReady;
   rootState = loadState();
   initialGuestHadLearningData = stateHasLearningData(rootState);
   activateBookScope(rootState.activeBookId);

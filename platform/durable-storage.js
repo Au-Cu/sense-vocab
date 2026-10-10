@@ -73,18 +73,29 @@
       request.onupgradeneeded = () => request.result.createObjectStore(storeName);
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error("IndexedDB open failed"));
+      request.onblocked = () => reject(new Error("IndexedDB open is blocked"));
     });
     const run = (mode, operation) => open().then((db) => new Promise((resolve, reject) => {
       const transaction = db.transaction(storeName, mode);
       const request = operation(transaction.objectStore(storeName));
-      request.onsuccess = () => resolve(request.result);
+      let result;
+      request.onsuccess = () => { result = request.result; };
       request.onerror = () => reject(request.error || new Error("IndexedDB operation failed"));
-      transaction.oncomplete = () => db.close();
-      transaction.onerror = () => reject(transaction.error || new Error("IndexedDB transaction failed"));
+      // A successful put request can still be rolled back by an aborted
+      // transaction. A durable write is acknowledged only after commit.
+      transaction.oncomplete = () => { db.close(); resolve(result); };
+      const failed = () => {
+        db.close();
+        reject(transaction.error || new Error("IndexedDB transaction failed"));
+      };
+      transaction.onerror = failed;
+      transaction.onabort = failed;
     }));
     return Object.freeze({
       get: (key) => run("readonly", (store) => store.get(key)),
+      getAll: () => run("readonly", (store) => store.getAll()),
       set: (key, value) => run("readwrite", (store) => store.put(value, key)).then(() => undefined),
+      delete: (key) => run("readwrite", (store) => store.delete(key)).then(() => undefined),
     });
   }
 

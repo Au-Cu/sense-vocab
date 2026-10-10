@@ -93,6 +93,41 @@ test("durable records survive a new store instance and preserve a namespaced env
   assert.equal(backend.records.has("account:user-b:learning"), false);
 });
 
+test("IndexedDB writes are not acknowledged before transaction commit", async () => {
+  const previous = globalThis.indexedDB;
+  let transaction;
+  let request;
+  let closes = 0;
+  globalThis.indexedDB = {
+    open() {
+      const opened = { result: {
+        close() { closes += 1; },
+        transaction() {
+          transaction = { objectStore() { return { put() { request = {}; return request; } }; } };
+          return transaction;
+        },
+      } };
+      queueMicrotask(() => opened.onsuccess());
+      return opened;
+    },
+  };
+  try {
+    let settled = false;
+    const writing = storage.createIndexedDbBackend().set("learning", { status: "review" });
+    writing.then(() => { settled = true; }, () => { settled = true; });
+    await new Promise((resolve) => setImmediate(resolve));
+    request.onsuccess();
+    await Promise.resolve();
+    assert.equal(settled, false);
+    transaction.onabort();
+    await assert.rejects(writing, /transaction failed/);
+    assert.equal(closes, 1);
+  } finally {
+    if (previous === undefined) delete globalThis.indexedDB;
+    else globalThis.indexedDB = previous;
+  }
+});
+
 test("legacy Web data migration is explicit, idempotent, and does not delete by default", async () => {
   const backend = memoryBackend();
   const legacy = legacyStorage({ learning: JSON.stringify({ wordId: "w2", senseId: "s2", status: "review" }) });

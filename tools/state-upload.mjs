@@ -34,9 +34,9 @@ function compactSessions(state) {
 // Normalized SQL tables need the core top-level fields. Supplemental fields
 // already live in the active book; omitting their identical mirror is lossless.
 export function compactStateUpload(state) {
-  const payload = compactSessions(state);
+  const payload = { ...state };
   const active = payload?.bookStates?.[payload.activeBookId];
-  if (!active) return payload;
+  if (!active) return compactSessions(state);
   for (const key of [
     "dashboardSnapshots",
     "dashboardEvents",
@@ -45,11 +45,14 @@ export function compactStateUpload(state) {
     "planTargetHistory",
   ]) {
     if (Object.hasOwn(active, key) &&
-        JSON.stringify(payload[key]) === JSON.stringify(active[key])) {
+        (payload[key] === active[key] ||
+         JSON.stringify(payload[key]) === JSON.stringify(active[key]))) {
       delete payload[key];
     }
   }
-  return payload;
+  // Omit identical mirrors before the JSON clone. A large chart history must
+  // not consume another full set of objects only to be discarded immediately.
+  return compactSessions(payload);
 }
 
 function utf8Bytes(text) {

@@ -48,11 +48,17 @@ async function waitForAccount(page) {
 }
 
 async function installFakeCloud(page, remote = null, options = {}) {
-  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs, getSessionFailures, loadStateFailures, deltaTransport, stagedTransport, stagedFailureIndex }) => {
+  await page.addInitScript(({ initialRemote, persistedSession, loadStateDelayMs, holdStateLoads, getSessionFailures, loadStateFailures, deltaTransport, stagedTransport, stagedFailureIndex }) => {
     window.__fakeCloud = {
       remote: initialRemote,
       session: persistedSession,
       loadStateDelayMs,
+      holdStateLoads,
+      heldStateLoads: [],
+      failHeldStateLoad: false,
+      holdStateSaves: false,
+      heldStateSaves: [],
+      resolvedStateSaves: 0,
       getSessionFailures,
       loadStateFailures,
       deltaTransport,
@@ -117,7 +123,8 @@ async function installFakeCloud(page, remote = null, options = {}) {
         }
         return window.__fakeCloud.session;
       },
-      onAuthStateChange() {
+      onAuthStateChange(callback) {
+        window.__fakeCloud.authCallback = callback;
         return { data: { subscription: { unsubscribe() {} } } };
       },
       async signUp(email, password, invitationCode = "") {
@@ -225,6 +232,17 @@ async function installFakeCloud(page, remote = null, options = {}) {
             window.__fakeCloud.loadStateFailures -= 1;
             throw new Error("cloud state temporarily unavailable");
           }
+          if (window.__fakeCloud.holdStateLoads) {
+            await new Promise((resolve, reject) => {
+              window.__fakeCloud.heldStateLoads.push(resolve);
+              signal?.addEventListener("abort", () => {
+                reject(new DOMException("Aborted", "AbortError"));
+              }, { once: true });
+            });
+            if (window.__fakeCloud.failHeldStateLoad) {
+              throw new Error("cloud state temporarily unavailable");
+            }
+          }
           if (window.__fakeCloud.loadStateDelayMs > 0) {
             await new Promise((resolve, reject) => {
               const timer = setTimeout(resolve, window.__fakeCloud.loadStateDelayMs);
@@ -251,6 +269,10 @@ async function installFakeCloud(page, remote = null, options = {}) {
           expectedRevision,
           force,
         });
+        if (window.__fakeCloud.holdStateSaves) {
+          await new Promise((resolve) => window.__fakeCloud.heldStateSaves.push(resolve));
+        }
+        window.__fakeCloud.resolvedStateSaves += 1;
         const currentRevision = window.__fakeCloud.remote?.revision ?? 0;
         if (expectedRevision !== currentRevision) {
           return {
@@ -407,6 +429,7 @@ async function installFakeCloud(page, remote = null, options = {}) {
     initialRemote: remote,
     persistedSession: options.session ?? null,
     loadStateDelayMs: options.loadStateDelayMs ?? 0,
+    holdStateLoads: Boolean(options.holdStateLoads),
     getSessionFailures: options.getSessionFailures ?? 0,
     loadStateFailures: options.loadStateFailures ?? 0,
     deltaTransport: Boolean(options.deltaTransport),
@@ -939,6 +962,15 @@ test("cloud uploads omit identical supplemental mirrors without changing decoded
   ], { original, payload });
   expect(signatures[0]).toBe(signatures[1]);
   expect(original).toHaveProperty("dashboardEvents");
+  const detached = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const candidate = app.getState();
+    const scope = candidate.bookStates[candidate.activeBookId];
+    const sharedMirror = candidate.dashboardSnapshots === scope.dashboardSnapshots;
+    candidate.progress["act:v-1"] = { status: "mastered" };
+    return { sharedMirror, liveChanged: app.getState().progress["act:v-1"]?.status === "mastered" };
+  });
+  expect(detached).toEqual({ sharedMirror: true, liveChanged: false });
 });
 
 test("a localStorage quota error does not abort an authenticated cloud sync", async ({ page }) => {
@@ -1372,6 +1404,184 @@ test("background cloud refresh preserves an active study page on mobile", async 
     .toBe(cloudReadsBeforeFocus);
 });
 
+for (const outcome of ["completed-cloud-round", "cloud-read-error"]) {
+  test(`a pending account bootstrap cannot replace a newly started round: ${outcome}`, async ({ page }) => {
+    await installFakeCloud(page, null, {
+      session: { user: { id: "user-1", email: "learner@example.com" } },
+      holdStateLoads: true,
+    });
+    await page.addInitScript(({ key, state }) => {
+      localStorage.setItem(key, JSON.stringify(state));
+    }, { key: ACCOUNT_KEY, state: makeState(2) });
+    await page.goto(APP_URL);
+    await waitForAccount(page);
+    await expect.poll(() => page.evaluate(() => window.__fakeCloud.heldStateLoads.length)).toBe(1);
+    await page.locator("#startStudyButton").click();
+    await expect(page.locator("#studyPanel")).toBeVisible();
+    const word = await page.locator("#wordText").textContent();
+    const before = await page.evaluate((outcome) => {
+      const active = window.SenseVocabApp.getState();
+      const completed = JSON.parse(JSON.stringify(active));
+      const scope = completed.bookStates[completed.activeBookId];
+      scope.session.currentIndex = scope.session.queue.length;
+      scope.session.baseCompleted = true;
+      scope.studyWindows.forEach((entry) => { entry.endedAt = new Date().toISOString(); });
+      Object.assign(completed, scope);
+      window.SenseVocabSync.stampChanges(completed, active, "other-device");
+      window.__fakeCloud.remote = { found: true, revision: 8, state: completed };
+      window.__fakeCloud.failHeldStateLoad = outcome === "cloud-read-error";
+      window.__fakeCloud.holdStateLoads = false;
+      window.__fakeCloud.heldStateLoads.splice(0).forEach((release) => release());
+      return {
+        index: active.session.currentIndex,
+        queue: active.session.queue,
+        windowId: active.studyWindows.at(-1).id,
+      };
+    }, outcome);
+    await expect.poll(() => page.evaluate(() => window.__fakeCloud.activeLoadStateCalls)).toBe(0);
+    await page.waitForTimeout(250);
+    await expect(page.locator("#studyPanel")).toBeVisible();
+    await expect(page.locator("#wordText")).toHaveText(word);
+    const after = await page.evaluate(() => window.SenseVocabApp.getState());
+    expect(after.session.currentIndex).toBe(before.index);
+    expect(after.session.queue).toEqual(before.queue);
+    expect(after.studyWindows.find((entry) => entry.id === before.windowId)?.endedAt).toBeNull();
+    expect(await page.evaluate(() => window.__fakeCloud.saves.length)).toBe(0);
+  });
+}
+
+for (const operation of ["refresh-read", "blocked-upload"]) {
+  test(`a home ${operation} response cannot replace a round entered while waiting`, async ({ page }) => {
+    await installFakeCloud(page);
+    await page.goto(APP_URL);
+    await page.evaluate(({ key, state }) => {
+      localStorage.clear();
+      localStorage.setItem(key, JSON.stringify(state));
+    }, { key: STORAGE_KEY, state: makeState(2) });
+    await page.reload();
+    await waitForAccount(page);
+    await login(page);
+    await expect(page.locator("#accountSyncStatus")).toHaveText("云端记录已同步");
+    await page.locator("#closeAccountButton").click();
+    await page.locator("#globalHomeNavButton").click();
+    await page.evaluate((operation) => {
+      const fake = window.__fakeCloud;
+      if (operation === "refresh-read") {
+        fake.remote.revision += 1;
+        fake.holdStateLoads = true;
+        window.dispatchEvent(new Event("focus"));
+      } else {
+        fake.holdStateSaves = true;
+        fake.blockNextDestructiveWrite = true;
+        window.dispatchEvent(new CustomEvent("sensevocab:state-saved", {
+          detail: { storageKey: window.SenseVocabApp.getActiveStorageKey(), persisted: true, syncRelevant: true },
+        }));
+      }
+    }, operation);
+    await expect.poll(() => page.evaluate((operation) => (
+      operation === "refresh-read" ? window.__fakeCloud.heldStateLoads.length : window.__fakeCloud.heldStateSaves.length
+    ), operation), { timeout: 20000 }).toBe(1);
+    await page.locator("#startStudyButton").click();
+    await expect(page.locator("#studyPanel")).toBeVisible();
+    await expect(page.locator("#wordText")).not.toHaveText("本轮已完成");
+    const word = await page.locator("#wordText").textContent();
+    const before = await page.evaluate((operation) => {
+      const active = window.SenseVocabApp.getState();
+      const completed = JSON.parse(JSON.stringify(active));
+      const scope = completed.bookStates[completed.activeBookId];
+      scope.session.currentIndex = scope.session.queue.length;
+      scope.session.baseCompleted = true;
+      scope.studyWindows.forEach((entry) => { entry.endedAt = new Date().toISOString(); });
+      Object.assign(completed, scope);
+      window.SenseVocabSync.stampChanges(completed, active, "other-device");
+      window.__fakeCloud.remote.state = completed;
+      window.__fakeCloud.holdStateLoads = false;
+      window.__fakeCloud.holdStateSaves = false;
+      const releases = operation === "refresh-read" ? window.__fakeCloud.heldStateLoads : window.__fakeCloud.heldStateSaves;
+      releases.splice(0).forEach((release) => release());
+      return { reads: window.__fakeCloud.loadStateCalls, windowId: active.studyWindows.at(-1).id };
+    }, operation);
+    await expect.poll(() => page.evaluate((operation) => (
+      operation === "refresh-read" ? window.__fakeCloud.activeLoadStateCalls === 0 : window.__fakeCloud.resolvedStateSaves > 1
+    ), operation)).toBe(true);
+    await page.waitForTimeout(250);
+    await expect(page.locator("#wordText")).toHaveText(word);
+    const after = await page.evaluate(() => window.SenseVocabApp.getState());
+    expect(after.studyWindows.find((entry) => entry.id === before.windowId)?.endedAt).toBeNull();
+    expect(await page.evaluate(() => window.__fakeCloud.loadStateCalls)).toBe(before.reads);
+  });
+}
+
+test("a repeated sign-in keeps live confirmations before their journal write", async ({ page }) => {
+  await installFakeCloud(page);
+  await page.goto(APP_URL);
+  await page.evaluate(({ key, state }) => {
+    localStorage.clear();
+    localStorage.setItem(key, JSON.stringify(state));
+  }, { key: STORAGE_KEY, state: makeState(2) });
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await page.locator("#closeAccountButton").click();
+  await page.locator("#globalHomeNavButton").click();
+  await page.locator("#startStudyButton").click();
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#senseArea")).toBeVisible();
+  await page.evaluate(() => {
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function blockPendingJournal(key, value) {
+      if (String(key).includes(":learning-journal-v1:")) {
+        throw new DOMException("quota exhausted", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+    document.querySelector("#senseList .sense-item:not(:disabled):not(.is-collapsible)").click();
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const active = window.SenseVocabApp.getState();
+    return active.session.queue[active.session.currentIndex].confirmedKeys?.length ?? 0;
+  })).toBeGreaterThan(0);
+  const before = await page.evaluate(() => {
+    const active = window.SenseVocabApp.getState();
+    const confirmed = active.session.queue[active.session.currentIndex].confirmedKeys;
+    window.__fakeCloud.authCallback("SIGNED_IN", window.__fakeCloud.session);
+    return { confirmed, progress: active.progress };
+  });
+  expect(before.confirmed.length).toBeGreaterThan(0);
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => window.SenseVocabApp.getState());
+  expect(after.session.queue[after.session.currentIndex].confirmedKeys).toEqual(before.confirmed);
+  expect(after.progress).toEqual(before.progress);
+});
+
+test("account home can restore newer cloud data with an interrupted round still open", async ({ page }) => {
+  const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Hong_Kong" });
+  const local = makeState(2);
+  local.session = {
+    date: today,
+    activePlanDate: today,
+    queue: [{ wordId: "act", type: "new", senseKeys: ["act:v-1"], activeSenseKeys: ["act:v-1"] }],
+    currentIndex: 0,
+    cardPhase: "hidden",
+    baseCompleted: false,
+  };
+  local.studyWindows = [{ id: "interrupted", startedAt: `${today}T08:00:00.000Z`, activityDate: today, endedAt: null }];
+  const remote = structuredClone(local);
+  remote.progress["ability:n-1"] = { status: "mastered", updatedAt: `${today}T09:00:00.000Z` };
+  remote.introducedWords = ["ability"];
+  await installFakeCloud(page, { found: true, revision: 8, state: remote }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.addInitScript(({ key, state }) => {
+    localStorage.setItem(key, JSON.stringify(state));
+  }, { key: ACCOUNT_KEY, state: local });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await expect(page.locator("#homePanel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.SenseVocabApp.getState().progress["ability:n-1"]?.status)).toBe("mastered");
+  expect(await page.evaluate(() => window.__fakeCloud.loadStateCalls)).toBeGreaterThan(0);
+});
+
 test("account bootstrap keeps a journaled active round ahead of a stale completed cloud round", async ({ page }) => {
   const today = new Date().toLocaleDateString("sv-SE", {
     timeZone: "Asia/Hong_Kong",
@@ -1488,12 +1698,13 @@ test("account bootstrap keeps a journaled active round ahead of a stale complete
   expect(result).toMatchObject({
     currentIndex: 1,
     mergedIndex: 1,
-    cloudReads: 0,
+    cloudReads: 1,
     storedIndex: 1,
     journalKeys: [],
   });
   expect(result.currentIndex).toBeLessThan(result.queueLength);
 
+  const savesBeforeCompletion = await page.evaluate(() => window.__fakeCloud.saves.length);
   await page.evaluate(() => {
     const app = window.SenseVocabApp;
     const completed = app.getState();
@@ -1508,8 +1719,8 @@ test("account bootstrap keeps a journaled active round ahead of a stale complete
     Object.assign(completed, scope);
     app.replaceActiveState(completed, { preserveNavigation: true });
   });
-  await expect.poll(() => page.evaluate(() => window.__fakeCloud.saves.length))
-    .toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.__fakeCloud.saves.length), { timeout: 20000 })
+    .toBeGreaterThan(savesBeforeCompletion);
   const uploaded = await page.evaluate(() => {
     const remote = window.__fakeCloud.remote.state;
     const scope = remote.bookStates?.[remote.activeBookId] ?? remote;
