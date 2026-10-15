@@ -3,13 +3,13 @@
   "schemaVersion": 1,
   "auditDate": "2026-08-09",
   "bundlePath": "data/vocabulary-bundle.json",
-  "bundleSha256": "81e755c1888604aee16413fe49a8b6d2cd064413bb43c7e33c0255922b60decf",
-  "senseCount": 10300,
+  "bundleSha256": "f16ddf0ce69d22cad3833a3c07430e1aef748105e0583c19d9941b56a986d6fc",
+  "senseCount": 10377,
   "counts": {
-    "senses": 10300,
-    "CLEARED": 84,
+    "senses": 10377,
+    "CLEARED": 164,
     "REVIEW": 0,
     "HIGH": 0,
-    "BLOCKER": 10216
+    "BLOCKER": 10213
   }
 }

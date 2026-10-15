@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex,nofollow,noarchive" />
     <title>后台管理</title>
-    <link rel="stylesheet" href="./admin.css?v=20261008-1" />
+    <link rel="stylesheet" href="./admin.css?v=20261014-3" />
   </head>
   <body>
     <main class="admin-shell">
@@ -176,6 +176,42 @@
             </button>
           </div>
           <div class="triage-summary" id="triageSummary"></div>
+          <form class="triage-detail-form" id="triageDetailForm">
+            <label for="triageAnonymousIdInput">按匿名 ID 核对单项</label>
+            <input id="triageAnonymousIdInput" maxlength="32" pattern="[0-9a-fA-F]{32}" autocomplete="off" spellcheck="false" required />
+            <button class="admin-button secondary" id="loadTriageDetailButton" type="submit">读取单项</button>
+            <button class="admin-button secondary" id="exportTriageReviewButton" type="button" disabled>导出已核对的内容摘要</button>
+          </form>
+          <div class="triage-detail-form">
+            <label><input id="markNewTriageInProgress" type="checkbox" /> 将成功核对的新建项标记为处理中</label>
+            <button class="admin-button secondary" id="reviewTriageQueueButton" type="button" disabled>逐项核对当前匿名队列</button>
+            <button class="admin-button secondary" id="cancelTriageQueueReviewButton" type="button" hidden>停止核对</button>
+          </div>
+          <p id="triageQueueReviewStatus" role="status"></p>
+          <progress id="triageQueueReviewProgress" aria-label="匿名队列逐项核对进度" value="0" max="1" hidden></progress>
+          <section class="triage-detail-panel" id="triageDetailPanel" aria-labelledby="triageDetailTitle" hidden>
+            <div class="section-heading">
+              <h3 id="triageDetailTitle">单项内容核对</h3>
+              <button class="admin-button secondary" id="closeTriageDetailButton" type="button">返回队列</button>
+            </div>
+            <dl class="triage-detail-grid">
+              <div><dt>匿名 ID</dt><dd id="triageDetailAnonymousId"></dd></div>
+              <div><dt>状态</dt><dd id="triageDetailStatus" aria-live="polite"></dd></div>
+              <div><dt>内容 ID</dt><dd id="triageDetailContentId"></dd></div>
+              <div><dt>问题类型</dt><dd id="triageDetailType"></dd></div>
+              <div class="is-wide"><dt>缺失义项线索</dt><dd id="triageDetailMeaning"></dd></div>
+              <div class="is-wide"><dt>已报告的相关义项</dt><dd id="triageDetailSenseLabel"></dd></div>
+            </dl>
+            <button class="admin-button primary" id="markTriageInProgressButton" type="button">标记处理中</button>
+            <details class="triage-export-details">
+              <summary>本条问题描述（仅单项核对，不进入批量导出）</summary>
+              <pre class="triage-detail-message" id="triageDetailMessage"></pre>
+            </details>
+            <details class="triage-export-details">
+              <summary>单项内容线索 JSON</summary>
+              <pre class="triage-export" id="triageDetailExport"></pre>
+            </details>
+          </section>
           <div class="table-scroll">
             <table class="admin-table" aria-label="匿名反馈分诊分组">
               <thead>
@@ -218,6 +254,11 @@
             </label>
           </div>
           <div class="feedback-list" id="adminFeedbackList"></div>
+          <div class="pagination" aria-label="反馈分页">
+            <button class="admin-button secondary" id="previousFeedbackButton" type="button" disabled>上一页</button>
+            <span id="feedbackPageLabel" aria-live="polite"></span>
+            <button class="admin-button secondary" id="nextFeedbackButton" type="button" disabled>下一页</button>
+          </div>
         </section>
 
         <section
@@ -828,6 +869,6 @@
 
     <script src="./cloud-config.js?v=20260729-2"></script>
     <script src="./cloud-client.js?v=20260809-1"></script>
-    <script src="./admin.js?v=20261008-1"></script>
+    <script src="./admin.js?v=20261014-3"></script>
   </body>
 </html>

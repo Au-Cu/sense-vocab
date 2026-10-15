@@ -37,7 +37,10 @@ if (manifest.sourcePackage) {
 }
 for (const source of [manifest.rights.wordnet, manifest.rights.cmudict]) {
   const evidence = await readFile(path.join(rootDir, source.localEvidence));
-  if (sha256(evidence) !== source.localEvidenceSha256) {
+  // Text-license fingerprints may use canonical LF while Git checks out CRLF.
+  const canonicalEvidence = evidence.toString("utf8").replaceAll("\r\n", "\n");
+  if (sha256(evidence) !== source.localEvidenceSha256 &&
+    sha256(canonicalEvidence) !== source.localEvidenceSha256) {
     failures.push(`license evidence hash mismatch: ${source.localEvidence}`);
   }
 }

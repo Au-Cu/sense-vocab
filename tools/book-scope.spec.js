@@ -48,7 +48,7 @@ test("the shared pool preserves the reviewed Kaoyan book and adds IELTS", async 
   );
   expect(index.words).toHaveLength(bundle.words.length);
   expect(index.words.reduce((total, word) => total + word.senses.length, 0))
-    .toBe(10300);
+    .toBe(10300 + require("../data/content-change-sets/op-feedback-2026-10-14-216.json").compatibility.addedSenseKeys.length);
 });
 
 test("approved added senses are all covered by the historical-user initializer", () => {

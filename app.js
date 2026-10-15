@@ -181,6 +181,83 @@ const CONTENT_ADDED_SENSE_KEYS = new Set([
   "wear:v-3",
   "north:adj-1",
   "draw:v-4",
+  "remedy:n-2",
+  "hawk:n-1",
+  "scream:n-1",
+  "offensive:adj-1",
+  "underlying:adj-2",
+  "elderly:n-1",
+  "alarm:v-1",
+  "alarm:v-2",
+  "fancy:adj-1",
+  "dim:adj-1",
+  "dim:adj-2",
+  "tissue:n-2",
+  "palm:n-2",
+  "depress:v-2",
+  "east:adj-1",
+  "east:adv-1",
+  "whisper:n-1",
+  "shelter:v-1",
+  "credit:n-3",
+  "lounge:n-1",
+  "render:v-2",
+  "programme:v-1",
+  "table:n-2",
+  "odd:adj-2",
+  "shoulder:v-1",
+  "rank:v-1",
+  "slice:v-1",
+  "supplement:n-1",
+  "qualification:n-2",
+  "contest:v-1",
+  "alert:v-1",
+  "award:v-1",
+  "peak:v-1",
+  "radio:n-2",
+  "exploit:v-2",
+  "cool:adj-2",
+  "personnel:n-2",
+  "nervous:adj-2",
+  "crop:n-2",
+  "smart:adj-2",
+  "click:n-2",
+  "superior:n-1",
+  "prey:v-1",
+  "mix:v-1",
+  "master:n-1",
+  "master:n-2",
+  "deliberate:adj-1",
+  "race:n-3",
+  "resource:n-2",
+  "overcome:v-2",
+  "strike:n-4",
+  "proper:adj-2",
+  "requirement:n-2",
+  "switch:v-2",
+  "rival:n-1",
+  "span:n-3",
+  "struggle:v-2",
+  "south:adv-1",
+  "seat:v-3",
+  "west:adj-1",
+  "west:adv-1",
+  "picture:v-1",
+  "saving:n-2",
+  "puzzle:n-3",
+  "image:v-1",
+  "code:v-1",
+  "stop:n-4",
+  "guide:v-4",
+  "setting:n-3",
+  "score:n-5",
+  "service:v-3",
+  "power:n-4",
+  "power:n-5",
+  "power:v-1",
+  "view:n-5",
+  "dumb:adj-2",
+  "mission:n-2",
 ]);
 
 function updateAppViewportHeight() {
@@ -407,6 +484,7 @@ let poolWordById = new Map();
 let activeStorageKey = STORAGE_KEY;
 let wordDeepLinkReturnView = null;
 let pendingResetType = null;
+let pendingResetTarget = null;
 let activeAudio = null;
 let audioPlaybackGeneration = 0;
 let lastAutoPlayedCardKey = null;
@@ -1050,12 +1128,15 @@ function createEncounterSnapshot(wordId) {
     reviewPromotedKeys: ensureTodaySession().reviewPromotedKeys.filter((key) => {
       return splitSenseKey(key).wordId === wordId;
     }),
-    activity: cloneProgress(state.activityLog[currentActivityDate()]),
   };
 }
 
 function ensureEncounterSnapshot(card) {
   if (!card || card.encounterSnapshot) return;
+  if (card.undoSnapshot) {
+    card.encounterSnapshot = card.undoSnapshot;
+    return;
+  }
   card.encounterSnapshot = {
     ...createEncounterSnapshot(card.wordId),
     confirmedKeys: [...new Set((card.confirmedKeys ?? []).filter(isKnownSenseKey))],
@@ -1301,27 +1382,25 @@ function learningJournalStorageKey(storageKey = activeStorageKey) {
   return `${storageKey}${LEARNING_JOURNAL_STORAGE_SEGMENT}`;
 }
 
-function compactSessionForPersistence(value, { forCloud = false } = {}) {
+function compactSessionForPersistence(value, { forCloud = false, activity = null } = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const session = cloneSerializable(value);
   if (!Array.isArray(session.queue)) return session;
-  const currentIndex = Math.max(
-    0,
-    Math.min(session.queue.length, Number(session.currentIndex) || 0),
-  );
+  const currentIndex = Math.max(0, Math.min(session.queue.length, Number(session.currentIndex) || 0));
   session.queue = session.queue.map((card, index) => {
     if (!card || typeof card !== "object") return card;
     const compact = { ...card };
-    const keepSnapshot = !forCloud && Math.abs(index - currentIndex) <= 1;
-    if (!keepSnapshot) {
+    if (forCloud) {
       delete compact.encounterSnapshot;
+      delete compact.undoSnapshot;
       return compact;
     }
-    if (compact.encounterSnapshot && typeof compact.encounterSnapshot === "object") {
-      const snapshot = { ...compact.encounterSnapshot };
-      // The current and immediately previous card are enough to recover an
-      // interrupted interaction. Keep only their sense keys instead of a full
-      // duplicate progress map for every queued card.
+    const prior = compact.encounterSnapshot ?? compact.undoSnapshot;
+    if (prior && typeof prior === "object") {
+      const snapshot = { ...prior };
+      // Historical undo needs each encounter's own prior values after reload.
+      // Whole-day activity copies are not needed and must never be restored.
+      delete snapshot.activity;
       if (snapshot.progress && typeof snapshot.progress === "object") {
         const keepKeys = new Set([
           ...(Array.isArray(compact.activeSenseKeys) ? compact.activeSenseKeys : []),
@@ -1331,7 +1410,14 @@ function compactSessionForPersistence(value, { forCloud = false } = {}) {
           Object.entries(snapshot.progress).filter(([key]) => keepKeys.has(key)),
         );
       }
-      compact.encounterSnapshot = snapshot;
+      compact.undoSnapshot = snapshot;
+      if (Math.abs(index - currentIndex) <= 1) {
+        // Older tabs expect an activity field. Supply the current record, not
+        // an old whole-day value that could erase later learning.
+        compact.encounterSnapshot = { ...snapshot, activity: cloneProgress(activity) };
+      } else {
+        delete compact.encounterSnapshot;
+      }
     }
     return compact;
   });
@@ -1342,11 +1428,15 @@ function compactStateSessions(candidate, { forCloud = false } = {}) {
   const cloned = cloneSerializable(candidate);
   Object.values(cloned?.bookStates ?? {}).forEach((bookState) => {
     if (bookState && Object.prototype.hasOwnProperty.call(bookState, "session")) {
-      bookState.session = compactSessionForPersistence(bookState.session, { forCloud });
+      bookState.session = compactSessionForPersistence(bookState.session, {
+        forCloud, activity: bookState.activityLog?.[bookState.session?.date],
+      });
     }
   });
   if (cloned && Object.prototype.hasOwnProperty.call(cloned, "session")) {
-    cloned.session = compactSessionForPersistence(cloned.session, { forCloud });
+    cloned.session = compactSessionForPersistence(cloned.session, {
+      forCloud, activity: cloned.activityLog?.[cloned.session?.date],
+    });
   }
   return cloned;
 }
@@ -1519,7 +1609,7 @@ function writeLearningJournal(options = {}) {
     sequence: (Number(previous.sequence) || 0) + 1,
     updatedAt: new Date().toISOString(),
     bookId,
-    session: compactSessionForPersistence(state.session),
+    session: compactSessionForPersistence(state.session, { activity: state.activityLog?.[date] }),
     progress: mergeJournalMaps(previous.progress, progress),
     activityLog: mergeJournalMaps(previous.activityLog, activityLog),
     dashboardEvents: mergeJournalMaps(previous.dashboardEvents, dashboardEvents),
@@ -7447,6 +7537,7 @@ function renderStudy() {
   }
   const card = currentCard();
   const historyViewing = isHistoryView();
+  const readOnlyHistory = browsing || (historyViewing && !session.historyView?.editable);
   if (card && !historyViewing) {
     ensureEncounterSnapshot(card);
   }
@@ -7455,7 +7546,7 @@ function renderStudy() {
   const senseProgress = currentSenseProgress(counts);
   const stageWordProgress = currentStageWordProgress();
   const finished = !card;
-  const phase = historyViewing
+  const phase = readOnlyHistory
     ? "examples"
     : session.cardPhase ?? (session.revealed ? "select" : "hidden");
   const fullyMastered = Boolean(card && isWordFullyMastered(card.wordId));
@@ -7496,7 +7587,7 @@ function renderStudy() {
   morphologyPanel.replaceChildren();
   senseArea.hidden = browsing ? false : !session.revealed || finished;
   nextButton.disabled = browsing || !session.revealed || finished;
-  nextButton.textContent = !browsing && isHistoryView()
+  nextButton.textContent = !browsing && session.historyView && (readOnlyHistory || phase === "examples")
     ? "回到当前词"
     : phase === "examples" ? "下一词" : "完成";
   audioButton.hidden = finished;
@@ -7552,7 +7643,7 @@ function renderStudy() {
   const items = visibleSenses();
   senseHint.textContent = browsing
     ? "全部义项"
-    : historyViewing
+    : readOnlyHistory
     ? "上一词义项"
     : phase === "examples"
       ? "义项与例句"
@@ -7580,7 +7671,7 @@ function renderStudy() {
     const greenSense = mastered || isConfirmed;
     const expanded = (card.expandedMasteredKeys ?? []).includes(key);
     const collapsibleGreen = phase === "examples" &&
-      !historyViewing &&
+      !readOnlyHistory &&
       greenSense;
     button.className = "sense-item";
     button.type = "button";
@@ -7588,7 +7679,7 @@ function renderStudy() {
     button.disabled = collapsibleGreen
       ? false
       : phase === "examples" ||
-        historyViewing ||
+        readOnlyHistory ||
         !isActive ||
         isConfirmed ||
         mastered;
@@ -8785,6 +8876,7 @@ function showPreviousWord() {
   }
   commitUiTransition("backward", () => {
     session.currentIndex -= 1;
+    session.historyView.editable = false;
     session.revealed = true;
     session.cardPhase = "examples";
     clearStudyCompletionAnimation();
@@ -8807,6 +8899,7 @@ function showNextHistoryWord() {
       session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
       session.historyView = null;
     } else {
+      history.editable = false;
       session.revealed = true;
       session.cardPhase = "examples";
     }
@@ -8817,19 +8910,43 @@ function showNextHistoryWord() {
   }, { scope: "card" });
 }
 
-function returnToCurrentWord() {
+function returnToCurrentWord(commitSelection = false) {
   const session = ensureTodaySession();
   const history = session.historyView;
   if (!history) return;
+  const completedCard = commitSelection ? currentCard() : null;
+  const syncChangeOptions = completedCard ? {
+    changedMaps: ["progress", "introducedWords", "activityLog", "dashboardEvents"],
+    changedScalars: ["session"],
+    changedMapKeysByBook: {
+      [activeBookId()]: {
+        progress: activeSenseKeysForCard(completedCard),
+        introducedWords: [completedCard.wordId],
+        activityLog: [currentActivityDate()],
+      },
+    },
+  } : { changedMaps: [] };
 
   commitUiTransition("forward", () => {
+    if (completedCard) {
+      scheduleUnknownSenses();
+      markCurrentWordIntroduced();
+      if (["extra", "advance"].includes(completedCard.type)) activityForDate().overtime = true;
+      if (["review", "reinforcement"].includes(completedCard.type)) {
+        addActivityWord("review", completedCard.wordId);
+      }
+      if (completedCard.type === "reinforcement") {
+        session.reinforcedKeys = [...new Set([...session.reinforcedKeys, ...activeSenseKeysForCard(completedCard)])];
+      }
+    }
     session.currentIndex = Math.min(history.originIndex, session.queue.length);
     session.revealed = Boolean(history.originRevealed);
     session.cardPhase = history.originPhase || (session.revealed ? "select" : "hidden");
     session.historyView = null;
+    if (completedCard && session.currentIndex >= session.queue.length) appendReinforcementStage();
     clearStudyCompletionAnimation();
     render();
-    saveStateAfterMotion(460, { syncChangeOptions: { changedMaps: [] } });
+    saveStateAfterMotion(460, { syncChangeOptions, journalOnly: Boolean(completedCard) });
   }, { scope: "card" });
 }
 
@@ -9232,7 +9349,7 @@ function animateSenseMastered(item) {
     playSenseTapSound();
     markSenseFamiliar(key, { skipSound: true, skipRender: true, deferSave: true });
     if (ensureTodaySession().cardPhase === "examples") {
-      nextButton.textContent = "下一词";
+      nextButton.textContent = ensureTodaySession().historyView ? "回到当前词" : "下一词";
       nextButton.disabled = true;
       revealButton.classList.add("is-mastered");
     }
@@ -9474,7 +9591,11 @@ function handleProgressButton(event) {
     return;
   }
   if (session.historyView) {
-    returnToCurrentWord();
+    if (session.historyView.editable && session.cardPhase !== "examples") {
+      completeCurrentSelection();
+    } else {
+      returnToCurrentWord(Boolean(session.historyView.editable));
+    }
     return;
   }
   if (session.cardPhase === "examples") {
@@ -9487,6 +9608,18 @@ function handleProgressButton(event) {
 
 function resettableCardIndex() {
   const session = ensureTodaySession();
+  if (pendingResetTarget) {
+    const target = pendingResetTarget;
+    if (target.storageKey !== activeStorageKey || target.bookId !== activeBookId() || target.date !== session.date) return -1;
+    const referenceIndex = session.queue.indexOf(target.card);
+    if (referenceIndex >= 0) return referenceIndex;
+    const matches = session.queue.map((card, index) => ({ card, index })).filter(({ card }) => {
+      return card.wordId === target.wordId && card.type === target.type &&
+        stableStateStringify(activeSenseKeysForCard(card)) === target.activeKeys;
+    });
+    if (matches.some(({ index }) => index === target.index)) return target.index;
+    return matches.length === 1 ? matches[0].index : -1;
+  }
   if (session.queue[session.currentIndex]) return session.currentIndex;
   if (session.queue.length > 0) return session.queue.length - 1;
   return -1;
@@ -9594,11 +9727,26 @@ function savePlan() {
 function openResetDialog(event) {
   if (!state) return;
 
+  pendingResetTarget = null;
+  const session = ensureTodaySession();
+  const index = resettableCardIndex();
   const card = resettableCard();
   const word = card ? wordById.get(card.wordId) : null;
+  if (card) {
+    // Pin the displayed encounter, not whichever card a later response selects.
+    pendingResetTarget = {
+      card, index, wordId: card.wordId, type: card.type,
+      activeKeys: stableStateStringify(activeSenseKeysForCard(card)),
+      date: session.date, storageKey: activeStorageKey, bookId: activeBookId(),
+      historical: Boolean(session.historyView),
+    };
+  }
 
-  resetWordLabel.textContent = word ? `当前单词：${word.word}` : "当前没有单词";
-  resetMarkingButton.disabled = !word;
+  const missingHistorySnapshot = Boolean(session.historyView && !card?.encounterSnapshot && !card?.undoSnapshot);
+  resetWordLabel.textContent = word
+    ? `当前单词：${word.word}${missingHistorySnapshot ? "。旧记录未保留撤销底稿，可使用“重学该单词”。" : ""}`
+    : "当前没有单词";
+  resetMarkingButton.disabled = !word || missingHistorySnapshot;
   relearnWordButton.disabled = !word;
   showResetOptions();
   openFloatingDialog(resetDialog, event?.currentTarget);
@@ -9606,6 +9754,7 @@ function openResetDialog(event) {
 
 function closeResetDialog() {
   pendingResetType = null;
+  pendingResetTarget = null;
   closeFloatingDialog(resetDialog);
 }
 
@@ -9649,11 +9798,18 @@ function resetCurrentMarking() {
   const cardIndex = resettableCardIndex();
   const card = session.queue[cardIndex];
   if (!card) return;
+  const historical = Boolean(session.historyView || pendingResetTarget?.historical);
+  if (historical && !card.encounterSnapshot && !card.undoSnapshot) {
+    resetWordLabel.textContent = "旧记录未保留撤销底稿，可使用“重学该单词”。";
+    resetMarkingButton.disabled = true;
+    return;
+  }
 
   ensureEncounterSnapshot(card);
   const snapshot = card.encounterSnapshot;
   const resetUpdatedAt = new Date().toISOString();
   Object.entries(snapshot.progress ?? {}).forEach(([key, progress]) => {
+    if (!isKnownSenseKey(key) || splitSenseKey(key).wordId !== card.wordId) return;
     if (progress) {
       const restored = cloneProgress(progress);
       const currentStatus = state.progress[key]?.status ?? SENSE_STATUS.NEW;
@@ -9685,11 +9841,6 @@ function resetCurrentMarking() {
     introduced.delete(card.wordId);
   }
   state.introducedWords = [...introduced];
-  if (snapshot.activity) {
-    state.activityLog[currentActivityDate()] = normalizeActivityEntry(snapshot.activity);
-  } else {
-    delete state.activityLog[currentActivityDate()];
-  }
   updatePlanDrift();
 
   session.reinforcedKeys = [
@@ -9716,6 +9867,7 @@ function resetCurrentMarking() {
   });
   refreshCardDisplayKeys(card);
   session.currentIndex = cardIndex;
+  if (session.historyView) session.historyView.editable = true;
   session.revealed = true;
   session.cardPhase = "select";
   clearStudyCompletionAnimation();
@@ -9729,6 +9881,8 @@ function relearnCurrentWord() {
   const cardIndex = resettableCardIndex();
   const card = session.queue[cardIndex];
   if (!card) return;
+  const history = session.historyView;
+  const originCard = history ? session.queue[history.originIndex] : null;
 
   const word = wordById.get(card.wordId);
   const allKeys = sortSenseKeysByImportance(allSenseKeysForWord(word));
@@ -9759,6 +9913,11 @@ function relearnCurrentWord() {
   session.queue = session.queue.filter((item) => item.wordId !== card.wordId);
   const replacement = createStudyCard("new", card.wordId, allKeys);
   session.queue.splice(insertionIndex, 0, replacement);
+  if (history) {
+    const originIndex = session.queue.indexOf(originCard);
+    history.originIndex = originIndex >= 0 ? originIndex : session.queue.length;
+    history.editable = true;
+  }
   session.currentIndex = insertionIndex;
   session.reinforcementAdded = session.queue.some(
     (item) => item.type === "reinforcement",

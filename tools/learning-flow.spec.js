@@ -78,6 +78,7 @@ const CONTENT_ADDED_SENSE_KEYS = [
   "wear:v-3",
   "north:adj-1",
   "draw:v-4",
+  ...require("../data/content-change-sets/op-feedback-2026-10-14-216.json").compatibility.addedSenseKeys,
 ];
 
 test.use({
@@ -1553,6 +1554,94 @@ test("study navigation, IPA, and reset entry points follow the revised UI", asyn
   expect(resetState.bookStates.kaoyan.progress).toEqual({});
   expect(resetState.bookStates.kaoyan.activityLog).toEqual({});
 });
+
+for (const resetCase of [{ mode: "marking" }, { mode: "relearn" }, { mode: "marking", restored: true }]) {
+  const resetMode = resetCase.mode;
+  test(`historical ${resetCase.restored ? "restored " : ""}${resetMode} acts on the displayed word and keeps later learning intact`, async ({ page }) => {
+    await page.goto(APP_URL);
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+    await page.locator("#planButton").click();
+    await page.locator("#dailyTargetInput").fill("4");
+    await page.locator("#savePlanButton").click();
+    await page.locator("#startStudyButton").click();
+    for (let index = 0; index < 3; index += 1) {
+      await reveal(page);
+      await confirmEveryVisibleSense(page);
+      await completeAndAdvance(page);
+    }
+    await reveal(page);
+    await page.locator("#senseList .sense-item:not(:disabled)").first().click();
+    await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+    const before = await page.evaluate(() => {
+      const root = window.SenseVocabApp.getState();
+      return root.bookStates[root.activeBookId];
+    });
+    const target = before.session.queue[1];
+    const laterWordId = before.session.queue[2].wordId;
+    const currentWordId = before.session.queue[3].wordId;
+    const currentWord = await page.locator("#wordText").textContent();
+    if (resetCase.restored) {
+      await page.reload();
+      await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+      if (await page.locator("#homePanel").isVisible()) await page.locator("#startStudyButton").click();
+      await expect(page.locator("#wordText")).toHaveText(currentWord);
+      const restored = await readState(page);
+      expect(restored.session.queue[1].undoSnapshot).toBeTruthy();
+      expect(restored.session.queue[1].undoSnapshot.activity).toBeUndefined();
+    }
+    for (let index = 0; index < 2; index += 1) {
+      await page.locator("#exitStudyButton").click();
+      await page.locator("#previousWordButton").click();
+    }
+    const reviewedWord = await page.locator("#wordText").textContent();
+    await page.locator("#resetButton").click();
+    await expect(page.locator("#resetWordLabel")).toContainText(reviewedWord);
+    // A late queue update must not retarget a dialog that already names a word.
+    await page.evaluate(() => {
+      state.session.currentIndex = state.session.historyView.originIndex;
+    });
+    if (resetMode === "marking") {
+      await page.locator("#resetMarkingButton").click();
+    } else {
+      await page.locator("#relearnWordButton").click();
+      await expect(page.locator("#resetConfirmCopy")).toContainText(reviewedWord);
+      await page.locator("#confirmResetButton").click();
+      await reveal(page);
+    }
+    await expect(page.locator("#wordText")).toHaveText(reviewedWord);
+    await expect(page.locator("#nextButton")).toHaveText("完成");
+    const afterReset = await page.evaluate(() => {
+      const root = window.SenseVocabApp.getState();
+      return root.bookStates[root.activeBookId];
+    });
+    expect(afterReset.session.queue.every((card) => !card.undoSnapshot && !card.encounterSnapshot)).toBe(true);
+    for (const id of [laterWordId, currentWordId]) {
+      const select = (progress) => Object.fromEntries(Object.entries(progress).filter(([key]) => key.startsWith(`${id}:`)));
+      expect(select(afterReset.progress)).toEqual(select(before.progress));
+    }
+    expect(afterReset.activityLog[before.session.date].newWords).toContain(laterWordId);
+    expect(afterReset.activityLog[before.session.date].newCount).toBe(before.activityLog[before.session.date].newCount);
+    expect(target.activeSenseKeys.some((key) => afterReset.progress[key]?.status === "mastered")).toBe(false);
+    const active = page.locator(`#senseList .sense-item[data-key="${target.activeSenseKeys[0]}"]`);
+    await expect(active).toBeEnabled();
+    await active.click();
+    await expect(active).toHaveClass(/is-mastered/);
+    await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+    await page.locator("#nextButton").click();
+    await expect(page.locator("#nextButton")).toHaveText("回到当前词");
+    await page.locator("#nextButton").click();
+    await expect(page.locator("#wordText")).toHaveText(currentWord);
+    await expect(page.locator("#cardMode")).not.toHaveText("回看");
+    const resumed = await page.evaluate(() => {
+      const root = window.SenseVocabApp.getState();
+      return root.bookStates[root.activeBookId];
+    });
+    expect(resumed.session.queue[resumed.session.currentIndex].wordId).toBe(currentWordId);
+    expect(resumed.progress[target.activeSenseKeys[0]].status).toBe("mastered");
+  });
+}
 
 test("a scrolled mobile study card returns to the top when the word changes", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

@@ -27,7 +27,12 @@ test("content rights metadata is complete-or-blocked and SemCor is never attribu
     (word.senses ?? []).filter((sense) =>
       String(sense.exampleSource ?? "").toLowerCase() === "semcor"),
   );
-  expect(semCorSenses).toHaveLength(2831);
+  const reviewedFeedback = readJson("data/content-change-sets/op-feedback-2026-10-14-216.json");
+  const replacedSemCor = reviewedFeedback.items.filter((item) => item.action === "update" &&
+    Object.hasOwn(item.fields, "example") && item.priorSources?.example === "semcor").length;
+  expect(reviewedFeedback.baseline.exampleSourceCounts.semcor).toBe(2831);
+  expect(replacedSemCor).toBe(11);
+  expect(semCorSenses).toHaveLength(2831 - replacedSemCor);
   const semCorFields = fields.filter((field) =>
     String(field.source ?? "").toLowerCase() === "semcor");
   expect(semCorFields).toHaveLength(semCorSenses.length);

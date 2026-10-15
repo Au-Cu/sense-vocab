@@ -43,9 +43,32 @@
   const triageSummary = document.querySelector("#triageSummary");
   const triageTableBody = document.querySelector("#triageTableBody");
   const triageExport = document.querySelector("#triageExport");
+  const triageDetailForm = document.querySelector("#triageDetailForm");
+  const triageAnonymousIdInput = document.querySelector("#triageAnonymousIdInput");
+  const loadTriageDetailButton = document.querySelector("#loadTriageDetailButton");
+  const exportTriageReviewButton = document.querySelector("#exportTriageReviewButton");
+  const triageDetailPanel = document.querySelector("#triageDetailPanel");
+  const triageDetailAnonymousId = document.querySelector("#triageDetailAnonymousId");
+  const triageDetailStatus = document.querySelector("#triageDetailStatus");
+  const triageDetailContentId = document.querySelector("#triageDetailContentId");
+  const triageDetailType = document.querySelector("#triageDetailType");
+  const triageDetailMeaning = document.querySelector("#triageDetailMeaning");
+  const triageDetailSenseLabel = document.querySelector("#triageDetailSenseLabel");
+  const triageDetailMessage = document.querySelector("#triageDetailMessage");
+  const triageDetailExport = document.querySelector("#triageDetailExport");
+  const markTriageInProgressButton = document.querySelector("#markTriageInProgressButton");
+  const closeTriageDetailButton = document.querySelector("#closeTriageDetailButton");
+  const markNewTriageInProgress = document.querySelector("#markNewTriageInProgress");
+  const reviewTriageQueueButton = document.querySelector("#reviewTriageQueueButton");
+  const cancelTriageQueueReviewButton = document.querySelector("#cancelTriageQueueReviewButton");
+  const triageQueueReviewStatus = document.querySelector("#triageQueueReviewStatus");
+  const triageQueueReviewProgress = document.querySelector("#triageQueueReviewProgress");
   const feedbackStatusFilter = document.querySelector("#feedbackStatusFilter");
   const feedbackTotal = document.querySelector("#feedbackTotal");
   const adminFeedbackList = document.querySelector("#adminFeedbackList");
+  const previousFeedbackButton = document.querySelector("#previousFeedbackButton");
+  const nextFeedbackButton = document.querySelector("#nextFeedbackButton");
+  const feedbackPageLabel = document.querySelector("#feedbackPageLabel");
   const announcementForm = document.querySelector("#announcementForm");
   const announcementTitle = document.querySelector("#announcementTitle");
   const announcementBody = document.querySelector("#announcementBody");
@@ -240,6 +263,7 @@
   );
 
   const USER_PAGE_SIZE = 100;
+  const FEEDBACK_PAGE_SIZE = 100;
   const TRIAGE_PAGE_SIZE = 200;
   const metricDefinitions = [
     ["registeredUsers", "注册用户"],
@@ -260,7 +284,18 @@
   let loading = false;
   let triageLoading = false;
   let triageLoaded = false;
+  let triageResult = { items: [], counts: { new: 0, inProgress: 0 } };
+  let triageDetail = null;
+  let triageDetailBusy = false;
+  let triageDetailRevision = 0;
+  let triageBatchRunning = false;
+  let triageBatchFailures = [];
+  const triageReview = new Map();
   let feedbackLoaded = false;
+  let feedbackOffset = 0;
+  let feedbackLoading = false;
+  let feedbackRevision = 0;
+  let feedbackResult = { items: [], total: 0, offset: 0 };
   let selectedUser = null;
   let selectedUserDetail = null;
   let announcementBusy = false;
@@ -330,6 +365,8 @@
 
   function showLogin() {
     currentSession = null;
+    resetTriageReview();
+    resetFeedbackView();
     adminLoginView.hidden = false;
     adminDeniedView.hidden = true;
     adminDashboard.hidden = true;
@@ -339,6 +376,8 @@
   }
 
   function showDenied() {
+    resetTriageReview();
+    resetFeedbackView();
     adminLoginView.hidden = true;
     adminDeniedView.hidden = false;
     adminDashboard.hidden = true;
@@ -358,6 +397,7 @@
     metricDefinitions.forEach(([key, label, percentage]) => {
       const card = document.createElement("div");
       card.className = "metric-card";
+      card.dataset.metric = key;
       const value = document.createElement("strong");
       value.className = "metric-value";
       const raw = data[key];
@@ -375,6 +415,13 @@
   }
 
   function setActiveSection(section) {
+    if (section !== "triage") closeTriageDetail();
+    if (section !== "feedback" && feedbackLoading) {
+      feedbackRevision += 1;
+      feedbackLoading = false;
+      feedbackLoaded = false;
+      updateFeedbackControls();
+    }
     activeSection = section;
     const sections = {
       users: [usersSection, usersTab],
@@ -568,6 +615,10 @@
       new: Math.max(0, Number(result?.counts?.new) || 0),
       inProgress: Math.max(0, Number(result?.counts?.inProgress) || 0),
     };
+    triageResult = { items, counts };
+    const feedbackMetric = metricGrid.querySelector('[data-metric="newFeedback"] .metric-value');
+    if (feedbackMetric) feedbackMetric.textContent = new Intl.NumberFormat("zh-CN").format(counts.new);
+    reviewTriageQueueButton.disabled = triageDetailBusy || triageLoading || !items.length;
     const groups = new Map();
     items.forEach((item) => {
       const key = `${item.type}\u0000${item.contentId ?? ""}`;
@@ -623,9 +674,13 @@
         const idList = document.createElement("div");
         idList.className = "triage-id-list";
         group.anonymousIds.forEach((anonymousId) => {
-          const code = document.createElement("code");
-          code.textContent = anonymousId;
-          idList.append(code);
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "triage-id-button";
+          button.textContent = anonymousId;
+          button.setAttribute("aria-label", `核对反馈 ${anonymousId}`);
+          button.addEventListener("click", () => loadTriageDetail(anonymousId));
+          idList.append(button);
         });
         idCell.append(idList);
         row.append(
@@ -642,9 +697,276 @@
     triageExport.textContent = JSON.stringify({ counts, items }, null, 2);
   }
 
+  function closeTriageDetail() {
+    if (triageBatchRunning) {
+      triageQueueReviewStatus.textContent = `已停止核对，已完成 ${triageQueueReviewProgress.value}/${triageQueueReviewProgress.max} 条。`;
+    }
+    triageBatchRunning = false;
+    triageDetailRevision += 1;
+    triageDetail = null;
+    triageDetailPanel.hidden = true;
+    triageDetailPanel.removeAttribute("data-anonymous-id");
+    triageDetailMessage.textContent = "";
+    triageDetailExport.textContent = "";
+    setTriageDetailBusy(false);
+  }
+
+  function setTriageDetailBusy(busy) {
+    triageDetailBusy = busy;
+    loadTriageDetailButton.disabled = busy;
+    markTriageInProgressButton.disabled = busy || triageDetail?.status !== "new";
+    reviewTriageQueueButton.disabled = busy || triageLoading || !triageResult.items.length;
+    markNewTriageInProgress.disabled = busy;
+    refreshTriageButton.disabled = busy || triageLoading;
+    cancelTriageQueueReviewButton.hidden = !triageBatchRunning;
+  }
+
+  function resetTriageReview() {
+    closeTriageDetail();
+    triageReview.clear();
+    triageBatchFailures = [];
+    triageQueueReviewStatus.textContent = "";
+    triageQueueReviewProgress.hidden = true;
+    triageAnonymousIdInput.value = "";
+    exportTriageReviewButton.disabled = true;
+    exportTriageReviewButton.textContent = "导出已核对的内容摘要";
+    triageLoaded = false;
+    renderTriage({ items: [], counts: {} });
+  }
+
+  function structuredFeedbackLine(message, label) {
+    const lines = String(message ?? "").split(/\r?\n/);
+    const start = lines.findIndex((line) => line.startsWith(`${label}：`) || line.startsWith(`${label}:`));
+    if (start < 0) return null;
+    const selected = [lines[start].slice(label.length + 1)];
+    for (let index = start + 1; index < lines.length; index += 1) {
+      if (/^(问题类型|缺少义项|相关义项|补充说明|问题描述)[：:]/.test(lines[index])) break;
+      selected.push(lines[index]);
+    }
+    return selected.join("\n").trim() || null;
+  }
+
+  function redactContentSignal(value) {
+    if (!value) return null;
+    return String(value)
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[已隐藏联系信息]")
+      .replace(/\bhttps?:\/\/\S+/gi, "[已隐藏链接]")
+      .replace(/\b(?:\+?\d[\d ()-]{6,}\d)\b/g, "[已隐藏数字标识]");
+  }
+
+  function triageContentSignal(detail) {
+    const context = detail.context ?? {};
+    const [wordId, senseId] = String(detail.contentId ?? "").split(":");
+    return {
+      anonymousId: detail.anonymousId,
+      status: detail.status,
+      type: detail.type ?? context.issueType ?? "general",
+      contentId: detail.contentId ?? null,
+      wordId: context.wordId ?? wordId ?? null,
+      senseId: context.senseId ?? senseId ?? null,
+      bookId: context.bookId ?? null,
+      requestedMeaning: redactContentSignal(structuredFeedbackLine(detail.message, "缺少义项")),
+      reportedSenseLabel: redactContentSignal(structuredFeedbackLine(detail.message, "相关义项")),
+    };
+  }
+
+  function renderTriageDetail(detail) {
+    triageDetail = detail;
+    const signal = triageContentSignal(detail);
+    triageReview.set(detail.anonymousId, signal);
+    triageDetailAnonymousId.textContent = detail.anonymousId;
+    triageDetailStatus.textContent = { new: "待处理", in_progress: "处理中", resolved: "已解决" }[detail.status] ?? "未知";
+    triageDetailContentId.textContent = signal.contentId ?? "—";
+    triageDetailType.textContent = signal.type;
+    triageDetailMeaning.textContent = signal.requestedMeaning ?? "未提供缺失义项描述";
+    triageDetailSenseLabel.textContent = signal.reportedSenseLabel ?? "未提供相关义项描述";
+    triageDetailMessage.textContent = String(detail.message ?? "");
+    triageDetailExport.textContent = JSON.stringify(signal, null, 2);
+    triageDetailPanel.dataset.anonymousId = detail.anonymousId;
+    triageDetailPanel.hidden = false;
+    markTriageInProgressButton.disabled = detail.status !== "new" || triageDetailBusy;
+    exportTriageReviewButton.disabled = false;
+    exportTriageReviewButton.textContent = `导出已核对的内容摘要（${triageReview.size} 项）`;
+  }
+
+  function validateTriageDetail(detail, anonymousId) {
+    if (detail?.anonymousId !== anonymousId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(detail.feedbackId ?? "") ||
+      !["new", "in_progress", "resolved"].includes(detail.status)) {
+      throw new Error("单项反馈身份或状态不匹配，未更新任何记录。");
+    }
+    return detail;
+  }
+
+  async function loadTriageDetail(value) {
+    if (triageDetailBusy || !currentSession?.user?.id) return;
+    const anonymousId = String(value ?? "").trim().toLowerCase();
+    if (!/^[0-9a-f]{32}$/.test(anonymousId)) {
+      setMessage("请输入 32 位匿名反馈 ID。", "error");
+      return;
+    }
+    closeTriageDetail();
+    const revision = triageDetailRevision;
+    const userId = currentSession.user.id;
+    setTriageDetailBusy(true);
+    triageAnonymousIdInput.value = anonymousId;
+    try {
+      const detail = await cloud.loadAdminFeedbackDetail(anonymousId);
+      if (revision !== triageDetailRevision || currentSession?.user?.id !== userId) return;
+      renderTriageDetail(validateTriageDetail(detail, anonymousId));
+      setMessage();
+    } catch (error) {
+      if (revision === triageDetailRevision && currentSession?.user?.id === userId) {
+        setMessage(error?.message ?? "单项反馈读取失败。", "error");
+      }
+    } finally {
+      if (revision === triageDetailRevision) {
+        setTriageDetailBusy(false);
+      }
+    }
+  }
+
+  async function markTriageInProgress() {
+    if (triageDetailBusy || triageDetail?.status !== "new" || !currentSession?.user?.id) return;
+    const detail = triageDetail;
+    const revision = triageDetailRevision;
+    const userId = currentSession.user.id;
+    setTriageDetailBusy(true);
+    try {
+      await cloud.updateFeedbackStatus(detail.feedbackId, "in_progress");
+      if (revision !== triageDetailRevision || currentSession?.user?.id !== userId) return;
+      const confirmed = validateTriageDetail(await cloud.loadAdminFeedbackDetail(detail.anonymousId), detail.anonymousId);
+      if (revision !== triageDetailRevision || currentSession?.user?.id !== userId) return;
+      if (confirmed.status !== "in_progress") throw new Error("更新后的反馈状态尚未核对成功，请重新读取本条记录。");
+      const items = triageResult.items.map((item) => item.anonymousId === detail.anonymousId ? { ...item, status: "in_progress" } : item);
+      renderTriage({ items, counts: {
+        new: items.filter((item) => item.status === "new").length,
+        inProgress: items.filter((item) => item.status === "in_progress").length,
+      } });
+      renderTriageDetail(confirmed);
+      setMessage("本条反馈已核对为处理中；未经修复验证，不标记为已解决。");
+    } catch (error) {
+      if (revision === triageDetailRevision && currentSession?.user?.id === userId) {
+        setMessage(error?.message ?? "反馈状态更新未确认，请重新读取本条记录。", "error");
+      }
+    } finally {
+      if (revision === triageDetailRevision) {
+        setTriageDetailBusy(false);
+      }
+    }
+  }
+
+  function exportTriageReview() {
+    if (!triageReview.size) return;
+    const payload = { schemaVersion: 1, items: [...triageReview.values()], failures: triageBatchFailures };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "sense-vocab-feedback-content-signals.json";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  async function reviewTriageQueue() {
+    if (triageDetailBusy || !currentSession?.user?.id || !triageResult.items.length) return;
+    const markNew = markNewTriageInProgress.checked;
+    const items = triageResult.items.filter((item) =>
+      !triageReview.has(item.anonymousId) || (markNew && triageReview.get(item.anonymousId).status === "new"));
+    if (!items.length) {
+      triageQueueReviewStatus.textContent = "当前队列内容已核对，无需重复读取。";
+      return;
+    }
+    closeTriageDetail();
+    const revision = triageDetailRevision;
+    const userId = currentSession.user.id;
+    const current = () => revision === triageDetailRevision && currentSession?.user?.id === userId && activeSection === "triage";
+    const confirmedStates = new Map();
+    triageBatchFailures = [];
+    triageBatchRunning = true;
+    setTriageDetailBusy(true);
+    triageQueueReviewProgress.max = items.length;
+    triageQueueReviewProgress.value = 0;
+    triageQueueReviewProgress.hidden = false;
+    let completed = 0;
+    let consecutiveFailures = 0;
+    try {
+      for (const item of items) {
+        if (!current()) break;
+        let stage = "read";
+        try {
+          // Each requested item is read separately; full prose is never collected or exported.
+          let detail = validateTriageDetail(await cloud.loadAdminFeedbackDetail(item.anonymousId), item.anonymousId);
+          if (!current()) break;
+          if (markNew && detail.status === "new") {
+            stage = "write";
+            await cloud.updateFeedbackStatus(detail.feedbackId, "in_progress");
+            if (!current()) break;
+            stage = "confirm";
+            detail = validateTriageDetail(await cloud.loadAdminFeedbackDetail(item.anonymousId), item.anonymousId);
+            if (!current()) break;
+            if (detail.status !== "in_progress") throw new Error("Status update was not confirmed.");
+          }
+          triageReview.set(item.anonymousId, triageContentSignal(detail));
+          confirmedStates.set(item.anonymousId, detail.status);
+          consecutiveFailures = 0;
+        } catch {
+          if (!current()) break;
+          triageBatchFailures.push({ anonymousId: item.anonymousId, stage });
+          consecutiveFailures += 1;
+        }
+        if (!current()) break;
+        completed += 1;
+        triageQueueReviewProgress.value = completed;
+        triageQueueReviewStatus.textContent = `正在逐项核对 ${completed}/${items.length} 条（${(completed * 100 / items.length).toFixed(2)}%）`;
+        exportTriageReviewButton.disabled = !triageReview.size;
+        exportTriageReviewButton.textContent = `导出已核对的内容摘要（${triageReview.size} 项）`;
+        // Consecutive independent failures indicate a broken session/network, not a retry queue.
+        if (consecutiveFailures >= 3) break;
+      }
+      if (!current()) return;
+      const remaining = triageResult.items.map((item) => ({ ...item, status: confirmedStates.get(item.anonymousId) ?? item.status })).filter((item) => item.status !== "resolved");
+      renderTriage({ items: remaining, counts: {
+        new: remaining.filter((item) => item.status === "new").length,
+        inProgress: remaining.filter((item) => item.status === "in_progress").length,
+      } });
+      triageQueueReviewStatus.textContent = `已核对 ${completed}/${items.length} 条，${triageBatchFailures.length} 条未成功。${completed < items.length ? "其余条目未处理。" : ""}`;
+    } finally {
+      if (revision === triageDetailRevision) {
+        triageBatchRunning = false;
+        setTriageDetailBusy(false);
+      }
+    }
+  }
+
+  function updateFeedbackControls() {
+    const total = Math.max(0, Number(feedbackResult.total) || 0);
+    feedbackStatusFilter.disabled = feedbackLoading;
+    previousFeedbackButton.disabled = feedbackLoading || feedbackOffset <= 0;
+    nextFeedbackButton.disabled = feedbackLoading || feedbackOffset + FEEDBACK_PAGE_SIZE >= total;
+  }
+
+  function resetFeedbackView() {
+    feedbackRevision += 1;
+    feedbackLoading = false;
+    feedbackLoaded = false;
+    feedbackOffset = 0;
+    feedbackResult = { items: [], total: 0, offset: 0 };
+    adminFeedbackList.replaceChildren();
+    feedbackTotal.textContent = "";
+    feedbackPageLabel.textContent = "";
+    feedbackStatusFilter.value = "";
+    updateFeedbackControls();
+  }
+
   function renderFeedback(result) {
+    feedbackResult = { ...result, offset: feedbackOffset };
     const items = result?.items ?? [];
-    feedbackTotal.textContent = `${Number(result?.total) || 0} 条反馈`;
+    const total = Math.max(0, Number(result?.total) || 0);
+    feedbackTotal.textContent = `${total} 条反馈`;
+    const first = items.length ? feedbackOffset + 1 : 0;
+    const last = items.length ? Math.min(feedbackOffset + items.length, total) : 0;
+    feedbackPageLabel.textContent = `${first}-${last} / ${total}`;
+    updateFeedbackControls();
     adminFeedbackList.replaceChildren();
 
     if (!items.length) {
@@ -1808,14 +2130,55 @@
       triageLoaded = true;
     } finally {
       triageLoading = false;
-      refreshTriageButton.disabled = false;
+      setTriageDetailBusy(triageDetailBusy);
     }
   }
 
   async function loadFeedback() {
+    if (feedbackLoading || !currentSession?.user?.id) return;
     const status = feedbackStatusFilter.value || null;
-    renderFeedback(await cloud.loadAdminFeedback(status, 100, 0));
-    feedbackLoaded = true;
+    const revision = ++feedbackRevision;
+    const userId = currentSession.user.id;
+    let offset = feedbackOffset;
+    const isCurrent = () => revision === feedbackRevision &&
+      currentSession?.user?.id === userId && activeSection === "feedback";
+    feedbackLoading = true;
+    updateFeedbackControls();
+    try {
+      let result = await cloud.loadAdminFeedback(status, FEEDBACK_PAGE_SIZE, offset);
+      if (!isCurrent()) return;
+      const total = Math.max(0, Number(result?.total) || 0);
+      if (offset > 0 && offset >= total) {
+        offset = Math.max(0, Math.floor((total - 1) / FEEDBACK_PAGE_SIZE) * FEEDBACK_PAGE_SIZE);
+        result = await cloud.loadAdminFeedback(status, FEEDBACK_PAGE_SIZE, offset);
+        if (!isCurrent()) return;
+      }
+      feedbackOffset = offset;
+      renderFeedback(result);
+      feedbackLoaded = true;
+    } catch (error) {
+      if (isCurrent()) {
+        feedbackOffset = feedbackResult.offset;
+        feedbackLoaded = false;
+        throw error;
+      }
+    } finally {
+      if (revision === feedbackRevision) {
+        feedbackLoading = false;
+        updateFeedbackControls();
+      }
+    }
+  }
+
+  async function changeFeedbackPage(delta) {
+    if (feedbackLoading) return;
+    feedbackOffset = Math.max(0, feedbackOffset + delta * FEEDBACK_PAGE_SIZE);
+    try {
+      await loadFeedback();
+      setMessage();
+    } catch (error) {
+      setMessage(error?.message ?? "反馈读取失败。", "error");
+    }
   }
 
   async function loadAnnouncements() {
@@ -2145,6 +2508,15 @@
   }
 
   adminLoginForm.addEventListener("submit", handleLogin);
+  triageDetailForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    loadTriageDetail(triageAnonymousIdInput.value);
+  });
+  closeTriageDetailButton.addEventListener("click", closeTriageDetail);
+  markTriageInProgressButton.addEventListener("click", markTriageInProgress);
+  exportTriageReviewButton.addEventListener("click", exportTriageReview);
+  reviewTriageQueueButton.addEventListener("click", reviewTriageQueue);
+  cancelTriageQueueReviewButton.addEventListener("click", closeTriageDetail);
   adminLogoutButton.addEventListener("click", logout);
   deniedLogoutButton.addEventListener("click", logout);
   refreshAdminButton.addEventListener("click", refreshAdminData);
@@ -2248,6 +2620,8 @@
     await loadUsers();
   });
   feedbackStatusFilter.addEventListener("change", async () => {
+    feedbackOffset = 0;
+    feedbackLoaded = false;
     try {
       await loadFeedback();
       setMessage();
@@ -2255,6 +2629,8 @@
       setMessage(error?.message ?? "反馈读取失败。", "error");
     }
   });
+  previousFeedbackButton.addEventListener("click", () => changeFeedbackPage(-1));
+  nextFeedbackButton.addEventListener("click", () => changeFeedbackPage(1));
   complianceFilters.addEventListener("submit", (event) => event.preventDefault());
   [
     complianceMatrixFilter,

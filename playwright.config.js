@@ -22,6 +22,7 @@ module.exports = defineConfig({
     "security-hardening.spec.js",
     "confusion-globe.spec.js",
     "vocabulary-feedback.spec.js",
+    "feedback-content-20261014.spec.js",
     "compliance-rights.spec.js",
     "public-attribution.spec.js",
     "dashboard.spec.js",

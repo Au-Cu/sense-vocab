@@ -371,6 +371,82 @@ button {
   margin-bottom: 16px;
 }
 
+.triage-detail-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.triage-detail-form input {
+  width: min(100%, 330px);
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  font-family: monospace;
+}
+
+.triage-detail-form input[type="checkbox"] {
+  width: auto;
+  min-height: 0;
+}
+
+#triageQueueReviewProgress {
+  width: min(100%, 640px);
+  accent-color: var(--accent);
+}
+
+.triage-detail-panel {
+  margin: 18px 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.triage-detail-panel h3 {
+  margin: 0;
+}
+
+.triage-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 16px;
+}
+
+.triage-detail-grid .is-wide {
+  grid-column: 1 / -1;
+}
+
+.triage-detail-grid dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.triage-detail-grid dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.triage-id-button {
+  width: fit-content;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--accent-strong);
+  font: 0.72rem monospace;
+  cursor: pointer;
+}
+
+.triage-detail-message {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .triage-stat {
   display: grid;
   gap: 4px;

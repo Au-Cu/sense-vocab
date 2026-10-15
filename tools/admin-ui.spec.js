@@ -28,7 +28,9 @@ async function installAdminCloud(page, isAdmin = true) {
       complianceReleaseUpdates: [],
       membershipUpdates: [],
       triageCalls: [],
+      detailCalls: [],
       fullFeedbackLoads: 0,
+      feedbackCalls: [],
       extendAllCalls: 0,
       signedOut: false,
     };
@@ -246,8 +248,13 @@ async function installAdminCloud(page, isAdmin = true) {
           items: filtered.slice(offset, offset + limit),
         };
       },
-      async loadAdminFeedback() {
+      async loadAdminFeedback(status = null, limit = 100, offset = 0) {
         window.__fakeAdmin.fullFeedbackLoads += 1;
+        window.__fakeAdmin.feedbackCalls.push({ status, limit, offset });
+        if (window.__fakeAdmin.feedbackItems) {
+          const items = window.__fakeAdmin.feedbackItems.filter((item) => !status || item.status === status);
+          return { total: items.length, items: items.slice(offset, offset + limit) };
+        }
         return {
           total: 1,
           items: [{
@@ -269,8 +276,29 @@ async function installAdminCloud(page, isAdmin = true) {
           }],
         };
       },
+      async loadAdminFeedbackDetail(anonymousId) {
+        window.__fakeAdmin.detailCalls.push(anonymousId);
+        if (window.__fakeAdmin.detailError) throw new Error("Temporary RPC failure");
+        if (window.__fakeAdmin.delayDetail) {
+          await new Promise((resolve) => { window.__fakeAdmin.resolveDetail = resolve; });
+        }
+        const item = triageItems.find((entry) => entry.anonymousId === anonymousId);
+        if (!item) throw new Error("Feedback not found");
+        return {
+          ...item,
+          feedbackId: `44444444-4444-4444-8444-${anonymousId.slice(-12)}`,
+          message: "问题类型：缺少义项\n缺少义项：n. 用于核对事实的证据\n补充说明：仅核对此义项。",
+          context: { wordId: "word-1", wordText: "word", senseId: null, bookId: "kaoyan" },
+          email: "private-extra@example.com",
+          imagePaths: ["private-extra/image.jpg"],
+          ...(window.__fakeAdmin.detailOverride ?? {}),
+        };
+      },
       async updateFeedbackStatus(id, status) {
         window.__fakeAdmin.updated.push({ id, status });
+        const item = triageItems.find((entry) =>
+          `44444444-4444-4444-8444-${entry.anonymousId.slice(-12)}` === id);
+        if (item) item.status = status;
         return { ok: true };
       },
       async replyToFeedback(id, message) {
@@ -460,6 +488,188 @@ test("a non-admin session cannot enter the dashboard", async ({ page }) => {
   await page.goto(ADMIN_URL);
   await expect(page.locator("#adminDeniedView")).toBeVisible();
   await expect(page.locator("#adminDashboard")).toBeHidden();
+});
+
+test("anonymous triage opens one detail and marks progress without bulk feedback loads", async ({ page }) => {
+  await installAdminCloud(page);
+  await page.goto(ADMIN_URL);
+  await page.locator("#triageTab").click();
+  const anonymousId = "00000000000000000000000000000000";
+  await page.getByRole("button", { name: `核对反馈 ${anonymousId}`, exact: true }).click();
+  await expect(page.locator("#triageDetailPanel")).toBeVisible();
+  await expect(page.locator("#triageDetailMeaning")).toHaveText("n. 用于核对事实的证据");
+  const detail = JSON.parse(await page.locator("#triageDetailExport").textContent());
+  expect(detail.anonymousId).toBe(anonymousId);
+  expect(detail.wordId).toBe("word-1");
+  expect(detail.requestedMeaning).toBe("n. 用于核对事实的证据");
+  expect(Object.keys(detail)).not.toContain("feedbackId");
+  expect(Object.keys(detail)).not.toContain("message");
+  await expect(page.locator("#triageDetailPanel")).not.toContainText("private-extra");
+  await expect.poll(async () => page.evaluate(() => window.__fakeAdmin.detailCalls)).toEqual([anonymousId]);
+  await page.locator("#markTriageInProgressButton").click();
+  await expect(page.locator("#triageDetailStatus")).toHaveText("处理中");
+  await expect(page.locator("#markTriageInProgressButton")).toBeDisabled();
+  await expect.poll(async () => page.evaluate(() => ({
+    fullLoads: window.__fakeAdmin.fullFeedbackLoads,
+    detailCalls: window.__fakeAdmin.detailCalls,
+    updates: window.__fakeAdmin.updated,
+  }))).toEqual({
+    fullLoads: 0,
+    detailCalls: [anonymousId, anonymousId],
+    updates: [{ id: "44444444-4444-4444-8444-000000000000", status: "in_progress" }],
+  });
+  const queue = JSON.parse(await page.locator("#triageExport").textContent());
+  expect(queue.counts).toEqual({ new: 200, inProgress: 2 });
+  expect(queue.items.find((item) => item.anonymousId === anonymousId).status).toBe("in_progress");
+});
+
+test("anonymous triage rejects a mismatched detail without status writes", async ({ page }) => {
+  await installAdminCloud(page);
+  await page.goto(ADMIN_URL);
+  await page.evaluate(() => {
+    window.__fakeAdmin.detailOverride = { anonymousId: "ffffffffffffffffffffffffffffffff" };
+  });
+  await page.locator("#triageTab").click();
+  await page.getByRole("button", { name: "核对反馈 00000000000000000000000000000000", exact: true }).click();
+  await expect(page.locator("#adminMessage")).toContainText("身份或状态不匹配");
+  await expect(page.locator("#triageDetailPanel")).toBeHidden();
+  await expect(page.locator("#exportTriageReviewButton")).toBeDisabled();
+  expect(await page.evaluate(() => window.__fakeAdmin.updated)).toEqual([]);
+});
+
+test("anonymous triage discards a late detail after leaving the section", async ({ page }) => {
+  await installAdminCloud(page);
+  await page.goto(ADMIN_URL);
+  await page.evaluate(() => { window.__fakeAdmin.delayDetail = true; });
+  await page.locator("#triageTab").click();
+  await page.getByRole("button", { name: "核对反馈 00000000000000000000000000000000", exact: true }).click();
+  await expect.poll(async () => page.evaluate(() => window.__fakeAdmin.detailCalls.length)).toBe(1);
+  await page.locator("#usersTab").click();
+  await page.evaluate(() => { window.__fakeAdmin.resolveDetail(); });
+  await expect(page.locator("#usersSection")).toBeVisible();
+  await expect(page.locator("#triageDetailPanel")).toBeHidden();
+  await expect(page.locator("#triageDetailExport")).toBeEmpty();
+  await expect(page.locator("#exportTriageReviewButton")).toBeDisabled();
+});
+
+test("anonymous triage exports content signals without private context or full prose", async ({ page }) => {
+  const { readFile } = require("node:fs/promises");
+  await installAdminCloud(page);
+  await page.goto(ADMIN_URL);
+  await page.evaluate(() => {
+    window.__fakeAdmin.detailOverride = {
+      message: "问题类型：缺少义项\n缺少义项：n. 证据 private@example.com https://private.example/attachment 1234567890123456\n补充说明：不应导出的完整原文。",
+      context: { wordId: "word-1", bookId: "kaoyan", privateField: "secret" },
+    };
+  });
+  await page.locator("#triageTab").click();
+  await page.getByRole("button", { name: "核对反馈 00000000000000000000000000000000", exact: true }).click();
+  await expect(page.locator("#exportTriageReviewButton")).toBeEnabled();
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#exportTriageReviewButton").click();
+  const download = await downloadPromise;
+  const encoded = await readFile(await download.path(), "utf8");
+  const payload = JSON.parse(encoded);
+  expect(payload.items).toHaveLength(1);
+  expect(Object.keys(payload.items[0])).toEqual([
+    "anonymousId", "status", "type", "contentId", "wordId", "senseId", "bookId", "requestedMeaning", "reportedSenseLabel",
+  ]);
+  expect(encoded).not.toMatch(/private|1234567890123456|完整原文|secret|feedbackId|imagePaths|email/);
+  expect(await page.evaluate(() => window.__fakeAdmin.fullFeedbackLoads)).toBe(0);
+});
+
+test("anonymous triage reviews the selected queue one item at a time with confirmed progress", async ({ page }) => {
+  await installAdminCloud(page);
+  await page.goto(ADMIN_URL);
+  await page.locator("#triageTab").click();
+  await page.locator("#markNewTriageInProgress").check();
+  await page.locator("#reviewTriageQueueButton").click();
+  await expect(page.locator("#triageQueueReviewStatus")).toHaveText("已核对 202/202 条，0 条未成功。");
+  await expect(page.locator("#triageQueueReviewProgress")).toHaveAttribute("value", "202");
+  await expect(page.locator("#triageDetailPanel")).toBeHidden();
+  await expect(page.locator("#triageDetailMessage")).toBeEmpty();
+  const queue = JSON.parse(await page.locator("#triageExport").textContent());
+  expect(queue.counts).toEqual({ new: 0, inProgress: 202 });
+  expect(await page.evaluate(() => ({
+    fullLoads: window.__fakeAdmin.fullFeedbackLoads,
+    detailReads: window.__fakeAdmin.detailCalls.length,
+    updates: window.__fakeAdmin.updated.length,
+  }))).toEqual({ fullLoads: 0, detailReads: 403, updates: 201 });
+});
+
+test("anonymous triage stops after consecutive independent RPC failures without fake completion", async ({ page }) => {
+  await installAdminCloud(page);
+  await page.goto(ADMIN_URL);
+  await page.evaluate(() => { window.__fakeAdmin.detailError = true; });
+  await page.locator("#triageTab").click();
+  await page.locator("#reviewTriageQueueButton").click();
+  await expect(page.locator("#triageQueueReviewStatus")).toHaveText("已核对 3/202 条，3 条未成功。其余条目未处理。");
+  await expect(page.locator("#triageQueueReviewProgress")).toHaveAttribute("value", "3");
+  await expect(page.locator("#exportTriageReviewButton")).toBeDisabled();
+  expect(await page.evaluate(() => ({ reads: window.__fakeAdmin.detailCalls.length, updates: window.__fakeAdmin.updated.length }))).toEqual({ reads: 3, updates: 0 });
+});
+
+test("anonymous triage abandons queued work on logout and does not keep late data", async ({ page }) => {
+  await installAdminCloud(page);
+  await page.goto(ADMIN_URL);
+  await page.evaluate(() => { window.__fakeAdmin.delayDetail = true; });
+  await page.locator("#triageTab").click();
+  await page.locator("#markNewTriageInProgress").check();
+  await page.locator("#reviewTriageQueueButton").click();
+  await expect.poll(async () => page.evaluate(() => window.__fakeAdmin.detailCalls.length)).toBe(1);
+  await page.locator("#adminLogoutButton").click();
+  await page.evaluate(() => { window.__fakeAdmin.resolveDetail(); });
+  await expect(page.locator("#adminLoginView")).toBeVisible();
+  await expect(page.locator("#triageDetailExport")).toBeEmpty();
+  await expect(page.locator("#exportTriageReviewButton")).toBeDisabled();
+  expect(await page.evaluate(() => window.__fakeAdmin.updated.length)).toBe(0);
+});
+
+test("full feedback paging preserves details and reaches every item beyond the first hundred", async ({ page }) => {
+  await installAdminCloud(page);
+  await page.addInitScript(() => {
+    window.__fakeAdmin.feedbackItems = Array.from({ length: 216 }, (_, index) => ({
+      id: `feedback-${index}`,
+      email: "learner@example.com",
+      status: index < 150 ? "new" : "in_progress",
+      message: `Specific feedback ${index}`,
+      createdAt: "2026-10-14T01:00:00.000Z",
+      context: { source: "study", wordId: `word-${index}`, wordText: `word-${index}` },
+      images: index === 200 ? [{ url: "data:image/png;base64,iVBORw0KGgo=" }] : [],
+    }));
+  });
+  await page.goto(ADMIN_URL);
+  await page.getByRole("button", { name: "问题反馈", exact: true }).click();
+  await expect(page.locator("#adminFeedbackList .feedback-item")).toHaveCount(100);
+  await expect(page.locator("#feedbackPageLabel")).toHaveText("1-100 / 216");
+  await expect(page.locator("#previousFeedbackButton")).toBeDisabled();
+  await page.locator("#nextFeedbackButton").click();
+  await expect(page.locator("#feedbackPageLabel")).toHaveText("101-200 / 216");
+  await expect(page.locator("#adminFeedbackList .feedback-message").first()).toHaveText("Specific feedback 100");
+  await page.locator("#nextFeedbackButton").click();
+  await expect(page.locator("#adminFeedbackList .feedback-item")).toHaveCount(16);
+  await expect(page.locator("#feedbackPageLabel")).toHaveText("201-216 / 216");
+  await expect(page.locator("#nextFeedbackButton")).toBeDisabled();
+  await expect(page.locator("#adminFeedbackList .feedback-message").first()).toHaveText("Specific feedback 200");
+  await expect(page.locator("#adminFeedbackList .feedback-images img")).toHaveCount(1);
+  await expect(page.locator("#adminFeedbackList .feedback-word-link").first()).toHaveAttribute("href", /word=word-200/);
+  await expect(page.locator("#adminFeedbackList .feedback-reply-editor")).toHaveCount(16);
+  await page.locator("#feedbackStatusFilter").selectOption("new");
+  await expect(page.locator("#feedbackPageLabel")).toHaveText("1-100 / 150");
+  await page.locator("#nextFeedbackButton").click();
+  await expect(page.locator("#feedbackPageLabel")).toHaveText("101-150 / 150");
+  await page.locator("#feedbackStatusFilter").selectOption("in_progress");
+  await expect(page.locator("#feedbackPageLabel")).toHaveText("1-66 / 66");
+  await expect(page.locator("#previousFeedbackButton")).toBeDisabled();
+  await expect(page.locator("#nextFeedbackButton")).toBeDisabled();
+  expect(await page.evaluate(() => window.__fakeAdmin.feedbackCalls)).toEqual([
+    { status: null, limit: 100, offset: 0 },
+    { status: null, limit: 100, offset: 100 },
+    { status: null, limit: 100, offset: 200 },
+    { status: "new", limit: 100, offset: 0 },
+    { status: "new", limit: 100, offset: 100 },
+    { status: "in_progress", limit: 100, offset: 0 },
+  ]);
 });
 
 test("a feedback word link opens the matching read-only word card", async ({ page }) => {
