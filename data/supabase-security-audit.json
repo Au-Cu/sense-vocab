@@ -25,7 +25,8 @@
     "20261002130000_staged_state_uploads.sql",
     "20261003035519_fix_staged_upload_progress_and_throughput.sql",
     "20261003090913_fix_compact_full_upload_deletion_guard.sql",
-    "20261003091607_avoid_duplicate_transport_chunk_rebuild.sql"
+    "20261003091607_avoid_duplicate_transport_chunk_rebuild.sql",
+    "20261015125641_optimize_state_transport_locking.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -37,9 +38,9 @@
     "defaultFunctionExposureRevoked": true
   },
   "counts": {
-    "discoveredFunctionSignatures": 80,
+    "discoveredFunctionSignatures": 82,
     "securityDefinerSignatures": 66,
-    "explicitFinalGrants": 71,
+    "explicitFinalGrants": 72,
     "browserRpcNames": 42
   },
   "grants": [
@@ -316,7 +317,7 @@
       ]
     },
     {
-      "signature": "public.admin_publish_announcement(\n  text, text, uuid, text[], jsonb, jsonb\n)",
+      "signature": "public.admin_publish_announcement(\r\n  text, text, uuid, text[], jsonb, jsonb\r\n)",
       "roles": [
         "authenticated"
       ]
@@ -467,6 +468,12 @@
     },
     {
       "signature": "public.save_user_state(jsonb, bigint, boolean)",
+      "roles": [
+        "authenticated"
+      ]
+    },
+    {
+      "signature": "public.load_user_state_chunk(bigint, integer)",
       "roles": [
         "authenticated"
       ]
@@ -855,9 +862,9 @@
       "key": "public.ensure_user_state_transport_chunks(p_user_id uuid, p_revision bigint)",
       "schema": "public",
       "name": "ensure_user_state_transport_chunks",
-      "latestMigration": "20261002100000_fix_chunk_repair_hot_path.sql",
+      "latestMigration": "20261015125641_optimize_state_transport_locking.sql",
       "securityDefiner": true,
-      "declaredEmptySearchPath": false,
+      "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
     },
     {
@@ -972,9 +979,9 @@
       "key": "public.load_user_state_chunk(p_revision bigint, p_chunk_index integer)",
       "schema": "public",
       "name": "load_user_state_chunk",
-      "latestMigration": "20261002090000_repair_chunk_transport_and_admin_dashboard.sql",
+      "latestMigration": "20261015125641_optimize_state_transport_locking.sql",
       "securityDefiner": true,
-      "declaredEmptySearchPath": false,
+      "declaredEmptySearchPath": true,
       "checksCallerIdentity": true
     },
     {
@@ -1086,6 +1093,15 @@
       "checksCallerIdentity": true
     },
     {
+      "key": "public.split_user_state_transport(p_document text, p_max_bytes integer default 400000)",
+      "schema": "public",
+      "name": "split_user_state_transport",
+      "latestMigration": "20261015125641_optimize_state_transport_locking.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
       "key": "public.state_confusion_links_are_valid(p_state jsonb)",
       "schema": "public",
       "name": "state_confusion_links_are_valid",
@@ -1099,6 +1115,15 @@
       "schema": "public",
       "name": "state_has_learning_evidence",
       "latestMigration": "20261001203000_fix_state_learning_evidence.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.state_has_undeclared_deletions_unexpanded(p_existing jsonb, p_incoming jsonb)",
+      "schema": "public",
+      "name": "state_has_undeclared_deletions_unexpanded",
+      "latestMigration": "20261015125641_optimize_state_transport_locking.sql",
       "securityDefiner": false,
       "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
@@ -1152,9 +1177,9 @@
       "key": "public.sync_user_state_transport_chunks()",
       "schema": "public",
       "name": "sync_user_state_transport_chunks",
-      "latestMigration": "20261001200000_chunked_user_state_transport.sql",
+      "latestMigration": "20261015125641_optimize_state_transport_locking.sql",
       "securityDefiner": true,
-      "declaredEmptySearchPath": false,
+      "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
     },
     {

@@ -2060,6 +2060,8 @@
   ) {
     const controller = new AbortController();
     const operationContext = { kind, label };
+    const operationUserId = currentUser?.id;
+    const startedAt = Date.now();
     activeCloudOperation = operationContext;
     if (!preserveProgress) setOperationProgress(null, label);
     try {
@@ -2080,6 +2082,17 @@
         );
       if (completeProgress) setOperationProgress(100, `${label}完成`);
       return result;
+    } catch (error) {
+      if (currentUser?.id === operationUserId) {
+        recordSyncDiagnostic("cloud-operation-failed", error, {
+          kind,
+          phase: label,
+          elapsedMs: Date.now() - startedAt,
+          networkFailure: /(?:TypeError.*(?:load failed|failed to fetch)|networkerror)/i
+            .test(`${error?.name ?? ""}: ${error?.message ?? error}`),
+        });
+      }
+      throw error;
     } finally {
       if (activeCloudOperation === operationContext) {
         activeCloudOperation = null;

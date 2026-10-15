@@ -372,6 +372,7 @@ async function installFakeCloud(page, remote = null, options = {}) {
           !window.__fakeCloud.stagedFailureConsumed
         ) {
           window.__fakeCloud.stagedFailureConsumed = true;
+          if (window.__fakeCloud.stagedFailureAsNetwork) throw new TypeError("Load failed");
           throw new Error("simulated staged part interruption");
         }
         const upload = window.__fakeCloud.stagedUploads[uploadId];
@@ -641,6 +642,7 @@ test("large staged uploads resume confirmed parts and finalize once", async ({ p
   });
 
   await page.evaluate(async () => {
+    window.__fakeCloud.stagedFailureAsNetwork = true;
     const app = window.SenseVocabApp;
     const next = app.getState();
     const vocabulary = await fetch("./data/vocabulary-index.json").then((response) => response.json());
@@ -669,6 +671,15 @@ test("large staged uploads resume confirmed parts and finalize once", async ({ p
     () => page.evaluate(() => window.__fakeCloud.stagedFailureConsumed),
     { timeout: 120000 },
   ).toBe(true);
+
+  const failure = await page.evaluate(() => {
+    const events = JSON.parse(localStorage.getItem("sense-vocab-sync-diagnostics-v1:user-1") || "[]");
+    return events.find((entry) => entry.operation === "cloud-operation-failed");
+  });
+  expect(failure.networkFailure).toBe(true);
+  expect(failure.kind).toBe("save-state");
+  expect(failure.phase).toMatch(/^正在上传本机记录分段 2\//);
+  expect(failure.elapsedMs).toBeGreaterThanOrEqual(0);
 
   // The first attempt leaves the server session and the local cursor intact.
   // A second click must skip the already acknowledged first part.
