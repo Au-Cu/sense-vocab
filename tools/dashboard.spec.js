@@ -889,8 +889,9 @@ test("floating dialogs cover navigation and expand from the trigger", async ({ p
       navRect.left + navRect.width / 2,
       navRect.top + navRect.height / 2,
     );
-    const finalSurfaceLeft = (innerWidth - surface.offsetWidth) / 2;
-    const finalSurfaceTop = (innerHeight - surface.offsetHeight) / 2;
+    const backdropRect = backdrop.getBoundingClientRect();
+    const finalSurfaceLeft = backdropRect.left + (backdrop.clientWidth - surface.offsetWidth) / 2;
+    const finalSurfaceTop = backdropRect.top + (backdrop.clientHeight - surface.offsetHeight) / 2;
     const surfaceStyle = getComputedStyle(surface);
     const animation = surface.getAnimations().find((item) => {
       return item.animationName === "modal-drop-expand";

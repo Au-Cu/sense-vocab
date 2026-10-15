@@ -27,6 +27,7 @@ module.exports = defineConfig({
     "public-attribution.spec.js",
     "dashboard.spec.js",
     "ui-theme.spec.js",
+    "responsive-layout.spec.js",
   ],
   fullyParallel: false,
   workers: 1,
