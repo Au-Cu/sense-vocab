@@ -716,6 +716,263 @@ test("dashboard carries state pools across idle days and uses reliable conversio
   expect(colors.reinforceReview).toBe(colors.reinforceLegend);
 });
 
+test("historical pools replay recorded changes instead of stale reconstructed snapshots", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.clock.setFixedTime(new Date("2026-10-15T20:00:00+08:00"));
+  await page.goto(APP_URL);
+  await page.evaluate(() => {
+    localStorage.clear();
+    const statuses = { "act:n-3": "reinforce", "action:n-2": "review" };
+    const enteredAt = Object.fromEntries(Object.keys(statuses).map((key) => [key, "2026-09-25T08:00:00+08:00"]));
+    const snapshot = (date, quality, time) => ({
+      id: `kaoyan:${date}`, bookId: "kaoyan", date, quality,
+      observedAt: `${date}T${time}+08:00`, statuses, enteredAt,
+    });
+    const events = [
+      ["2026-10-11", "act:n-3", "reinforce", "review", "10:00:00"],
+      ["2026-10-11", "action:n-2", "review", "mastered", "11:00:00"],
+      ["2026-10-12", "act:n-3", "review", "reinforce", "10:00:00"],
+      // A failed confirmation is an outcome, not a new state-entry time.
+      ["2026-10-13", "act:n-3", "reinforce", "reinforce", "12:00:00"],
+      // Cross-midnight activity belongs to its study date, but the pool moves
+      // when the transition actually happened, not on the preceding date.
+      ["2026-10-13", "act:n-3", "reinforce", "review", "00:15:00", "2026-10-14"],
+    ];
+    localStorage.setItem("sense-vocab-mvp-kaoyan-plan-v1", JSON.stringify({
+      schemaVersion: 2, activeBookId: "kaoyan", bookStates: { kaoyan: {
+        introducedWords: ["act", "action"],
+        progress: {
+          "act:n-3": { status: "review", statusEnteredAt: "2026-10-14T00:15:00+08:00", lastSeenActual: "2026-10-13" },
+          "action:n-2": { status: "mastered", statusEnteredAt: "2026-10-11T11:00:00+08:00", masteredOnActual: "2026-10-11" },
+          "act:n-4": { status: "review", statusEnteredAt: "2026-10-12T09:00:00+08:00", lastSeenActual: "2026-10-12" },
+        },
+        dashboardSnapshots: {
+          "kaoyan:2026-10-10": snapshot("2026-10-10", "exact", "20:00:00"),
+          "kaoyan:2026-10-11": snapshot("2026-10-11", "exact", "08:00:00"),
+          "kaoyan:2026-10-12": {
+            ...snapshot("2026-10-12", "reconstructed", "23:59:59.999"),
+            // Legacy imports can have a reliable derived record without events.
+            statuses: { ...statuses, "act:n-4": "review" },
+            enteredAt: { ...enteredAt, "act:n-4": "2026-10-12T09:00:00+08:00" },
+          },
+        },
+        dashboardEvents: Object.fromEntries(events.map(([date, senseId, from, to, time, observedDate], index) => [
+          `event-${index}`, { id: `event-${index}`, date, senseId, from, to,
+            observedAt: `${observedDate ?? date}T${time}+08:00`, outcome: true },
+        ])),
+      } },
+    }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#globalDashboardNavButton").click();
+  const point = (chart, series, date) => page.locator(
+    `#${chart} .dashboard-point.${series}[data-dashboard-tooltip^="${date}"]`,
+  );
+  await expect(point("dashboardPoolChart", "dashboard-reinforce", "2026-10-11"))
+    .toHaveAttribute("data-dashboard-tooltip", /待强化 0/);
+  await expect(point("dashboardPoolChart", "dashboard-review", "2026-10-11"))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 1/);
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition ?? ""))
+    .toBe("");
+  await page.locator("#dashboardPoolHeading").locator("xpath=ancestor::article[1]")
+    .screenshot({ path: ".op-cache/evidence/history-pool-mobile.png" });
+  await page.locator("#dashboardHoldHeading").locator("xpath=ancestor::article[1]")
+    .screenshot({ path: ".op-cache/evidence/history-hold-mobile.png" });
+  await expect(point("dashboardPoolChart", "dashboard-review", "2026-10-12"))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 1/);
+  await expect(point("dashboardHoldChart", "dashboard-hold-review", "2026-10-11"))
+    .toHaveAttribute("data-dashboard-tooltip", /平均 0\.6 天/);
+  await expect(point("dashboardHoldChart", "dashboard-hold-reinforce", "2026-10-13"))
+    .toHaveAttribute("data-dashboard-tooltip", /平均 1\.6 天/);
+  await expect(point("dashboardPoolChart", "dashboard-reinforce", "2026-10-14"))
+    .toHaveAttribute("data-dashboard-tooltip", /待强化 0/);
+  await expect(point("dashboardPoolChart", "dashboard-review", "2026-10-14"))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 2/);
+  await page.evaluate(() => window.SenseVocabApp.repairDerivedData());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#globalDashboardNavButton").click();
+  await expect(point("dashboardPoolChart", "dashboard-review", "2026-10-11"))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 1/);
+});
+
+test("manual repair upgrades legacy-only pool history without shifting midnight or resetting residence", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-15T20:00:00+08:00"));
+  await page.goto(APP_URL);
+  await page.evaluate(() => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-mvp-kaoyan-plan-v1", JSON.stringify({
+      schemaVersion: 2, activeBookId: "kaoyan", bookStates: { kaoyan: {
+        introducedWords: ["act", "action"],
+        progress: {
+          "act:n-3": { status: "review", statusEnteredAt: "2026-10-14T00:15:00+08:00", lastSeenActual: "2026-10-13" },
+          "action:n-2": { status: "review", statusEnteredAt: "2026-10-09T08:00:00+08:00", lastSeenActual: "2026-10-14" },
+        },
+        activityLog: { "2026-10-10": { newWords: ["act"], target: 1, baseCompleted: true } },
+        dashboardSnapshots: { "kaoyan:2026-10-10": {
+          id: "kaoyan:2026-10-10", bookId: "kaoyan", date: "2026-10-10", quality: "reconstructed",
+          observedAt: "2026-10-10T23:59:59.999+08:00",
+          statuses: { "act:n-3": "reinforce", "action:n-2": "review" },
+          enteredAt: { "act:n-3": "2026-10-08T08:00:00+08:00", "action:n-2": "2026-10-09T08:00:00+08:00" },
+        } },
+        dashboardEvents: {
+          repeated: { id: "repeated", date: "2026-10-11", senseId: "act:n-3", from: "reinforce", to: "reinforce",
+            observedAt: "2026-10-11T12:00:00+08:00", outcome: true },
+          midnight: { id: "midnight", date: "2026-10-13", senseId: "act:n-3", from: "reinforce", to: "review",
+            observedAt: "2026-10-13T16:15:00Z", outcome: true },
+        },
+      } },
+    }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#globalSettingsNavButton").click();
+  await page.locator("#dataButton").click();
+  await page.locator("#repairDataButton").click();
+  await expect(page.locator("#dataMessage")).toContainText("已按当前学习记录重建");
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#globalDashboardNavButton").click();
+  const point = (chart, series, date) => page.locator(
+    `#${chart} .dashboard-point.${series}[data-dashboard-tooltip^="${date}"]`,
+  );
+  await expect(point("dashboardPoolChart", "dashboard-reinforce", "2026-10-10"))
+    .toHaveAttribute("data-dashboard-tooltip", /待强化 1/);
+  await expect(point("dashboardHoldChart", "dashboard-hold-reinforce", "2026-10-13"))
+    .toHaveAttribute("data-dashboard-tooltip", /平均 5\.7 天/);
+  await expect(point("dashboardPoolChart", "dashboard-review", "2026-10-13"))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 1/);
+  await expect(point("dashboardPoolChart", "dashboard-review", "2026-10-14"))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 2/);
+  expect(await page.evaluate(() => window.SenseVocabApp.getState().bookStates.kaoyan.activityLog["2026-10-10"].baseCompleted))
+    .toBe(true);
+});
+
+test("sealed learning stores the final pool before returning home and preserves it across days", async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeDate = Date;
+    window.Date = class TestDate extends NativeDate {
+      constructor(...args) {
+        if (args.length) super(...args);
+        else super(localStorage.getItem("dashboard-test-clock") || "2026-10-11T20:00:00+08:00");
+      }
+      static now() { return new this().getTime(); }
+    };
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("1");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await page.locator("#revealButton").click();
+  await page.locator('[data-key="act:v-1"]').click();
+  await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#cardMode")).toHaveText("强化");
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#cardMode")).toHaveText("强化");
+  const beforeFinalStage = await page.evaluate(() => window.SenseVocabApp.getState());
+  await page.locator("#revealButton").click();
+  await page.locator('[data-key="act:v-2"]').click();
+  await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toHaveText("下一词");
+  await page.locator("#nextButton").click();
+  await expect(page.locator("#nextButton")).toHaveText("返回主页");
+  await expect.poll(() => page.evaluate(() => {
+    const scope = window.SenseVocabApp.getGuestState().bookStates.kaoyan;
+    return scope.dashboardSnapshots["kaoyan:2026-10-11"]?.statuses["act:v-2"];
+  })).toBe("review");
+  const vector = await page.evaluate(() => {
+    const scope = window.SenseVocabApp.getGuestState().bookStates.kaoyan;
+    return scope._sync?.records?.dashboardSnapshots?.["kaoyan:2026-10-11"]?.vector;
+  });
+  expect(vector).not.toEqual(beforeFinalStage.bookStates.kaoyan._sync?.records?.dashboardSnapshots?.["kaoyan:2026-10-11"]?.vector);
+  expect(await page.evaluate((previous) => {
+    const app = window.SenseVocabApp;
+    return app.buildSyncDelta(previous, app.getState())?.books?.kaoyan?.maps?.dashboardSnapshots
+      ?.upsert?.["kaoyan:2026-10-11"]?.statuses?.["act:v-2"];
+  }, beforeFinalStage)).toBe("review");
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  await page.evaluate(() => localStorage.setItem("dashboard-test-clock", "2026-10-12T20:00:00+08:00"));
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#globalDashboardNavButton").click();
+  await expect(page.locator('#dashboardPoolChart .dashboard-review[data-dashboard-tooltip^="2026-10-11"]'))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 1/);
+});
+
+test("word pools count existence independently and measure continuous membership", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-15T20:00:00+08:00"));
+  await page.goto(APP_URL);
+  await page.evaluate(() => {
+    localStorage.clear();
+    const statuses = {
+      "act:v-1": "reinforce", "act:n-3": "reinforce", "act:v-2": "review",
+      "action:n-1": "reinforce", "action:n-2": "review",
+    };
+    const enteredAt = {
+      "act:v-1": "2026-10-01T00:00:00+08:00", "act:n-3": "2026-10-05T00:00:00+08:00",
+      "act:v-2": "2026-10-02T00:00:00+08:00", "action:n-1": "2026-10-09T00:00:00+08:00",
+      "action:n-2": "2026-10-09T00:00:00+08:00",
+    };
+    const progress = Object.fromEntries(Object.entries(statuses).map(([key, status]) => [
+      key, { status, statusEnteredAt: enteredAt[key] },
+    ]));
+    const transitions = [
+      ["2026-10-11", "act:v-1", "reinforce", "mastered"],
+      ["2026-10-12", "act:n-3", "reinforce", "mastered"],
+      ["2026-10-13", "act:n-4", "new", "reinforce"],
+    ];
+    transitions.forEach(([date, key, from, to]) => {
+      progress[key] = { status: to, statusEnteredAt: `${date}T00:00:00+08:00` };
+    });
+    localStorage.setItem("sense-vocab-mvp-kaoyan-plan-v1", JSON.stringify({
+      schemaVersion: 2, activeBookId: "kaoyan", bookStates: { kaoyan: {
+        introducedWords: ["act", "action"], progress,
+        dashboardSnapshots: { "kaoyan:2026-10-10": {
+          id: "kaoyan:2026-10-10", bookId: "kaoyan", date: "2026-10-10", quality: "exact",
+          observedAt: "2026-10-10T20:00:00+08:00", statuses, enteredAt,
+        } },
+        dashboardEvents: Object.fromEntries(transitions.map(([date, senseId, from, to], index) => [
+          `change-${index}`, { id: `change-${index}`, date, senseId, from, to,
+            observedAt: `${date}T00:00:00+08:00` },
+        ])),
+      } },
+    }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#globalDashboardNavButton").click();
+  const point = (chart, series, date) => page.locator(
+    `#${chart} .dashboard-point.${series}[data-dashboard-tooltip^="${date}"]`,
+  );
+  await expect(point("dashboardPoolChart", "dashboard-reinforce", "2026-10-10"))
+    .toHaveAttribute("data-dashboard-tooltip", /待强化 3/);
+  await expect(point("dashboardHoldChart", "dashboard-hold-reinforce", "2026-10-11"))
+    .toHaveAttribute("data-dashboard-tooltip", /平均 5\.0 天/);
+  await page.locator("#dashboardUnitSelect").selectOption("word");
+  await expect(point("dashboardPoolChart", "dashboard-reinforce", "2026-10-10"))
+    .toHaveAttribute("data-dashboard-tooltip", /待强化 2/);
+  await expect(point("dashboardPoolChart", "dashboard-review", "2026-10-10"))
+    .toHaveAttribute("data-dashboard-tooltip", /待复习 2/);
+  await expect(point("dashboardHoldChart", "dashboard-hold-reinforce", "2026-10-11"))
+    .toHaveAttribute("data-dashboard-tooltip", /平均 7\.0 天/);
+  await expect(point("dashboardHoldChart", "dashboard-hold-reinforce", "2026-10-13"))
+    .toHaveAttribute("data-dashboard-tooltip", /平均 3\.0 天/);
+  await expect(point("dashboardHoldChart", "dashboard-hold-reinforce", "2026-10-15"))
+    .toHaveAttribute("data-dashboard-tooltip", /平均 4\.8 天/);
+});
+
 test("time-series axes follow the visible horizontal window", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(APP_URL);

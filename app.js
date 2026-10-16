@@ -2028,14 +2028,18 @@ function saveState(options = {}) {
             ],
           };
         });
+        const syncChangeOptions = {
+          ...(options.syncChangeOptions ?? {}),
+          changedMapKeysByBook,
+        };
+        if (snapshotChanges.size && Array.isArray(syncChangeOptions.changedMaps)) {
+          syncChangeOptions.changedMaps = [...new Set([
+            ...syncChangeOptions.changedMaps,
+            "dashboardSnapshots",
+          ])];
+        }
         window.SenseVocabSync.stampChanges(
-          nextRootState,
-          previousStoredState,
-          undefined,
-          {
-            ...(options.syncChangeOptions ?? {}),
-            changedMapKeysByBook,
-          },
+          nextRootState, previousStoredState, undefined, syncChangeOptions,
         );
       }
       Object.entries(nextRootState.bookStates ?? {}).forEach(([bookId, bookState]) => {
@@ -2191,6 +2195,7 @@ function prepareLearningSaveOptions(options = {}) {
   }
   if (prepared.sealLearningSession === true) {
     prepared.journalOnly = false;
+    prepared.recordDashboardSnapshot = options.recordDashboardSnapshot !== false;
   } else if (prepared.journalOnly === undefined) {
     prepared.journalOnly = active && prepared.sealLearningSession !== true;
   }
@@ -5184,6 +5189,13 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
     Object.entries(allSnapshots).filter(([, snapshot]) => snapshot.quality !== "reconstructed"),
   );
   const exactByDate = new Map();
+  const legacyByDate = new Map();
+  Object.values(allSnapshots).forEach((snapshot) => {
+    const date = repairDateKey(snapshot.date);
+    if (date && snapshot.quality === "reconstructed" && (!snapshot.bookId || snapshot.bookId === bookId)) {
+      legacyByDate.set(date, snapshot);
+    }
+  });
   Object.values(retainedSnapshots).forEach((snapshot) => {
     const date = repairDateKey(snapshot.date);
     if (!date || (snapshot.bookId && snapshot.bookId !== bookId)) return;
@@ -5193,16 +5205,19 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
     .filter((event) => {
       return knownSenseKeys.has(event?.senseId) &&
         repairDateKey(event?.date) &&
+        event.from !== event.to &&
         Object.values(SENSE_STATUS).includes(event?.to);
     })
-    .sort((left, right) => {
-      return String(left.date).localeCompare(String(right.date)) ||
-        String(left.observedAt ?? "").localeCompare(String(right.observedAt ?? ""));
-    });
+    .map((event) => {
+      const observed = Date.parse(event.observedAt);
+      const time = Number.isFinite(observed) ? observed : parseDate(event.date).getTime();
+      return { ...event, time, stateDate: formatDate(new Date(time)) };
+    })
+    .sort((left, right) => left.time - right.time || String(left.id).localeCompare(String(right.id)));
   const eventsByDate = new Map();
   const latestEventByKey = new Map();
   events.forEach((event) => {
-    const date = repairDateKey(event.date);
+    const date = event.stateDate;
     const entries = eventsByDate.get(date) ?? [];
     entries.push(event);
     eventsByDate.set(date, entries);
@@ -5213,7 +5228,8 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
   Object.entries(bookState.progress ?? {}).forEach(([key, progress]) => {
     if (!knownSenseKeys.has(key) || !Object.values(SENSE_STATUS).includes(progress?.status)) return;
     if (progress.status === SENSE_STATUS.NEW) return;
-    const statusDate = progress.status === SENSE_STATUS.MASTERED
+    const entered = Date.parse(progress.statusEnteredAt);
+    const statusDate = Number.isFinite(entered) ? formatDate(new Date(entered)) : progress.status === SENSE_STATUS.MASTERED
       ? preferredRepairDate(
         progress.masteredOnActual,
         progress.masteredOn,
@@ -5230,7 +5246,7 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
       );
     if (!statusDate || statusDate > today) return;
     const latestEvent = latestEventByKey.get(key);
-    if (latestEvent && latestEvent.to === progress.status && latestEvent.date >= statusDate) return;
+    if (latestEvent && latestEvent.to === progress.status && latestEvent.stateDate >= statusDate) return;
     const entries = inferredByDate.get(statusDate) ?? [];
     entries.push({
       key,
@@ -5243,6 +5259,7 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
   const evidenceDates = new Set([today]);
   Object.keys(activityLog).forEach((date) => evidenceDates.add(date));
   exactByDate.forEach((_, date) => evidenceDates.add(date));
+  legacyByDate.forEach((_, date) => evidenceDates.add(date));
   eventsByDate.forEach((_, date) => evidenceDates.add(date));
   inferredByDate.forEach((_, date) => evidenceDates.add(date));
   const validEvidenceDates = [...evidenceDates]
@@ -5253,13 +5270,25 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
     const start = earliest < addDays(today, -179) ? addDays(today, -179) : earliest;
     const statuses = {};
     const enteredAt = {};
+    const replayedKeys = new Set();
     for (let date = start; date <= today; date = addDays(date, 1)) {
+      const legacy = legacyByDate.get(date);
+      Object.entries(legacy?.statuses ?? {}).forEach(([key, status]) => {
+        // Older imports may have only a derived snapshot. Preserve that
+        // evidence, but never let a stale cache undo a recorded transition.
+        if (!knownSenseKeys.has(key) || replayedKeys.has(key) || !Object.values(SENSE_STATUS).includes(status)) return;
+        const entered = legacy.enteredAt?.[key];
+        if (Date.parse(entered) >= parseDate(addDays(date, 1)).getTime()) return;
+        if (statuses[key] !== status || !enteredAt[key]) enteredAt[key] = entered;
+        statuses[key] = status;
+      });
       (inferredByDate.get(date) ?? []).forEach((entry) => {
         statuses[entry.key] = entry.status;
         enteredAt[entry.key] = entry.enteredAt;
       });
       const exact = exactByDate.get(date);
       if (exact) {
+        replayedKeys.clear();
         Object.keys(statuses).forEach((key) => delete statuses[key]);
         Object.keys(enteredAt).forEach((key) => delete enteredAt[key]);
         Object.entries(exact.statuses ?? {}).forEach(([key, status]) => {
@@ -5274,14 +5303,15 @@ function repairDerivedBookState(bookId, bookState, options = {}) {
         });
       }
       (eventsByDate.get(date) ?? []).forEach((event) => {
-        if (exact && String(event.observedAt ?? "") <= String(exact.observedAt ?? "")) return;
+        if (exact && event.time <= Date.parse(exact.observedAt)) return;
+        replayedKeys.add(event.senseId);
         if (event.to === SENSE_STATUS.NEW) {
           delete statuses[event.senseId];
           delete enteredAt[event.senseId];
           return;
         }
         statuses[event.senseId] = event.to;
-        enteredAt[event.senseId] = event.observedAt ?? `${date}T00:00:00+08:00`;
+        enteredAt[event.senseId] = new Date(event.time).toISOString();
       });
 
       if (date === today) {
@@ -6137,19 +6167,88 @@ function dashboardPlannedTargets(bookState, bookWords, dates, unit) {
   return targets;
 }
 
-function dashboardPoolSeries(bookState, bookWords, dates, unit) {
+function dashboardStateHistory(bookState, bookWords, dates) {
   const snapshots = bookState.dashboardSnapshots ?? {};
   const bookId = bookIdForState(bookState);
   const snapshotHistory = Object.values(snapshots)
     .filter((entry) => entry?.bookId === bookId && /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? ""))
     .sort((left, right) => String(left.date).localeCompare(String(right.date)));
+  const exactHistory = snapshotHistory.filter((entry) => entry.quality !== "reconstructed");
+  const events = dashboardEventEntries(bookState, bookWords)
+    .filter((event) => event.from !== event.to)
+    .map((event) => ({
+      ...event,
+      time: Number.isFinite(Date.parse(event.observedAt))
+        ? Date.parse(event.observedAt)
+        : parseDate(event.date).getTime(),
+    }))
+    .sort((left, right) => left.time - right.time || String(left.id).localeCompare(String(right.id)));
+  const knownKeys = new Set(dashboardSenseKeys(bookWords));
+  const today = currentDate();
+  return dates.map((date) => {
+    const end = Math.min(parseDate(addDays(date, 1)).getTime() - 1,
+      date === today ? Date.now() : Infinity);
+    const eligible = (entry) => entry.date <= date &&
+      (!Number.isFinite(Date.parse(entry.observedAt)) || Date.parse(entry.observedAt) <= end);
+    // Reconstructed rows are derived caches. They must not hide durable events
+    // merely because their synthetic timestamp claims the end of the day.
+    const latest = [...snapshotHistory].reverse().find(eligible);
+    const baseline = [...exactHistory].reverse().find(eligible) ?? latest;
+    const statuses = { ...(baseline?.statuses ?? {}) };
+    const enteredAt = { ...(baseline?.enteredAt ?? {}) };
+    Object.keys(statuses).forEach((key) => {
+      if (Date.parse(enteredAt[key]) <= end || !Number.isFinite(Date.parse(enteredAt[key]))) return;
+      delete statuses[key];
+      delete enteredAt[key];
+    });
+    if (latest?.quality === "reconstructed" && latest !== baseline && latest.date >= baseline.date) {
+      Object.entries(latest.statuses ?? {}).forEach(([key, status]) => {
+        const entered = latest.enteredAt?.[key];
+        if (Date.parse(entered) > end) return;
+        if (statuses[key] !== status || !enteredAt[key]) enteredAt[key] = entered;
+        statuses[key] = status;
+      });
+    }
+    const observed = Date.parse(baseline?.observedAt);
+    const cutoff = baseline && baseline.quality !== "reconstructed" && Number.isFinite(observed)
+      ? observed
+      : -Infinity;
+    let hasEvidence = Boolean(baseline);
+    events.forEach((event) => {
+      if (event.time <= cutoff || event.time > end) return;
+      hasEvidence = true;
+      if (event.to === SENSE_STATUS.NEW) {
+        delete statuses[event.senseId];
+        delete enteredAt[event.senseId];
+      } else {
+        statuses[event.senseId] = event.to;
+        enteredAt[event.senseId] = new Date(event.time).toISOString();
+      }
+    });
+    if (date === today) {
+      hasEvidence ||= (bookState.introducedWords?.length ?? 0) > 0 ||
+        Object.keys(bookState.progress ?? {}).length > 0;
+      Object.keys(statuses).forEach((key) => delete statuses[key]);
+      Object.keys(enteredAt).forEach((key) => delete enteredAt[key]);
+      Object.entries(bookState.progress ?? {}).forEach(([key, progress]) => {
+        if (!knownKeys.has(key) || !progress?.status || progress.status === SENSE_STATUS.NEW) return;
+        statuses[key] = dashboardStatusForKey(bookState, key);
+        const entered = dashboardProgressEnteredAt(progress);
+        if (entered) enteredAt[key] = entered;
+      });
+    }
+    return hasEvidence ? { date, statuses, enteredAt } : null;
+  });
+}
+
+function dashboardPoolSeries(bookState, bookWords, dates, unit, history) {
+  history ??= dashboardStateHistory(bookState, bookWords, dates);
   const keys = dashboardSenseKeys(bookWords);
   return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].map((status) => ({
     key: status,
     label: status === SENSE_STATUS.REINFORCE ? "待强化" : "待复习",
-    values: dates.map((date) => {
-      const snapshot = snapshots[dashboardSnapshotKey(bookId, date)] ??
-        [...snapshotHistory].reverse().find((entry) => entry.date <= date);
+    values: dates.map((date, index) => {
+      const snapshot = history[index];
       if (!snapshot) return null;
       const statusKeys = keys.filter((key) => snapshot.statuses?.[key] === status);
       if (unit === "word") return new Set(statusKeys.map((key) => splitSenseKey(key).wordId)).size;
@@ -6194,7 +6293,8 @@ function dashboardConversionSeries(bookState, dates) {
   });
 }
 
-function dashboardHoldSeries(bookState, bookWords, dates) {
+function dashboardHoldSeries(bookState, bookWords, dates, unit = "sense", history) {
+  history ??= dashboardStateHistory(bookState, bookWords, dates);
   const snapshots = bookState.dashboardSnapshots ?? {};
   const bookId = bookIdForState(bookState);
   const snapshotHistory = Object.values(snapshots)
@@ -6208,10 +6308,8 @@ function dashboardHoldSeries(bookState, bookWords, dates) {
     eventsBySense.set(event.senseId, entries);
   });
   eventsBySense.forEach((events) => {
-    events.sort((left, right) => String(left.observedAt).localeCompare(String(right.observedAt)));
+    events.sort((left, right) => Date.parse(left.observedAt) - Date.parse(right.observedAt));
   });
-  const snapshotAtOrBefore = (date) => snapshots[dashboardSnapshotKey(bookId, date)] ??
-    [...snapshotHistory].reverse().find((entry) => entry.date <= date);
   const endTimestamp = (date) => {
     const end = parseDate(addDays(date, 1)).getTime() - 1;
     return date === currentDate() ? Math.min(Date.now(), end) : end;
@@ -6244,24 +6342,78 @@ function dashboardHoldSeries(bookState, bookWords, dates) {
   };
   return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].map((status) => {
     const tooltip = [];
+    const endedWordIntervals = new Map();
+    if (unit === "word") {
+      eventsBySense.forEach((events, key) => {
+        let entered = NaN;
+        events.forEach((event) => {
+          const time = Date.parse(event.observedAt);
+          if (!Number.isFinite(time)) return;
+          if (event.from === status && event.to !== status) {
+            if (!Number.isFinite(entered)) {
+              for (const snapshot of [...snapshotHistory].reverse()) {
+                const observed = Date.parse(snapshot.observedAt) || parseDate(snapshot.date).getTime();
+                if (observed > time) continue;
+                if (snapshot.statuses?.[key] !== status) break;
+                const recorded = Date.parse(snapshot.enteredAt?.[key]);
+                if (Number.isFinite(recorded) && recorded <= time) {
+                  entered = recorded;
+                  break;
+                }
+              }
+            }
+            if (Number.isFinite(entered) && entered <= time) {
+              const wordId = splitSenseKey(key).wordId;
+              const intervals = endedWordIntervals.get(wordId) ?? [];
+              intervals.push({ entered, ended: time });
+              endedWordIntervals.set(wordId, intervals);
+            }
+            entered = NaN;
+          } else if (event.to === status && event.from !== status) {
+            entered = time;
+          }
+        });
+      });
+      endedWordIntervals.forEach((intervals) => intervals.sort((left, right) => right.ended - left.ended));
+    }
     const values = dates.map((date, index) => {
-      const snapshot = snapshotAtOrBefore(date);
+      const snapshot = history[index];
       if (!snapshot) {
         tooltip[index] = `${date}：暂无数据`;
         return null;
       }
       const keys = dashboardSenseKeys(bookWords).filter((key) => snapshot.statuses?.[key] === status);
-      const durations = keys.map((key) => {
+      const end = endTimestamp(date);
+      const validEntries = keys.map((key) => {
         const time = enteredTimestamp(key, status, date, snapshot);
-        const end = endTimestamp(date);
-        return Number.isFinite(time) && Number.isFinite(end) && end >= time ? (end - time) / DAY_MS : null;
-      }).filter(Number.isFinite);
+        return { key, time };
+      }).filter(({ time }) => Number.isFinite(time) && Number.isFinite(end) && time <= end);
+      let durations;
+      if (unit === "word") {
+        const enteredByWord = new Map();
+        validEntries.forEach(({ key, time }) => {
+          const wordId = splitSenseKey(key).wordId;
+          enteredByWord.set(wordId, Math.min(time, enteredByWord.get(wordId) ?? Infinity));
+        });
+        durations = [...enteredByWord].map(([wordId, time]) => {
+          // Include exited senses only when their intervals overlap the live
+          // membership. A real gap starts a new word-level residence period.
+          for (const interval of endedWordIntervals.get(wordId) ?? []) {
+            if (interval.ended <= end && interval.ended >= time) {
+              time = Math.min(time, interval.entered);
+            }
+          }
+          return (end - time) / DAY_MS;
+        });
+      } else {
+        durations = validEntries.map(({ time }) => (end - time) / DAY_MS);
+      }
       if (!durations.length) {
         tooltip[index] = `${date}：暂无数据`;
         return null;
       }
       const average = durations.reduce((sum, value) => sum + value, 0) / durations.length;
-      tooltip[index] = `${date} ${status === SENSE_STATUS.REINFORCE ? "强化" : "复习"}：${durations.length}，平均 ${average.toFixed(1)} 天`;
+      tooltip[index] = `${date} ${status === SENSE_STATUS.REINFORCE ? "强化" : "复习"}：${durations.length} ${unit === "word" ? "个单词" : "个义项"}，平均 ${average.toFixed(1)} 天`;
       return average;
     });
     return { key: status === SENSE_STATUS.REINFORCE ? "hold-reinforce" : "hold-review", label: status === SENSE_STATUS.REINFORCE ? "强化停留" : "复习停留", values, tooltip };
@@ -6739,7 +6891,8 @@ function renderDashboard() {
     unitLabel,
   );
   dashboardRenderStatusBar(bookState, bookWords, dashboardUnit);
-  const pool = dashboardPoolSeries(bookState, bookWords, dates, dashboardUnit);
+  const statusHistory = dashboardStateHistory(bookState, bookWords, dates);
+  const pool = dashboardPoolSeries(bookState, bookWords, dates, dashboardUnit, statusHistory);
   dashboardRenderLineChart(dashboardPoolChart, dates, pool, dashboardPoolSummary, {
     ariaLabel: "待强化和待复习池数量趋势",
     emptyMessage: "暂无数据",
@@ -6751,7 +6904,7 @@ function renderDashboard() {
     emptyMessage: "暂无数据",
   });
   dashboardConversionQuality.textContent = "";
-  const hold = dashboardHoldSeries(bookState, bookWords, dates);
+  const hold = dashboardHoldSeries(bookState, bookWords, dates, dashboardUnit, statusHistory);
   dashboardRenderLineChart(dashboardHoldChart, dates, hold, dashboardHoldSummary, {
     ariaLabel: "池内平均状态保持时间",
     emptyMessage: "暂无数据",

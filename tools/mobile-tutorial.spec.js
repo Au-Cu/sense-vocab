@@ -195,6 +195,9 @@ test("tutorial plan cancellation stays covered and cannot strand the overlay", a
   await page.locator("#planButton").click();
   await expectHint(page, "选择词书和每日计划");
   await expect(page.locator("#planDialog")).toBeVisible();
+  // A forced coordinate click skips Playwright's stability checks. Wait for
+  // the expanding surface before testing its exclusion mask.
+  await expect(page.locator("#planDialog")).toHaveClass(/is-modal-open/);
   await expect(page.locator("#tutorialExclusionMask")).toBeVisible();
 
   const covered = await page.evaluate(() => {
@@ -208,6 +211,10 @@ test("tutorial plan cancellation stays covered and cannot strand the overlay", a
   expect(covered).toBe(true);
 
   await page.locator("#cancelPlanButton").click({ force: true });
+  await expect(page.locator("#planDialog")).toBeVisible();
+  await expect(page.locator("#tutorialOverlay")).toBeVisible();
+  // Also exercise the cancel event itself, not just the covering mask.
+  await page.locator("#cancelPlanButton").dispatchEvent("click");
   await expect(page.locator("#planDialog")).toBeVisible();
   await expect(page.locator("#tutorialOverlay")).toBeVisible();
   await page.locator("#dailyTargetInput").fill("3");
