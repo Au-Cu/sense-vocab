@@ -1264,3 +1264,223 @@ test("account, notifications, and feedback controls stay above the inert navigat
   await expect(page.locator("#accountDialog")).toBeVisible();
   await assertTopmost("#closeAccountButton");
 });
+
+async function openLargeRepairFixture(page, { senseCount = 2400, dayCount = 90 } = {}) {
+  await page.clock.setFixedTime(new Date("2026-10-17T20:00:00+08:00"));
+  const bundle = require("../data/vocabulary-bundle.json");
+  const book = bundle.books.find((entry) => entry.id === "kaoyan");
+  const keys = book.entries.flatMap((entry) => (
+    entry.senseIds.map((senseId) => `${entry.wordId}:${senseId}`)
+  )).slice(0, senseCount);
+  const dates = Array.from({ length: dayCount }, (_, index) => {
+    const date = new Date("2026-07-20T12:00:00.000Z");
+    date.setUTCDate(date.getUTCDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+  await page.goto(APP_URL);
+  await page.evaluate(({ keys, dates }) => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    const progress = Object.fromEntries(keys.map((key, index) => {
+      const date = dates[Math.min(dates.length - 1, Math.floor(index / 27))];
+      return [key, {
+        status: "reinforce", firstSeenActual: date, lastSeenActual: date,
+        statusEnteredAt: `${date}T12:00:00+08:00`,
+      }];
+    }));
+    localStorage.setItem("sense-vocab-mvp-kaoyan-plan-v1", JSON.stringify({
+      schemaVersion: 2, activeBookId: "kaoyan", bookStates: { kaoyan: {
+        introducedWords: [...new Set(keys.map((key) => key.split(":")[0]))],
+        progress,
+        activityLog: Object.fromEntries(dates.map((date) => [date, {
+          newWords: [], reviewWords: [], target: 40, baseCompleted: true,
+        }])),
+        planTargetHistory: { [dates[0]]: 40, [dates.at(-1)]: 60 },
+      }, ielts: {
+        progress: { "act:v-1": { status: "review", statusEnteredAt: "2026-09-01T12:00:00+08:00" } },
+      } },
+    }));
+  }, { keys, dates });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.evaluate(() => {
+    window.__repairStorageErrors = [];
+    window.addEventListener("sensevocab:storage-error", (event) => {
+      window.__repairStorageErrors.push({
+        name: event.detail.error?.name,
+        quotaExceeded: event.detail.quotaExceeded,
+        writePhase: event.detail.writePhase,
+      });
+    });
+  });
+  return { keys, dates };
+}
+
+test("data repair persists multi-month history within the real localStorage quota", async ({ page }) => {
+  test.setTimeout(90_000);
+  const { keys, dates } = await openLargeRepairFixture(page);
+  const before = await page.evaluate(() => {
+    const root = window.SenseVocabApp.getState();
+    return { progress: root.bookStates.kaoyan.progress, targets: root.bookStates.kaoyan.planTargetHistory,
+      otherProgress: root.bookStates.ielts.progress };
+  });
+  await page.locator("#globalSettingsNavButton").click();
+  await page.locator("#dataButton").click();
+  await page.locator("#repairDataButton").click();
+  await expect(page.locator("#repairDataButton")).toBeEnabled({ timeout: 45_000 });
+  const metrics = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const snapshots = app.getState().bookStates.kaoyan.dashboardSnapshots;
+    const rawSizes = Object.entries(snapshots).map(([snapshotId, snapshot]) => (
+      JSON.stringify({ bookId: "kaoyan", snapshotId, snapshot }).length
+    ));
+    const values = Object.keys(localStorage).map((key) => localStorage.getItem(key));
+    return { snapshots: rawSizes.length, uncompressedCharacters: rawSizes.reduce((sum, size) => sum + size, 0),
+      largestSnapshot: Math.max(...rawSizes), storedCharacters: values.reduce((sum, value) => sum + value.length, 0),
+      errors: window.__repairStorageErrors, message: document.querySelector("#dataMessage").textContent };
+  });
+  await test.info().attach("repair-storage-metrics", { body: JSON.stringify(metrics, null, 2), contentType: "application/json" });
+  const fs = require("node:fs");
+  const evidenceDirectory = ".op-cache/evidence/repair-storage-20261017";
+  fs.mkdirSync(evidenceDirectory, { recursive: true });
+  fs.writeFileSync(`${evidenceDirectory}/${metrics.errors.length ? "quota-reproduction" : "quota-fixed"}.json`, JSON.stringify(metrics, null, 2));
+  expect(metrics.snapshots).toBeGreaterThanOrEqual(dates.length);
+  expect(metrics.largestSnapshot).toBeLessThan(256000);
+  expect(metrics.uncompressedCharacters).toBeGreaterThan(2_500_000);
+  await expect(page.locator("#dataMessage")).toContainText("已按当前学习记录重建");
+  await page.locator("#dataPanel").screenshot({
+    path: `${evidenceDirectory}/${APP_URL.startsWith("http://127.0.0.1") ? "local" : "public"}-repair-saved.png`,
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  const restored = await page.evaluate(({ dates, lastKey }) => {
+    const root = window.SenseVocabApp.getState();
+    const scope = root.bookStates.kaoyan;
+    return { progress: scope.progress, targets: scope.planTargetHistory,
+      otherProgress: root.bookStates.ielts.progress,
+      datesPresent: dates.every((date) => scope.dashboardSnapshots[`kaoyan:${date}`]),
+      latestStatus: scope.dashboardSnapshots[`kaoyan:${dates.at(-1)}`]?.statuses[lastKey] };
+  }, { dates, lastKey: keys.at(-1) });
+  expect(restored.progress).toEqual(before.progress);
+  expect(restored.targets).toEqual(before.targets);
+  expect(restored.otherProgress).toEqual(before.otherProgress);
+  expect(restored.datesPresent).toBe(true);
+  expect(restored.latestStatus).toBe("reinforce");
+});
+
+test("data repair compacts legacy sidecars before retrying a full storage write", async ({ page }) => {
+  const { keys } = await openLargeRepairFixture(page, { senseCount: 36, dayCount: 3 });
+  const before = await page.evaluate((keys) => {
+    const app = window.SenseVocabApp;
+    const foreignRoot = app.accountStorageKey("separate-account");
+    localStorage.setItem(foreignRoot, JSON.stringify({ schemaVersion: 2, activeBookId: "kaoyan", progress: {} }));
+    const entries = {};
+    for (let day = 1; day <= 24; day += 1) {
+      const date = `2026-09-${String(day).padStart(2, "0")}`;
+      const snapshotId = `kaoyan:${date}`;
+      const key = `${foreignRoot}:dashboard-snapshot-v1:kaoyan:${encodeURIComponent(snapshotId)}`;
+      const value = { bookId: "kaoyan", snapshotId, snapshot: {
+        id: snapshotId, bookId: "kaoyan", date, observedAt: `${date}T20:00:00+08:00`,
+        statuses: Object.fromEntries(keys.map((key) => [key, "review"])),
+        enteredAt: Object.fromEntries(keys.map((key) => [key, "2026-08-01T12:00:00+08:00"])),
+        quality: "reconstructed",
+      } };
+      localStorage.setItem(key, JSON.stringify(value));
+      entries[key] = value;
+    }
+    const damagedKey = `${foreignRoot}:dashboard-snapshot-v1:damaged`;
+    localStorage.setItem(damagedKey, "unreadable legacy record");
+    localStorage.setItem("unrelated-application-cache", "leave untouched");
+    const total = () => Object.keys(localStorage).reduce((sum, key) => sum + key.length + localStorage.getItem(key).length, 0);
+    const limit = total();
+    const setItem = Storage.prototype.setItem;
+    window.__repairQuotaHits = 0;
+    Storage.prototype.setItem = function setItemWithNoHeadroom(key, value) {
+      const old = localStorage.getItem(key);
+      if (this === localStorage && total() - (old?.length ?? 0) + String(value).length + (old === null ? key.length : 0) > limit) {
+        window.__repairQuotaHits += 1;
+        throw new DOMException("Storage has no free space", "QuotaExceededError");
+      }
+      return setItem.call(this, key, value);
+    };
+    return { entries, foreignRoot, foreignRootValue: localStorage.getItem(foreignRoot), damagedKey, limit };
+  }, keys);
+  await page.locator("#globalSettingsNavButton").click();
+  await page.locator("#dataButton").click();
+  await page.locator("#repairDataButton").click();
+  await expect(page.locator("#dataMessage")).toContainText("已按当前学习记录重建");
+  const after = await page.evaluate(({ entries, foreignRoot, damagedKey }) => ({
+    quotaHits: window.__repairQuotaHits,
+    records: Object.fromEntries(Object.keys(entries).map((key) => [key, window.SenseVocabApp.decodeStorageValue(localStorage.getItem(key))])),
+    foreignRootValue: localStorage.getItem(foreignRoot),
+    damagedValue: localStorage.getItem(damagedKey),
+    unrelatedValue: localStorage.getItem("unrelated-application-cache"),
+    errors: window.__repairStorageErrors,
+  }), before);
+  expect(after.quotaHits).toBeGreaterThan(0);
+  expect(after.records).toEqual(before.entries);
+  expect(after.foreignRootValue).toBe(before.foreignRootValue);
+  expect(after.damagedValue).toBe("unreadable legacy record");
+  expect(after.unrelatedValue).toBe("leave untouched");
+  expect(after.errors).toEqual([]);
+});
+
+test("failed root commit preserves the previous historical snapshot sidecars", async ({ page }) => {
+  await openLargeRepairFixture(page, { senseCount: 36, dayCount: 3 });
+  const result = await page.evaluate(async () => {
+    const app = window.SenseVocabApp;
+    await app.repairDerivedData();
+    const key = app.getActiveStorageKey();
+    const snapshots = app.getState().bookStates.kaoyan.dashboardSnapshots;
+    const beforeRoot = localStorage.getItem(key);
+    const prefix = `${key}:dashboard-snapshot-v1:`;
+    const beforeSidecars = Object.fromEntries(Object.keys(localStorage).filter((key) => key.startsWith(prefix))
+      .map((key) => [key, localStorage.getItem(key)]));
+    const next = app.getState();
+    next.bookStates.kaoyan.dashboardSnapshots = {};
+    next.dashboardSnapshots = {};
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function failRootWrite(name, value) {
+      if (name === key) throw new DOMException("Root storage is unavailable", "QuotaExceededError");
+      return setItem.call(this, name, value);
+    };
+    let persisted;
+    try { persisted = app.replaceActiveState(next, { notify: false, stampSync: false }); }
+    finally { Storage.prototype.setItem = setItem; }
+    return { persisted, rootUnchanged: localStorage.getItem(key) === beforeRoot,
+      sidecarsUnchanged: Object.entries(beforeSidecars).every(([key, value]) => localStorage.getItem(key) === value),
+      recovered: app.getGuestState().bookStates.kaoyan.dashboardSnapshots, snapshots };
+  });
+  expect(result.persisted).toBe(false);
+  expect(result.rootUnchanged).toBe(true);
+  expect(result.sidecarsUnchanged).toBe(true);
+  expect(result.recovered).toEqual(result.snapshots);
+});
+
+test("data repair reports genuine storage failure without claiming completion", async ({ page }) => {
+  await openLargeRepairFixture(page, { senseCount: 36, dayCount: 3 });
+  await page.locator("#globalSettingsNavButton").click();
+  await page.locator("#dataButton").click();
+  const before = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const rootKey = app.getActiveStorageKey();
+    const raw = localStorage.getItem(rootKey);
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function failAllLearningWrites(key, value) {
+      if (key === rootKey || key.startsWith(`${rootKey}:dashboard-snapshot-v1:`)) {
+        throw new DOMException("Learning storage has no room", "QuotaExceededError");
+      }
+      return setItem.call(this, key, value);
+    };
+    return { rootKey, raw };
+  });
+  await page.locator("#repairDataButton").click();
+  await expect(page.locator("#repairDataButton")).toBeEnabled();
+  await expect(page.locator("#dataMessage")).toContainText("本机存储空间不足");
+  await expect(page.locator("#dataMessage")).toContainText("不要清除浏览器数据");
+  await expect(page.locator("#syncProgress")).toHaveAttribute("data-state", "error");
+  await expect(page.locator("#syncProgressText")).toHaveText("未完成");
+  await expect(page.locator("#exportDataButton")).toBeEnabled();
+  expect(await page.evaluate((before) => localStorage.getItem(before.rootKey), before)).toBe(before.raw);
+});

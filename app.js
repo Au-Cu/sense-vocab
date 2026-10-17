@@ -1745,9 +1745,37 @@ function cloneStateForPersistence(candidate, changes = new Map()) {
 
 function serializeDashboardSnapshotSidecar(bookId, snapshotId, snapshot) {
   const json = JSON.stringify({ bookId, snapshotId, snapshot });
-  if (json.length < 256000) return json;
+  // Each date is small, but months of uncompressed sidecars share one quota.
+  if (json.length < 1024) return json;
   const packed = LOCAL_STORAGE_COMPRESSION_PREFIX + compressStorageText(json);
   return packed.length < json.length ? packed : json;
+}
+
+function compactDashboardSnapshotSidecars() {
+  const keys = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    const marker = key?.indexOf(DASHBOARD_SNAPSHOT_STORAGE_SEGMENT) ?? -1;
+    if (marker < 0) continue;
+    const storageKey = key.slice(0, marker);
+    if (storageKey === STORAGE_KEY || storageKey.startsWith(ACCOUNT_STORAGE_PREFIX)) {
+      keys.push([key, storageKey]);
+    }
+  }
+  keys.forEach(([key, storageKey]) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw || raw.startsWith(LOCAL_STORAGE_COMPRESSION_PREFIX)) return;
+      const value = decodeStorageValue(raw);
+      if (typeof value?.bookId !== "string" || typeof value?.snapshotId !== "string" ||
+        !value.snapshot || typeof value.snapshot !== "object" || Array.isArray(value.snapshot) ||
+        key !== dashboardSnapshotStorageKey(storageKey, value.bookId, value.snapshotId)) return;
+      const packed = serializeDashboardSnapshotSidecar(value.bookId, value.snapshotId, value.snapshot);
+      if (packed.length < raw.length) localStorage.setItem(key, packed);
+    } catch {
+      // setItem replaces atomically; an unreadable or unwritable original stays intact.
+    }
+  });
 }
 
 function readDashboardSnapshotSidecar(storageKey, bookId, snapshotId) {
@@ -1794,35 +1822,49 @@ function persistDashboardSnapshotChanges(
   changes,
   { prune = false } = {},
 ) {
-  const retainedKeys = new Set();
+  let compacted = false;
   changes.forEach((snapshotIds, bookId) => {
     const snapshots = candidate?.bookStates?.[bookId]?.dashboardSnapshots ?? {};
     snapshotIds.forEach((snapshotId) => {
       const key = dashboardSnapshotStorageKey(storageKey, bookId, snapshotId);
       const snapshot = snapshots[snapshotId];
-      if (!snapshot) {
-        localStorage.removeItem(key);
-        return;
+      if (!snapshot) return;
+      const serialized = serializeDashboardSnapshotSidecar(bookId, snapshotId, snapshot);
+      try {
+        localStorage.setItem(key, serialized);
+      } catch (error) {
+        if (!isStorageQuotaError(error) || compacted) throw error;
+        compacted = true;
+        compactDashboardSnapshotSidecars();
+        localStorage.setItem(key, serialized);
       }
-      localStorage.setItem(
-        key,
-        serializeDashboardSnapshotSidecar(bookId, snapshotId, snapshot),
-      );
-      retainedKeys.add(key);
     });
   });
 
-  if (!prune) return;
-  Object.entries(candidate?.bookStates ?? {}).forEach(([bookId, bookState]) => {
-    Object.keys(bookState?.dashboardSnapshots ?? {}).forEach((snapshotId) => {
-      retainedKeys.add(dashboardSnapshotStorageKey(storageKey, bookId, snapshotId));
+  if (prune) pruneDashboardSnapshotSidecars(storageKey, candidate, changes, { prune });
+}
+
+function pruneDashboardSnapshotSidecars(storageKey, candidate, changes, { prune = false } = {}) {
+  const staleKeys = new Set();
+  changes.forEach((snapshotIds, bookId) => {
+    snapshotIds.forEach((snapshotId) => {
+      if (!candidate?.bookStates?.[bookId]?.dashboardSnapshots?.[snapshotId]) {
+        staleKeys.add(dashboardSnapshotStorageKey(storageKey, bookId, snapshotId));
+      }
     });
   });
-  const prefix = dashboardSnapshotStoragePrefix(storageKey);
-  const staleKeys = [];
-  for (let index = 0; index < localStorage.length; index += 1) {
-    const key = localStorage.key(index);
-    if (key?.startsWith(prefix) && !retainedKeys.has(key)) staleKeys.push(key);
+  if (prune) {
+    const retainedKeys = new Set();
+    Object.entries(candidate?.bookStates ?? {}).forEach(([bookId, bookState]) => {
+      Object.keys(bookState?.dashboardSnapshots ?? {}).forEach((snapshotId) => {
+        retainedKeys.add(dashboardSnapshotStorageKey(storageKey, bookId, snapshotId));
+      });
+    });
+    const prefix = dashboardSnapshotStoragePrefix(storageKey);
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(prefix) && !retainedKeys.has(key)) staleKeys.add(key);
+    }
   }
   staleKeys.forEach((key) => localStorage.removeItem(key));
 }
@@ -1873,6 +1915,7 @@ function writeStoredState(storageKey, serialized) {
 }
 
 function compactKnownStateCaches() {
+  compactDashboardSnapshotSidecars();
   const keys = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
@@ -1977,6 +2020,7 @@ function saveState(options = {}) {
   let persisted = true;
   let attemptedCharacters = 0;
   let previousCharacters = 0;
+  let writePhase = "prepare";
   try {
     rootState.bookStates[activeBookId()] = state;
     const nextRootState = cloneStateForPersistence(rootState, snapshotChanges);
@@ -2051,13 +2095,19 @@ function saveState(options = {}) {
     }
     const serialized = serializeLocalState(nextRootState);
     attemptedCharacters = serialized.length;
+    writePhase = "dashboard-snapshots";
     persistDashboardSnapshotChanges(
       activeStorageKey,
       rootState,
       snapshotChanges,
-      { prune: options.persistAllSnapshots === true },
     );
+    writePhase = "learning-state";
     writeStoredState(activeStorageKey, serialized);
+    // Do not delete old history until the new root has committed successfully.
+    writePhase = "snapshot-cleanup";
+    pruneDashboardSnapshotSidecars(activeStorageKey, rootState, snapshotChanges, {
+      prune: options.persistAllSnapshots === true,
+    });
     discardDeferredLearningJournalWrite();
     clearLearningJournal(activeStorageKey);
     if (options.sealLearningSession === true || !options.syncChangeOptions) {
@@ -2080,6 +2130,7 @@ function saveState(options = {}) {
         quotaExceeded: isStorageQuotaError(error),
         attemptedCharacters,
         previousCharacters,
+        writePhase,
       },
     }));
     if (!isStorageQuotaError(error)) throw error;

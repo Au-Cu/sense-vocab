@@ -2113,6 +2113,15 @@ test("an advanced day and a missed calendar day use the same shared progress clo
 
 test("legacy progress backfills the heatmap and word list, whose rows open read-only cards", async ({ page }) => {
   test.setTimeout(60_000);
+  const resizeAppViewport = async (viewport) => {
+    await page.setViewportSize(viewport);
+    // The browser can acknowledge a viewport before the app handles its resize event.
+    await page.waitForFunction(() => {
+      const root = document.documentElement;
+      const height = Number.parseFloat(getComputedStyle(root).getPropertyValue("--app-viewport-height"));
+      return Math.abs(height - window.innerHeight) <= 1 && !root.dataset.uiTransition;
+    });
+  };
   await page.addInitScript((storageKey) => {
     const NativeDate = Date;
     class TestDate extends NativeDate {
@@ -2232,7 +2241,7 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   await expect(page.locator(".word-list-name")).toHaveText("act");
   await page.locator('.word-list-filter[data-status="all"]').click();
   await page.screenshot({ path: "test-results/word-list-desktop.png", fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await resizeAppViewport({ width: 390, height: 844 });
   expect(await page.evaluate(() => {
     return document.documentElement.scrollWidth <= document.documentElement.clientWidth;
   })).toBe(true);
@@ -2258,7 +2267,7 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   expect(mobileListLayout.backFixed).toBe(true);
   expect(mobileListLayout.bottomClearance).toBeGreaterThanOrEqual(48);
   await page.screenshot({ path: "test-results/word-list-mobile.png", fullPage: true });
-  await page.setViewportSize({ width: 1100, height: 850 });
+  await resizeAppViewport({ width: 1100, height: 850 });
 
   await page.locator("#wordSortSelect").selectOption("time-desc");
   await expect(page.locator(".word-list-item").first().locator(".word-list-name")).toHaveText("action");
@@ -2291,7 +2300,7 @@ test("legacy progress backfills the heatmap and word list, whose rows open read-
   await expect(page.locator("#wordText")).toHaveText(thirdListWord);
 
   await page.screenshot({ path: "test-results/word-card-navigation-desktop.png", fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
+  await resizeAppViewport({ width: 390, height: 844 });
   const navigationFits = await page.locator(".study-primary-actions").evaluate((actions) => {
     const actionRect = actions.getBoundingClientRect();
     return [...actions.querySelectorAll("button:not([hidden])")].every((button) => {

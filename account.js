@@ -4065,7 +4065,7 @@
         setOperationProgress(value, `正在重建数据 ${completed}/${total}`);
       });
       if (result?.persisted === false) {
-        throw new Error("修复结果未能写入本机存储，请保留当前页面并重试。");
+        throw new Error("本机存储空间不足，修复结果尚未完整保存。请先导出学习数据，不要清除浏览器数据。");
       }
       if (currentUser) {
         saveSyncMeta(currentUser.id, { dirty: true });
