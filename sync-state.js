@@ -791,7 +791,7 @@
     };
   }
 
-  function mergeMap(domain, leftMap, rightMap, leftRecords, rightRecords) {
+  function* mergeMap(domain, leftMap, rightMap, leftRecords, rightRecords) {
     const values = {};
     const records = {};
     const keys = new Set([
@@ -800,7 +800,7 @@
       ...Object.keys(leftRecords),
       ...Object.keys(rightRecords),
     ]);
-    keys.forEach((key) => {
+    for (const key of keys) {
       const resolved = resolveValue(
         domain,
         hasOwn(leftMap, key) ? leftMap[key] : undefined,
@@ -810,11 +810,12 @@
       );
       records[key] = resolved.record;
       if (resolved.present) values[key] = resolved.value;
-    });
+      yield;
+    }
     return { values, records };
   }
 
-  function mergeScopeStates(leftState, rightState) {
+  function* mergeScopeStates(leftState, rightState) {
     const left = clone(leftState && typeof leftState === "object" ? leftState : {});
     const right = clone(rightState && typeof rightState === "object" ? rightState : {});
     const leftMetadata = ensureScopeMetadata(left);
@@ -826,7 +827,7 @@
       rightMetadata.counters,
     );
 
-    SCALAR_RECORDS.forEach((name) => {
+    for (const name of SCALAR_RECORDS) {
       const resolved = resolveValue(
         name,
         left[name],
@@ -836,7 +837,8 @@
       );
       metadata.records[name] = resolved.record;
       result[name] = resolved.present ? resolved.value : null;
-    });
+      yield;
+    }
 
     const leftMembership = Object.fromEntries(
       (Array.isArray(left.introducedWords) ? left.introducedWords : [])
@@ -846,7 +848,7 @@
       (Array.isArray(right.introducedWords) ? right.introducedWords : [])
         .map((wordId) => [wordId, true]),
     );
-    const membership = mergeMap(
+    const membership = yield* mergeMap(
       "introducedWords",
       leftMembership,
       rightMembership,
@@ -872,7 +874,7 @@
       return leftRank - rightRank || leftWord.localeCompare(rightWord);
     });
 
-    const progress = mergeMap(
+    const progress = yield* mergeMap(
       "progress",
       left.progress ?? {},
       right.progress ?? {},
@@ -882,7 +884,7 @@
     result.progress = progress.values;
     metadata.records.progress = progress.records;
 
-    const activity = mergeMap(
+    const activity = yield* mergeMap(
       "activityLog",
       left.activityLog ?? {},
       right.activityLog ?? {},
@@ -892,7 +894,7 @@
     result.activityLog = activity.values;
     metadata.records.activityLog = activity.records;
 
-    const targetHistory = mergeMap(
+    const targetHistory = yield* mergeMap(
       "planTargetHistory",
       left.planTargetHistory ?? {},
       right.planTargetHistory ?? {},
@@ -902,7 +904,7 @@
     result.planTargetHistory = targetHistory.values;
     metadata.records.planTargetHistory = targetHistory.records;
 
-    const windows = mergeMap(
+    const windows = yield* mergeMap(
       "studyWindows",
       windowsById(left.studyWindows),
       windowsById(right.studyWindows),
@@ -919,7 +921,7 @@
       .slice(-500);
 
     if (hasOwn(left, "dashboardEvents") || hasOwn(right, "dashboardEvents")) {
-      const dashboardEvents = mergeMap(
+      const dashboardEvents = yield* mergeMap(
         "dashboardEvents",
         left.dashboardEvents ?? {},
         right.dashboardEvents ?? {},
@@ -931,7 +933,7 @@
     }
 
     if (hasOwn(left, "dashboardSnapshots") || hasOwn(right, "dashboardSnapshots")) {
-      const dashboardSnapshots = mergeMap(
+      const dashboardSnapshots = yield* mergeMap(
         "dashboardSnapshots",
         left.dashboardSnapshots ?? {},
         right.dashboardSnapshots ?? {},
@@ -942,7 +944,7 @@
       metadata.records.dashboardSnapshots = dashboardSnapshots.records;
     }
 
-    const confusionLinks = mergeMap(
+    const confusionLinks = yield* mergeMap(
       "confusionLinks",
       left.confusionLinks ?? {},
       right.confusionLinks ?? {},
@@ -1069,9 +1071,31 @@
     return nextState;
   }
 
-  function mergeStates(leftState, rightState) {
+  function scopeMergeWork(left = {}, right = {}) {
+    left = left ?? {};
+    right = right ?? {};
+    let total = SCALAR_RECORDS.length;
+    for (const domain of MAP_RECORDS) {
+      if (["dashboardEvents", "dashboardSnapshots"].includes(domain) &&
+          !hasOwn(left, domain) && !hasOwn(right, domain)) continue;
+      const keys = (scope) => {
+        if (domain === "introducedWords") return Array.isArray(scope.introducedWords) ? scope.introducedWords.map(String) : [];
+        if (domain === "studyWindows") return Object.keys(windowsById(scope.studyWindows));
+        return Object.keys(scope[domain] ?? {});
+      };
+      total += new Set([
+        ...keys(left), ...keys(right),
+        ...Object.keys(left._sync?.records?.[domain] ?? {}),
+        ...Object.keys(right._sync?.records?.[domain] ?? {}),
+      ]).size;
+    }
+    return total;
+  }
+
+  function* mergeStateRecords(leftState, rightState) {
     if (!isRootState(leftState) && !isRootState(rightState)) {
-      return mergeScopeStates(leftState, rightState);
+      yield scopeMergeWork(leftState ?? {}, rightState ?? {});
+      return yield* mergeScopeStates(leftState, rightState);
     }
     const left = asRootState(leftState);
     const right = asRootState(rightState);
@@ -1079,13 +1103,16 @@
       ...Object.keys(left.bookStates),
       ...Object.keys(right.bookStates),
     ]);
+    yield [...bookIds].reduce((total, bookId) => total + scopeMergeWork(
+      left.bookStates[bookId], right.bookStates[bookId],
+    ), 0);
     const bookStates = {};
-    bookIds.forEach((bookId) => {
-      bookStates[bookId] = mergeScopeStates(
+    for (const bookId of bookIds) {
+      bookStates[bookId] = yield* mergeScopeStates(
         left.bookStates[bookId] ?? {},
         right.bookStates[bookId] ?? {},
       );
-    });
+    }
     const activeBookId = bookStates[left.activeBookId]
       ? left.activeBookId
       : bookStates[right.activeBookId]
@@ -1099,6 +1126,36 @@
       activeBookId,
       bookStates,
     };
+  }
+
+  function mergeStates(leftState, rightState) {
+    const records = mergeStateRecords(leftState, rightState);
+    let next = records.next();
+    while (!next.done) next = records.next();
+    return next.value;
+  }
+
+  async function mergeStatesAsync(leftState, rightState, onProgress = null) {
+    const records = mergeStateRecords(leftState, rightState);
+    const total = records.next().value;
+    let completed = 0;
+    let sliceStarted = performance.now();
+    onProgress?.(completed, total);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    while (true) {
+      const next = records.next();
+      if (next.done) {
+        onProgress?.(completed, total);
+        return next.value;
+      }
+      completed += 1;
+      // The synchronous and cooperative paths consume the same record resolver.
+      if (completed % 64 === 0 || performance.now() - sliceStarted >= 8) {
+        onProgress?.(completed, total);
+        await new Promise((resolve) => window.setTimeout(resolve, 0));
+        sliceStarted = performance.now();
+      }
+    }
   }
 
   function dateKey(value) {
@@ -1421,6 +1478,7 @@
     ensureMetadata,
     stampChanges,
     mergeStates,
+    mergeStatesAsync,
     prepareIndependentMergeState,
     hasIndependentChanges,
     compareVectors,

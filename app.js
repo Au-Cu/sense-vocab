@@ -1481,7 +1481,7 @@ async function loadLearningJournalFallbacks() {
     await Promise.all(records.map(async (record) => {
       if (record?.version !== 1 || record.journal?.version !== 1 ||
           typeof record.storageKey !== "string" ||
-          !(record.storageKey === STORAGE_KEY || record.storageKey.startsWith(ACCOUNT_STORAGE_PREFIX))) return;
+          !isRootStateStorageKey(record.storageKey)) return;
       // A committed full-state write invalidates an older backup even if the
       // browser was killed before the asynchronous backup cleanup completed.
       const hash = await learningJournalBaseHash(localStorage.getItem(record.storageKey));
@@ -1758,7 +1758,7 @@ function compactDashboardSnapshotSidecars() {
     const marker = key?.indexOf(DASHBOARD_SNAPSHOT_STORAGE_SEGMENT) ?? -1;
     if (marker < 0) continue;
     const storageKey = key.slice(0, marker);
-    if (storageKey === STORAGE_KEY || storageKey.startsWith(ACCOUNT_STORAGE_PREFIX)) {
+    if (isRootStateStorageKey(storageKey)) {
       keys.push([key, storageKey]);
     }
   }
@@ -1886,6 +1886,7 @@ function hasEmbeddedDashboardSnapshots(candidate) {
 }
 
 function migrateStoredStateToCompactFormat(storageKey, normalized, raw) {
+  if (!isRootStateStorageKey(storageKey)) return;
   if (!raw) return;
   try {
     const compact = serializeLocalState(normalized);
@@ -1919,7 +1920,7 @@ function compactKnownStateCaches() {
   const keys = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key === STORAGE_KEY || key?.startsWith(ACCOUNT_STORAGE_PREFIX)) {
+    if (isRootStateStorageKey(key)) {
       keys.push(key);
     }
   }
@@ -3243,6 +3244,14 @@ function accountStorageKey(userId) {
   return `${ACCOUNT_STORAGE_PREFIX}${encodeURIComponent(userId)}`;
 }
 
+function isRootStateStorageKey(key) {
+  if (key === STORAGE_KEY) return true;
+  if (typeof key !== "string" || !key.startsWith(ACCOUNT_STORAGE_PREFIX)) return false;
+  const accountId = key.slice(ACCOUNT_STORAGE_PREFIX.length);
+  // Account journals and snapshots share the prefix, but are not state roots.
+  return accountId.length > 0 && !accountId.includes(":");
+}
+
 function requestedWordId() {
   return new URL(window.location.href).searchParams.get("word");
 }
@@ -3280,8 +3289,9 @@ function clearWordDeepLink() {
 function stateHasLearningData(candidate) {
   if (!candidate || typeof candidate !== "object") return false;
   if (candidate.bookStates && typeof candidate.bookStates === "object") {
-    return Object.values(candidate.bookStates).some(stateHasLearningData);
+    if (Object.values(candidate.bookStates).some(stateHasLearningData)) return true;
   }
+  // Compact transport keeps the active book at the root and only inactive books here.
   return Boolean(
     candidate.plan ||
     (Array.isArray(candidate.introducedWords) && candidate.introducedWords.length) ||
@@ -3630,6 +3640,19 @@ window.SenseVocabApp = {
   mergeStates: (localState, remoteState) => {
     if (!window.SenseVocabSync) return cloneSerializable(remoteState);
     const merged = window.SenseVocabSync.mergeStates(localState, remoteState);
+    const referenceState = normalizeRootState(cloneSerializable(localState ?? {}));
+    const repaired = repairDerivedRootState(merged, { referenceState }).state;
+    if (stableStateStringify(merged) !== stableStateStringify(repaired)) {
+      window.SenseVocabSync.stampChanges(repaired, merged);
+    }
+    return repaired;
+  },
+  mergeStatesAsync: async (localState, remoteState, onProgress = null) => {
+    if (!window.SenseVocabSync) return cloneSerializable(remoteState);
+    const merged = await window.SenseVocabSync.mergeStatesAsync(localState, remoteState,
+      (completed, total) => onProgress?.({ phase: "records", completed, total }));
+    onProgress?.({ phase: "derived" });
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
     const referenceState = normalizeRootState(cloneSerializable(localState ?? {}));
     const repaired = repairDerivedRootState(merged, { referenceState }).state;
     if (stableStateStringify(merged) !== stableStateStringify(repaired)) {

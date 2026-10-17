@@ -30,6 +30,51 @@ async function loadSyncEngine(page) {
   await page.waitForFunction(() => Boolean(window.SenseVocabSync));
 }
 
+test("cooperative merges report actual records and match synchronous conflict resolution", async ({ page }) => {
+  await loadSyncEngine(page);
+  const result = await page.evaluate(async (base) => {
+    const sync = window.SenseVocabSync;
+    const left = structuredClone(base);
+    const right = structuredClone(base);
+    for (let index = 0; index < 500; index += 1) {
+      left.progress[`word-${index}:n-1`] = { status: "review", lastSeenActual: "2026-10-16" };
+      right.progress[`word-${index + 250}:n-1`] = { status: "mastered", lastSeenActual: "2026-10-17" };
+    }
+    left.introducedWords = ["a", "b"];
+    right.introducedWords = ["b", "c"];
+    left.studyWindows = [{ id: "left", startedAt: "2026-10-16T12:00:00Z" }];
+    right.activityLog["2026-10-17"] = { newWords: ["c"], target: 40 };
+    sync.stampChanges(left, base, "left-device");
+    sync.stampChanges(right, base, "right-device");
+    const compactLeft = { ...left, schemaVersion: 2, activeBookId: "kaoyan", bookStates: { ielts: base } };
+    const fullRight = { schemaVersion: 2, activeBookId: "kaoyan", bookStates: { kaoyan: right, ielts: base } };
+    const before = JSON.stringify([compactLeft, fullRight]);
+    const expected = sync.mergeStates(compactLeft, fullRight);
+    const progress = [];
+    let ticks = 0;
+    const timer = setInterval(() => { ticks += 1; }, 0);
+    let actual;
+    try {
+      actual = await sync.mergeStatesAsync(compactLeft, fullRight, (completed, total) => {
+        progress.push({ completed, total });
+      });
+    } finally { clearInterval(timer); }
+    return { actual, expected, progress, ticks, unchanged: before === JSON.stringify([compactLeft, fullRight]) };
+  }, baseState());
+  expect(result.actual).toEqual(result.expected);
+  expect(result.unchanged).toBe(true);
+  expect(result.ticks).toBeGreaterThan(1);
+  expect(result.progress.length).toBeGreaterThan(3);
+  const total = result.progress.at(-1).total;
+  expect(total).toBeGreaterThan(750);
+  expect(result.progress.at(-1).completed).toBe(total);
+  result.progress.forEach((entry, index) => {
+    expect(entry.total).toBe(total);
+    expect(entry.completed).toBeLessThanOrEqual(total);
+    if (index) expect(entry.completed).toBeGreaterThanOrEqual(result.progress[index - 1].completed);
+  });
+});
+
 test("independent device changes merge without losing either branch", async ({ page }) => {
   await loadSyncEngine(page);
   const result = await page.evaluate((base) => {

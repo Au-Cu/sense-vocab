@@ -3076,12 +3076,17 @@
               stampSync: false,
               preserveNavigation: true,
             });
-            if (
-              persisted === false ||
-              (typeof app.isActiveStatePersisted === "function" &&
-                !app.isActiveStatePersisted())
-            ) {
+            const localPersistence = persisted === false
+              ? await confirmLocalPersistenceOrJournal()
+              : { persisted: true, journaled: false };
+            if (!localPersistence.persisted && !localPersistence.journaled) {
               throw new Error("合并结果未能写入本机存储。");
+            }
+            if (localPersistence.journaled) {
+              localQuotaWarning = true;
+              recordSyncDiagnostic("local-verify-deferred-to-journal", null, {
+                revision: Number(verifiedRemote.revision) || 0,
+              });
             }
             cloudRevision = verifiedRemote.revision;
             if (needsAnotherUpload) {
@@ -3091,6 +3096,21 @@
                 dirty: true,
               });
               continue;
+            }
+            if (localPersistence.journaled) {
+              saveSyncMeta(syncUserId, {
+                revision: cloudRevision,
+                dirty: false,
+                lastSyncedAt: new Date().toISOString(),
+              });
+              setSyncStatus("云端记录已同步，本机恢复日志已保留", "pending");
+              setOperationProgress(100, "云端记录已同步，本机恢复日志已保留", "success");
+              return {
+                ...result,
+                ok: true,
+                localPersistenceDeferred: true,
+                revision: cloudRevision,
+              };
             }
           }
           const stillUsingAccount = currentUser?.id === syncUserId &&
@@ -3505,14 +3525,50 @@
     return cleaned;
   }
 
+  async function mergeDataOperationRecords(left, right, label, context) {
+    setOperationProgress(null, `${label}：正在准备记录`);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    return app.mergeStatesAsync(left, right, ({ phase, completed, total }) => {
+      if (!reconciliationScopeIsCurrent(context) ||
+          app.getLearningTransactionRevision?.() !== context.learningRevision ||
+          app.hasActiveLearningTransaction?.()) {
+        throw new Error("账户或学习轮次已经变化，合并已暂停，未覆盖当前记录。");
+      }
+      if (phase === "records") {
+        setOperationProgress(total > 0 ? completed / total * 100 : 100,
+          `${label} ${completed}/${total} 条记录`);
+      } else {
+        setOperationProgress(null, `${label}：正在核对学习队列与统计数据`);
+      }
+    });
+  }
+
+  async function confirmLocalPersistenceOrJournal() {
+    if (typeof app.isActiveStatePersisted === "function" && app.isActiveStatePersisted()) {
+      return { persisted: true, journaled: false };
+    }
+    try {
+      await app.flushLearningJournalBackup?.();
+    } catch {
+      // The status below distinguishes a durable journal from an in-memory fallback.
+    }
+    const status = app.getLearningJournalStorageStatus?.() ?? {};
+    return {
+      persisted: false,
+      journaled: Number(status.backupScopes) > 0 && !status.backupError,
+    };
+  }
+
   async function mergeConflictStates() {
     if (!pendingConflict || !currentUser || conflictBusy) return;
     const originalConflict = pendingConflict;
     const { localState, localSource } = originalConflict;
+    const reconciliation = captureReconciliationContext();
     setConflictBusy(true);
     focusDataOperationSurface();
     setDataMessage("正在合并两边的学习记录……");
     setMessage("正在合并两边的学习记录……");
+    setOperationProgress(null, "正在重新读取最新云端记录");
     try {
       if (syncPromise) await syncPromise;
       const latestRemote = normalizedRemote(await loadCloudState(undefined, { force: true }));
@@ -3520,19 +3576,26 @@
         throw new Error("无法重新读取最新云端记录，未执行合并或覆盖。");
       }
       const liveAccountState = app.getState();
-      const accountBaseline = app.mergeStates(
+      const accountBaseline = await mergeDataOperationRecords(
         liveAccountState,
         latestRemote.state,
+        "合并账户与云端",
+        reconciliation,
       );
       const safeLocalState = isGuestConflictSource(localSource)
         ? app.prepareIndependentMergeState(
           withoutDeletionTombstones(localState),
           accountBaseline,
         )
-        : app.mergeStates(localState, liveAccountState);
-      const merged = app.mergeStates(safeLocalState, accountBaseline);
-      if (isGuestConflictSource(localSource)) {
-        rememberGuestDecision(currentUser.id);
+        : await mergeDataOperationRecords(localState, liveAccountState, "合并本机记录", reconciliation);
+      const merged = await mergeDataOperationRecords(safeLocalState, accountBaseline, "合并两端记录", reconciliation);
+      if (deferChangedLearningRound(reconciliation, "manual-merge")) {
+        throw new Error("账户或学习轮次已经变化，合并已暂停，未覆盖当前记录。");
+      }
+      setOperationProgress(null, "正在保存合并后的本机记录");
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+      if (deferChangedLearningRound(reconciliation, "manual-merge-save")) {
+        throw new Error("账户或学习轮次已经变化，合并已暂停，未覆盖当前记录。");
       }
       const persisted = activateAccountState(
         currentUser,
@@ -3548,16 +3611,21 @@
         };
         throw new Error("合并结果未能写入本机存储，云端记录尚未更改。");
       }
+      if (isGuestConflictSource(localSource)) rememberGuestDecision(currentUser.id);
       const result = await syncNow({ verifyPersistence: true });
       if (!result?.ok) {
         throw new Error("合并结果尚未同时写入本机和云端，请重试。");
       }
       setMessage("两边记录已合并，云端与本机新增进度均已保留。");
+      setOperationProgress(100, "两端记录已合并并核验保存", "success");
       resumePendingFeedback();
     } catch (error) {
+      if (!reconciliationScopeIsCurrent(reconciliation)) return;
       setMessage(error?.message ?? "合并失败，两边原记录均未删除。", "error");
       setDataMessage(error?.message ?? "合并失败，两边原记录均未删除。", "error");
-      focusDataOperationSurface();
+      setOperationProgress(null, "合并未完成，两端原记录已保留", "error");
+      if (app.getLearningTransactionRevision?.() === reconciliation.learningRevision &&
+          !app.hasActiveLearningTransaction?.()) focusDataOperationSurface();
     } finally {
       setConflictBusy(false);
     }

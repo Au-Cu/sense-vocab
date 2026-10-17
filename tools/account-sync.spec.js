@@ -927,6 +927,268 @@ test("large learning history remains durable under a local storage quota", async
     .toBe("mastered");
 });
 
+test("quota compaction preserves account journals and snapshot envelopes", async ({ page }) => {
+  const keys = require("../data/vocabulary-index.json").books.find((book) => book.id === "kaoyan")
+    .entries.flatMap((entry) => entry.senseIds.map((id) => `${entry.wordId}:${id}`)).slice(0, 2400);
+  await installFakeCloud(page);
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  const result = await page.evaluate(({ accountKey, keys }) => {
+    const app = window.SenseVocabApp;
+    app.activateAccount("user-1", app.getState());
+    const progress = Object.fromEntries(keys.map((key) => [key, {
+      status: "mastered", lastSeenActual: "2026-10-17", updatedAt: "2026-10-17T12:00:00.000Z",
+    }]));
+    const journalKey = `${accountKey}:learning-journal-v1:`;
+    const journal = { version: 1, sequence: 7, bookId: "kaoyan", progress };
+    const snapshotId = "kaoyan:2026-10-16";
+    const snapshotKey = `${accountKey}:dashboard-snapshot-v1:kaoyan:${encodeURIComponent(snapshotId)}`;
+    const snapshot = { bookId: "kaoyan", snapshotId, snapshot: {
+      id: snapshotId, bookId: "kaoyan", date: "2026-10-16",
+      statuses: Object.fromEntries(keys.map((key) => [key, "review"])),
+      enteredAt: Object.fromEntries(keys.map((key) => [key, "2026-10-01T12:00:00.000Z"])),
+    } };
+    const extensionKey = `${accountKey}:unrecognized-extension-v1:test`;
+    const extension = JSON.stringify({ futureRecord: progress });
+    localStorage.setItem(journalKey, JSON.stringify(journal));
+    localStorage.setItem(snapshotKey, JSON.stringify(snapshot));
+    localStorage.setItem(extensionKey, extension);
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function failRootCommit(key, value) {
+      if (key === accountKey) throw new DOMException("Account root quota exceeded", "QuotaExceededError");
+      return setItem.call(this, key, value);
+    };
+    let persisted;
+    try {
+      persisted = app.replaceActiveState(app.getState(), { notify: false });
+      app.replaceActiveState(app.getState(), { notify: false });
+    }
+    finally { Storage.prototype.setItem = setItem; }
+    return { persisted,
+      journal: app.decodeStorageValue(localStorage.getItem(journalKey)), expectedJournal: journal,
+      snapshot: app.decodeStorageValue(localStorage.getItem(snapshotKey)), expectedSnapshot: snapshot,
+      extensionUnchanged: localStorage.getItem(extensionKey) === extension };
+  }, { accountKey: ACCOUNT_KEY, keys });
+  expect(result.persisted).toBe(false);
+  expect(result.journal).toEqual(result.expectedJournal);
+  expect(result.snapshot).toEqual(result.expectedSnapshot);
+  expect(result.extensionUnchanged).toBe(true);
+});
+
+test("compact cloud roots retain active-book learning evidence", async ({ page }) => {
+  await installFakeCloud(page);
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  const evidence = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const compact = {
+      schemaVersion: 2, activeBookId: "kaoyan", bookStates: { ielts: { progress: {} } },
+      progress: { "act:v-1": { status: "mastered" } },
+    };
+    return { active: app.hasLearningData(compact),
+      inactive: app.hasLearningData({ ...compact, progress: {}, bookStates: { ielts: { progress: compact.progress } } }),
+      empty: app.hasLearningData({ ...compact, progress: {} }) };
+  });
+  expect(evidence).toEqual({ active: true, inactive: true, empty: false });
+});
+
+test("guest conflict merge accepts compact cloud roots and verifies both sides", async ({ page }) => {
+  const remote = { ...makeState(3), schemaVersion: 2, activeBookId: "kaoyan",
+    bookStates: { ielts: makeState(3) } };
+  remote.bookStates.ielts.plan = null;
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = { status: "mastered", lastSeenActual: "2026-10-16" };
+  remote.activityLog["2026-10-16"] = { newWords: ["act"], reviewWords: [], target: 3, baseCompleted: true };
+  const guest = makeState(3);
+  guest.introducedWords = ["abandon"];
+  guest.progress["abandon:v-1"] = { status: "review", lastSeenActual: "2026-10-17" };
+  guest.activityLog["2026-10-17"] = { newWords: ["abandon"], reviewWords: [], target: 3, baseCompleted: true };
+  await installFakeCloud(page, { found: true, revision: 12, state: remote });
+  await page.goto(APP_URL);
+  await page.evaluate(({ storageKey, guest }) => {
+    localStorage.clear();
+    localStorage.setItem(storageKey, JSON.stringify(guest));
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:user-1", "completed");
+  }, { storageKey: STORAGE_KEY, guest });
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await expect(page.locator("#accountConflictView")).toBeVisible();
+  await page.evaluate(() => {
+    window.__mergeProgress = [];
+    new MutationObserver(() => {
+      const label = document.querySelector("#syncProgressLabel").textContent;
+      const bar = document.querySelector("#syncProgressBar");
+      if (/合并/.test(label)) window.__mergeProgress.push({ label, value: bar.getAttribute("aria-valuenow") });
+    }).observe(document.querySelector("#syncProgress"), { subtree: true, childList: true, attributes: true });
+  });
+  await page.locator("#mergeStateButton").click();
+  await expect.poll(() => page.evaluate(() => window.__fakeCloud.saves.length), { timeout: 6000 }).toBeGreaterThan(0);
+  await expect(page.locator("#syncProgressLabel")).toHaveText("两端记录已合并并核验保存");
+  await expect(page.locator("#syncProgress")).toBeVisible();
+  await expect(page.locator("#syncProgressText")).toHaveText("100.00%");
+  const result = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const remote = window.__fakeCloud.remote.state;
+    const active = remote.bookStates?.[remote.activeBookId] ?? remote;
+    const local = app.getState();
+    return { remoteAct: active.progress["act:v-1"]?.status,
+      remoteAbandon: active.progress["abandon:v-1"]?.status,
+      dates: Object.keys(active.activityLog), persisted: app.isActiveStatePersisted(),
+      localAct: local.progress["act:v-1"]?.status, localAbandon: local.progress["abandon:v-1"]?.status };
+  });
+  expect(result).toMatchObject({ remoteAct: "mastered", remoteAbandon: "review",
+    localAct: "mastered", localAbandon: "review", persisted: true });
+  expect(result.dates).toEqual(expect.arrayContaining(["2026-10-16", "2026-10-17"]));
+  const progress = await page.evaluate(() => window.__mergeProgress);
+  expect(progress.some((entry) => /合并账户与云端 \d+\/\d+ 条记录/.test(entry.label) && entry.value !== null)).toBe(true);
+  expect(progress.some((entry) => /合并两端记录 \d+\/\d+ 条记录/.test(entry.label) && entry.value !== null)).toBe(true);
+});
+
+test("quota-blocked account rounds survive cold reopens and sync the recovered tail", async ({ page, context }) => {
+  test.setTimeout(120000);
+  const remote = { found: true, revision: 10, state: makeState(3) };
+  const options = { session: { user: { id: "user-1", email: "learner@example.com" } } };
+  await context.addInitScript(() => {
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:user-1", "completed");
+  });
+  await installFakeCloud(page, remote, options);
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.waitForFunction(() => window.SenseVocabApp.getActiveStorageKey().endsWith(":account:user-1"));
+  const blockAccountWrites = (key) => {
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function accountStorageFull(name, value) {
+      if (!window.__allowLearningWrites && (name === key || name === `${key}:learning-journal-v1:`)) {
+        throw new DOMException("Account learning storage is full", "QuotaExceededError");
+      }
+      return setItem.call(this, name, value);
+    };
+  };
+  await context.addInitScript(blockAccountWrites, ACCOUNT_KEY);
+  await page.evaluate(blockAccountWrites, ACCOUNT_KEY);
+  let current = page;
+  const completedWords = [];
+  for (let round = 0; round < 2; round += 1) {
+    await waitForAccount(current);
+    await current.locator("#startStudyButton").click();
+    await expect(current.locator("#queueProgress")).toHaveText(`${round + 1} / 3`);
+    completedWords.push(await current.locator("#wordText").textContent());
+    await current.locator("#revealButton").click();
+    await expect(current.locator("#senseArea")).toBeVisible();
+    await current.locator("#nextButton").click();
+    await expect(current.locator("#nextButton")).toHaveText("下一词");
+    await current.locator("#nextButton").click();
+    await expect(current.locator("#queueProgress")).toHaveText(`${round + 2} / 3`);
+    await current.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+    await current.evaluate(() => window.SenseVocabApp.flushLearningJournalBackup());
+    await expect.poll(() => current.evaluate(async (key) => {
+      const store = window.SenseVocabDurableStorage.createIndexedDbBackend({
+        databaseName: "sense-vocab-learning-journal-v1", storeName: "journals",
+      });
+      return (await store.get(key))?.journal?.session?.currentIndex;
+    }, ACCOUNT_KEY)).toBe(round + 1);
+    await current.close();
+    current = await context.newPage();
+    await installFakeCloud(current, remote, options);
+    await current.goto(APP_URL);
+  }
+  await waitForAccount(current);
+  await current.locator("#startStudyButton").click();
+  await expect(current.locator("#queueProgress")).toHaveText("3 / 3");
+  await expect(current.locator("#wordText")).not.toHaveText("本轮已完成");
+  await current.evaluate(() => { window.__allowLearningWrites = true; });
+  await current.locator("#exitStudyButton").click();
+  await current.locator("#returnHomeButton").click();
+  await expect(current.locator("#homePanel")).toBeVisible();
+  await openData(current);
+  await current.locator("#syncNowButton").click();
+  await expect(current.locator("#syncNowButton")).toBeEnabled();
+  await expect.poll(() => current.evaluate((words) => {
+    const remote = window.__fakeCloud.remote.state;
+    const scope = remote.bookStates?.[remote.activeBookId] ?? remote;
+    return words.every((word) => scope.activityLog[window.SenseVocabApp.getState().session.activePlanDate]?.newWords?.includes(word));
+  }, completedWords), { timeout: 15000 }).toBe(true);
+  const persistence = await current.evaluate((key) => {
+    const app = window.SenseVocabApp;
+    const persisted = app.isActiveStatePersisted();
+    if (persisted) return { persisted };
+    const raw = app.decodeStorageValue(localStorage.getItem(key));
+    const root = app.getState();
+    const stored = raw.bookStates?.[raw.activeBookId] ?? raw;
+    const live = root.bookStates[root.activeBookId];
+    const differences = [];
+    const compare = (left, right, path = "") => {
+      if (differences.length >= 40 || JSON.stringify(left) === JSON.stringify(right)) return;
+      if (left && right && typeof left === "object" && typeof right === "object") {
+        new Set([...Object.keys(left), ...Object.keys(right)]).forEach((name) => {
+          if (!["dashboardSnapshots", "view", "wordBrowse", "bookStates", "schemaVersion", "activeBookId"].includes(name)) compare(left[name], right[name], `${path}.${name}`);
+        });
+      } else differences.push({ path, stored: left, live: right });
+    };
+    compare(stored, live);
+    return { persisted, differences,
+      diagnostics: JSON.parse(localStorage.getItem("sense-vocab-sync-diagnostics-v1:user-1") || "[]"),
+      message: document.querySelector("#dataMessage").textContent };
+  }, ACCOUNT_KEY);
+  if (!persistence.persisted) {
+    const fs = require("node:fs");
+    fs.mkdirSync(".op-cache/evidence/account-recovery-20261017", { recursive: true });
+    fs.writeFileSync(".op-cache/evidence/account-recovery-20261017/quota-recovery-debug.json", JSON.stringify(persistence, null, 2));
+  }
+  await current.reload();
+  await waitForAccount(current);
+  const recovered = await current.evaluate(() => window.SenseVocabApp.getState());
+  expect(recovered.session.currentIndex).toBe(2);
+  expect(recovered.activityLog[recovered.session.activePlanDate].newWords).toEqual(expect.arrayContaining(completedWords));
+  expect(persistence.persisted || persistence.differences.length === 0).toBe(true);
+});
+
+test("a cooperative manual merge cannot replace a newly started learning round", async ({ page }) => {
+  const remote = makeState(3);
+  remote.introducedWords = ["act"];
+  remote.progress["act:v-1"] = { status: "mastered", lastSeenActual: "2026-10-16" };
+  remote.activityLog["2026-10-16"] = { newWords: ["act"], reviewWords: [], target: 3, baseCompleted: true };
+  const guest = makeState(3);
+  guest.introducedWords = ["ability"];
+  guest.progress["ability:n-1"] = { status: "mastered", lastSeenActual: "2026-10-17" };
+  guest.activityLog["2026-10-17"] = { newWords: ["ability"], reviewWords: [], target: 3, baseCompleted: true };
+  await installFakeCloud(page, { found: true, revision: 12, state: remote });
+  await page.goto(APP_URL);
+  await page.evaluate(({ key, guest }) => {
+    localStorage.clear();
+    localStorage.setItem(key, JSON.stringify(guest));
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:user-1", "completed");
+  }, { key: STORAGE_KEY, guest });
+  await page.reload();
+  await waitForAccount(page);
+  await login(page);
+  await expect(page.locator("#accountConflictView")).toBeVisible();
+  await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const merge = app.mergeStatesAsync;
+    app.mergeStatesAsync = async (...args) => {
+      window.__mergeEntered = true;
+      await new Promise((resolve) => { window.__releaseManualMerge = resolve; });
+      return merge(...args);
+    };
+  });
+  await page.locator("#mergeStateButton").click();
+  await page.waitForFunction(() => window.__mergeEntered === true);
+  await page.locator("#dataBackButton").click();
+  await page.locator("#globalHomeNavButton").click();
+  await page.locator("#startStudyButton").click();
+  const word = await page.locator("#wordText").textContent();
+  await page.evaluate(() => window.__releaseManualMerge());
+  await expect(page.locator("#dataMessage")).toContainText("学习轮次已经变化");
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  await expect(page.locator("#wordText")).not.toHaveText("本轮已完成");
+  expect(await page.evaluate(() => window.__fakeCloud.saves.length)).toBe(0);
+});
+
 test("learning recorded during the startup cloud read survives reconciliation", async ({ page }) => {
   const remote = makeState(20);
   remote.introducedWords = ["act"];
