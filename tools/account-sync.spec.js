@@ -1855,6 +1855,74 @@ test("account home can restore newer cloud data with an interrupted round still 
   expect(await page.evaluate(() => window.__fakeCloud.loadStateCalls)).toBeGreaterThan(0);
 });
 
+test("sync merge rebuilds a stale current-day planned queue even when progress is unchanged", async ({ page }) => {
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const act = require("../data/vocabulary-bundle.json").words.find((word) => word.id === "act");
+  const result = await page.evaluate((actKeys) => {
+    const app = window.SenseVocabApp;
+    const left = app.getState();
+    const right = structuredClone(left);
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Hong_Kong" });
+    const staleSession = {
+      date: today,
+      activePlanDate: "2000-01-01",
+      activeBatchType: "planned",
+      baseNewAdded: true,
+      baseCompleted: false,
+      queue: [{
+        wordId: "act",
+        type: "new",
+        senseKeys: ["act:v-1"],
+        activeSenseKeys: ["act:v-1"],
+      }],
+      currentIndex: 0,
+      revealed: false,
+      cardPhase: "hidden",
+    };
+    const apply = (candidate) => {
+      const scope = candidate.bookStates[candidate.activeBookId];
+      scope.plan = { dailyTarget: 1, startedOn: "2000-01-01" };
+      scope.session = structuredClone(staleSession);
+      scope.studyWindows = [];
+      scope.introducedWords = ["act"];
+      scope.progress = Object.fromEntries(actKeys.map((key) => [key, { status: "mastered" }]));
+      scope.activityLog = {};
+      delete scope._sync;
+      delete candidate._sync;
+      candidate.plan = scope.plan;
+      candidate.session = scope.session;
+      candidate.studyWindows = [];
+      candidate.introducedWords = scope.introducedWords;
+      candidate.progress = scope.progress;
+      candidate.activityLog = {};
+    };
+    apply(left);
+    apply(right);
+    const merged = app.mergeStates(left, right);
+    const scope = merged.bookStates[merged.activeBookId];
+    return {
+      activePlanDate: scope.session.activePlanDate,
+      activeBatchType: scope.session.activeBatchType,
+      queueLength: scope.session.queue.length,
+      dailyTarget: scope.plan?.dailyTarget,
+      actStatus: scope.progress[actKeys[0]]?.status,
+      staleWordStillFirst: scope.session.queue[0]?.wordId === "act",
+    };
+  }, act.senses.map((sense) => `act:${sense.id}`));
+  expect(result).toMatchObject({
+    activePlanDate: expect.any(String),
+    activeBatchType: "planned",
+    staleWordStillFirst: false,
+    queueLength: 1,
+    dailyTarget: 1,
+    actStatus: "mastered",
+  });
+  expect(result.activePlanDate).toBe(new Date().toLocaleDateString("sv-SE", {
+    timeZone: "Asia/Hong_Kong",
+  }));
+});
+
 test("account bootstrap keeps a journaled active round ahead of a stale completed cloud round", async ({ page }) => {
   const today = new Date().toLocaleDateString("sv-SE", {
     timeZone: "Asia/Hong_Kong",

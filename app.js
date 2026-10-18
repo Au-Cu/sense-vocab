@@ -2800,6 +2800,62 @@ function migrateLegacyActivity() {
   state.dataVersion = DATA_VERSION;
 }
 
+function reconcileLearningPosition(bookState, bookWords) {
+  const introduced = new Set(bookState.introducedWords ?? []);
+  let observedLearningDay = 0;
+  let todayLearningDay = 0;
+  const today = currentDate();
+  let changed = false;
+  const session = bookState.session;
+  const current = session?.queue?.[session.historyView?.originIndex ?? session.currentIndex];
+  bookWords.forEach((word) => {
+    const records = word.senses.map((sense) => bookState.progress?.[senseKey(word.id, sense.id)]);
+    records.forEach((record) => {
+      if (Number.isInteger(record?.lastLearningDay) && record.lastLearningDay > 0) {
+        observedLearningDay = Math.max(observedLearningDay, record.lastLearningDay);
+        if ((record.lastSeenActual ?? record.lastSeen) === today) {
+          todayLearningDay = Math.max(todayLearningDay, record.lastLearningDay);
+        }
+      }
+    });
+    // Recover the new-word frontier only from a complete set of learned senses.
+    // A historical activity count alone must not undo an explicit word reset.
+    if (introduced.has(word.id) || !records.length || !records.every((record) => (
+      [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW, SENSE_STATUS.MASTERED].includes(record?.status)
+    ))) return;
+    // An all-green current card may still be waiting for the user's Next tap.
+    if (current?.wordId === word.id && records.some((record) => (
+      (record.lastSeenActual ?? record.lastSeen) >= session.date &&
+      !(record.lastLearningDay > session.activeLearningDay)
+    ))) return;
+    introduced.add(word.id);
+    changed = true;
+  });
+  if (changed) bookState.introducedWords = [...introduced];
+  if (observedLearningDay > (Number(bookState.learningDayCounter) || 0)) {
+    bookState.learningDayCounter = observedLearningDay;
+    changed = true;
+  }
+  // Progress can arrive independently of the resumable queue. A queue from an
+  // earlier learning day cannot be today's authoritative continuation point.
+  if (session && Number.isFinite(session.activeLearningDay) &&
+      observedLearningDay > session.activeLearningDay &&
+      !["study", "confusion"].includes(bookState.view)) {
+    if (session.date === today && todayLearningDay > session.activeLearningDay &&
+        session.activeBatchType === "planned") {
+      session.activeLearningDay = todayLearningDay;
+      session.baseLearningDay = todayLearningDay;
+      session.reinforcedKeys = [];
+      session.reviewPromotedKeys = [];
+      rebuildMergedSession(null, bookState, bookWords, bookState.activityLog ?? {});
+    } else {
+      bookState.session = null;
+    }
+    changed = true;
+  }
+  return changed;
+}
+
 function sanitizeState() {
   if (state.plan) {
     const advancedDays = Number(state.plan.advancedDays);
@@ -2817,6 +2873,8 @@ function sanitizeState() {
   state.introducedWords = state.introducedWords.filter((wordId, index, list) => {
     return wordById.has(wordId) && list.indexOf(wordId) === index;
   });
+
+  reconcileLearningPosition(state, words);
 
   const introduced = new Set(state.introducedWords);
   CONTENT_ADDED_SENSE_KEYS.forEach((key) => {
@@ -3781,8 +3839,26 @@ function currentPlanDate(dayOffset = 0) {
 
 function ensureTodaySession() {
   const date = currentDate();
+  let openWindow = activeStudyWindow();
+  const sessionDate = state.session?.date;
+
+  const expiredPlanDate = state.session &&
+    sessionDate === date &&
+    /^\d{4}-\d{2}-\d{2}$/.test(state.session.activePlanDate ?? "") &&
+    state.session.activePlanDate < date;
+  if (expiredPlanDate) {
+    // A current-day session cannot legitimately point at an older planned
+    // date. Close a leftover window before dropping that queue; otherwise the
+    // window itself would make the stale session look resumable forever.
+    if (openWindow) {
+      finishStudyWindow("stale-plan-recovery");
+      openWindow = null;
+    }
+    state.session = null;
+  }
+
   const keepOpenCrossDaySession = ["study", "confusion"].includes(state.view) &&
-    Boolean(activeStudyWindow()) &&
+    Boolean(openWindow) &&
     state.session &&
     state.session.date !== date;
 
@@ -5181,6 +5257,7 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
     return makeCard("review", wordId, keys, newKeys);
   });
   session.queue = [...reviewCards, ...standaloneNew];
+  session.activePlanDate = today;
   session.currentIndex = 0;
   session.revealed = false;
   session.cardPhase = "hidden";
@@ -5195,6 +5272,7 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
 function repairDerivedBookState(bookId, bookState, options = {}) {
   const today = currentDate();
   const bookWords = wordsForBook(bookId);
+  reconcileLearningPosition(bookState, bookWords);
   const knownWordIds = new Set(bookWords.map((word) => String(word.id)));
   const knownSenseKeys = new Set();
   const wordIdBySenseKey = new Map();
@@ -5440,6 +5518,11 @@ function repairDerivedRootState(candidate, options = {}) {
   const reports = [];
   Object.entries(repaired.bookStates ?? {}).forEach(([bookId, bookState]) => {
     const referenceBook = options.referenceState?.bookStates?.[bookId];
+    const today = currentDate();
+    const sessionPlanDate = repairDateKey(bookState.session?.activePlanDate);
+    const sessionDate = repairDateKey(bookState.session?.date);
+    const sessionPlanStale = sessionDate === today &&
+      Boolean(sessionPlanDate) && sessionPlanDate < today;
     const learningChanged = !referenceBook || stableStateStringify({
       introducedWords: bookState.introducedWords,
       progress: bookState.progress,
@@ -5454,7 +5537,8 @@ function repairDerivedRootState(candidate, options = {}) {
     reports.push({
       bookId,
       ...repairDerivedBookState(bookId, bookState, {
-        reconcileSession: options.reconcileSession === true || learningChanged,
+        reconcileSession: options.reconcileSession === true ||
+          learningChanged || sessionPlanStale,
       }),
     });
   });
@@ -8093,8 +8177,8 @@ async function startStudy(event) {
     return;
   }
 
-  startStudyWindow();
   const session = ensureTodaySession();
+  startStudyWindow();
 
   if (!hasUnfinishedQueue()) {
     if (!session.baseNewAdded) {
@@ -8151,8 +8235,8 @@ async function startAdvanceStudy(event) {
   if (!canStartAdvanceStudy()) return;
   if (!await ensureVocabularyDetailsReady("advance")) return;
 
-  startStudyWindow();
   const session = ensureTodaySession();
+  startStudyWindow();
   const learningDay = beginLearningDay("advance");
   session.activePlanDate = addDays(currentDate(), session.advanceBatches + 1);
   session.queue = buildStudyQueue({

@@ -3060,6 +3060,131 @@ test("a study window crossing midnight stays on its start date and requires retu
   expect(todayColor).toBe("#ecefeb");
 });
 
+for (const sameDay of [false, true]) {
+test(`current progress repairs an obsolete learning frontier (${sameDay ? "today's remaining quota" : "earlier days"})`, async ({ page }) => {
+  const bundle = require("../data/vocabulary-bundle.json");
+  const learned = bundle.books.find((book) => book.id === "kaoyan").entries.slice(0, 3).map((entry) => {
+    const word = bundle.words.find((word) => word.id === entry.wordId);
+    return { ...word, senses: word.senses.filter((sense) => entry.senseIds.includes(sense.id)) };
+  });
+  await page.addInitScript(({ storageKey, learned, sameDay }) => {
+    if (localStorage.getItem(storageKey)) return;
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Hong_Kong" });
+    const learnedOn = sameDay ? today : "2026-07-25";
+    const progress = Object.fromEntries(learned.flatMap((word) => word.senses.map((sense) => [
+      `${word.id}:${sense.id}`,
+      { status: "mastered", firstSeenActual: "2026-07-20", lastSeenActual: learnedOn,
+        firstSeen: "2026-07-20", lastSeen: learnedOn, lastLearningDay: 8,
+        updatedAt: "2026-07-25T10:00:00.000Z", dueLearningDay: null },
+    ])));
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 8,
+      plan: { dailyTarget: sameDay ? 5 : 2, startedOn: "2026-07-20" },
+      introducedWords: [learned[0].id],
+      progress,
+      learningDayCounter: 2,
+      activityLog: { [learnedOn]: { newWords: learned.map((word) => word.id), newCount: 3,
+        reviewWords: [], reviewCount: 0, target: sameDay ? 5 : 2,
+        baseCompleted: !sameDay, learningDays: [8] } },
+      studyWindows: [],
+      session: { date: today, activePlanDate: today, activeBatchType: "planned",
+        activeLearningDay: 2, baseLearningDay: 2, baseNewAdded: true,
+        queue: learned.slice(1).map((word) => ({ wordId: word.id, type: "new",
+          senseKeys: word.senses.map((sense) => `${word.id}:${sense.id}`) })),
+        currentIndex: 0, cardPhase: "hidden" },
+    }));
+  }, { storageKey: STORAGE_KEY, learned, sameDay });
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const restored = await waitForState(page, (candidate) => candidate.introducedWords.length === 3);
+  expect(restored.learningDayCounter).toBe(8);
+  expect(Object.values(restored.activityLog).some((activity) => activity.newCount === 3)).toBe(true);
+  expect(Object.values(restored.progress).every((value) => value.status === "mastered")).toBe(true);
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText(wordData[3].word);
+  const started = await waitForState(page, (candidate) => candidate.session.activeLearningDay === (sameDay ? 8 : 9));
+  expect(started.session.queue.filter((card) => card.type === "new")).toHaveLength(2);
+  expect(started.session.queue.some((card) => learned.some((word) => word.id === card.wordId))).toBe(false);
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText(wordData[3].word);
+});
+}
+
+test("an expired planned queue is rebuilt from today's plan instead of replayed", async ({ page }) => {
+  await page.addInitScript((storageKey) => {
+    class TestDate extends Date {
+      constructor(...args) {
+        if (args.length) {
+          super(...args);
+          return;
+        }
+        super("2026-07-27T12:00:00+08:00");
+      }
+
+      static now() {
+        return new TestDate().getTime();
+      }
+    }
+    window.Date = TestDate;
+    localStorage.setItem(storageKey, JSON.stringify({
+      dataVersion: 7,
+      view: "home",
+      plan: {
+        dailyTarget: 1,
+        startedOn: "2026-07-20",
+        createdOn: "2026-07-20",
+        updatedOn: "2026-07-27",
+      },
+      session: {
+        date: "2026-07-27",
+        activePlanDate: "2026-07-22",
+        activeBatchType: "planned",
+        baseNewAdded: true,
+        baseCompleted: false,
+        queue: [{
+          wordId: "act",
+          type: "new",
+          senseKeys: ["act:v-1"],
+          activeSenseKeys: ["act:v-1"],
+        }],
+        currentIndex: 0,
+        revealed: false,
+        cardPhase: "hidden",
+      },
+      introducedWords: [],
+      progress: {},
+      activityLog: {},
+      studyWindows: [{
+        id: "stale-round",
+        startedAt: "2026-07-27T10:00:00+08:00",
+        activityDate: "2026-07-27",
+        endedAt: null,
+      }],
+      learningDayCounter: 1,
+    }));
+  }, STORAGE_KEY);
+
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const before = await readState(page);
+  expect(before.session.activePlanDate).toBe("2026-07-27");
+  expect(before.session.queue).toHaveLength(0);
+  expect(before.studyWindows[0]).toMatchObject({
+    id: "stale-round",
+    endedReason: "stale-plan-recovery",
+  });
+
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  const started = await waitForState(page, (candidate) => {
+    return candidate.session.activeBatchType === "planned";
+  });
+  expect(started.session.activePlanDate).toBe("2026-07-27");
+  expect(started.session.activeBatchType).toBe("planned");
+});
+
 test("mastered senses collapse, expand on demand, and fully mastered words advance directly", async ({ page }) => {
   await page.addInitScript((storageKey) => {
     const NativeDate = Date;

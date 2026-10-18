@@ -52,6 +52,7 @@ if (
       "deploy",
       "dist",
       "--project-name=sense-vocab",
+      "--branch=main",
     ],
     { gate: "deploy-verified" },
   );
