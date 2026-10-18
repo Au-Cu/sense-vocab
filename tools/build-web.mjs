@@ -26,6 +26,7 @@ for (const file of [
   "styles.css",
   "ui-theme.js",
   "sync-state.js",
+  "dashboard-storage.js",
   "confusion-globe.js",
   "app.js",
   "account.js",

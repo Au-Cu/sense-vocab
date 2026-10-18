@@ -2,6 +2,36 @@ const { test, expect } = require("@playwright/test");
 
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
 
+test("dashboard history codecs preserve removals, legacy frames and exact timestamps", () => {
+  const codec = require("../dashboard-storage.js");
+  const source = {
+    "book:day1": { id: "book:day1", quality: "exact", extra: { future: true },
+      statuses: { "alpha:n-1": "review", "beta:v-1": "reinforce" },
+      enteredAt: { "alpha:n-1": "2026-09-01T12:34:56.789+08:00", "orphan:n-1": "legacy" } },
+    "book:day2": { id: "book:day2", statuses: { "beta:v-1": "mastered" }, enteredAt: {} },
+    "book:day3": { id: "book:day3", legacy: true },
+    "book:day4": { id: "book:day4", statuses: { "alpha:n-1": "review" },
+      enteredAt: { "alpha:n-1": "2026-10-17T13:00:00Z" } },
+  };
+  expect(codec.decodeTimeline(JSON.parse(JSON.stringify(codec.encodeTimeline("book", source))), "book"))
+    .toEqual(source);
+  expect(() => codec.decodeTimeline(codec.encodeTimeline("book", source), "different-book")).toThrow();
+  const sidecar = { bookId: "book", snapshotId: "book:day1", snapshot: source["book:day1"] };
+  expect(codec.decodeSidecar(JSON.parse(JSON.stringify(codec.encodeSidecar(sidecar))))).toEqual(sidecar);
+});
+
+test("a missing dashboard storage component cannot overwrite existing learning records", async ({ page }) => {
+  const key = "sense-vocab-mvp-kaoyan-plan-v1";
+  const original = JSON.stringify({ progress: { "act:v-1": { status: "mastered" } }, introducedWords: ["act"] });
+  await page.addInitScript(({ key, original }) => localStorage.setItem(key, original), { key, original });
+  await page.route("**/dashboard-storage.js*", route => route.abort());
+  await page.goto(APP_URL);
+  await expect(page.locator("#wordText")).toHaveText("存储组件未载入");
+  await expect(page.locator("html")).toHaveAttribute("data-app-ready", "false");
+  expect(await page.evaluate(key => localStorage.getItem(key), key)).toBe(original);
+  await expect(page.locator("#startStudyButton")).toBeDisabled();
+});
+
 test.use({
   launchOptions: {
     executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -1424,6 +1454,67 @@ test("data repair compacts legacy sidecars before retrying a full storage write"
   expect(after.damagedValue).toBe("unreadable legacy record");
   expect(after.unrelatedValue).toBe("leave untouched");
   expect(after.errors).toEqual([]);
+});
+
+test("large guest and account chart histories coexist without exhausting localStorage", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.addInitScript(() => Object.defineProperty(crypto, "randomUUID", { value: undefined }));
+  await openLargeRepairFixture(page, { senseCount: 4935, dayCount: 76 });
+  const before = await page.evaluate(async () => {
+    const app = window.SenseVocabApp;
+    const repair = await app.repairDerivedData();
+    const source = app.getState();
+    const expected = source.bookStates.kaoyan;
+    const persisted = app.activateAccount("history-coexistence", source);
+    const accountRepair = await app.repairDerivedData();
+    const characters = Object.keys(localStorage).reduce((total, key) => (
+      total + key.length + localStorage.getItem(key).length
+    ), 0);
+    return { persisted, guestRepair: repair.persisted, accountRepair: accountRepair.persisted,
+      progress: expected.progress, snapshots: expected.dashboardSnapshots,
+      characters, uncompressed: JSON.stringify(expected.dashboardSnapshots).length };
+  });
+  expect(before.guestRepair).toBe(true);
+  expect(before.persisted).toBe(true);
+  expect(before.accountRepair).toBe(true);
+  expect(before.uncompressed).toBeGreaterThan(5_000_000);
+  expect(before.characters).toBeLessThan(2_500_000);
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const restored = await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const guest = app.getGuestState().bookStates.kaoyan;
+    const account = app.getAccountState("history-coexistence").bookStates.kaoyan;
+    return { guest: { progress: guest.progress, snapshots: guest.dashboardSnapshots },
+      account: { progress: account.progress, snapshots: account.dashboardSnapshots } };
+  });
+  expect(restored.guest).toEqual({ progress: before.progress, snapshots: before.snapshots });
+  expect(restored.account).toEqual(restored.guest);
+});
+
+test("a failed root commit cannot expose an uncommitted historical timeline", async ({ page }) => {
+  await openLargeRepairFixture(page, { senseCount: 36, dayCount: 3 });
+  const result = await page.evaluate(async () => {
+    const app = window.SenseVocabApp;
+    await app.repairDerivedData();
+    const before = app.getState().dashboardSnapshots;
+    const next = app.getState();
+    const id = Object.keys(before)[0];
+    next.dashboardSnapshots[id].statuses["act:v-1"] = "mastered";
+    next.bookStates.kaoyan.dashboardSnapshots = next.dashboardSnapshots;
+    const key = app.getActiveStorageKey();
+    const setItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function failRootWrite(name, value) {
+      if (name === key) throw new DOMException("Root commit interrupted", "QuotaExceededError");
+      return setItem.call(this, name, value);
+    };
+    let persisted;
+    try { persisted = app.replaceActiveState(next, { notify: false, stampSync: false }); }
+    finally { Storage.prototype.setItem = setItem; }
+    return { persisted, before, restored: app.getGuestState().bookStates.kaoyan.dashboardSnapshots };
+  });
+  expect(result.persisted).toBe(false);
+  expect(result.restored).toEqual(result.before);
 });
 
 test("failed root commit preserves the previous historical snapshot sidecars", async ({ page }) => {

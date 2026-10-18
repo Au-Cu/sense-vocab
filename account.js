@@ -299,6 +299,7 @@
   let lastDataComparison = null;
   const volatileSyncMeta = new Map();
   const volatileGuestDecisions = new Map();
+  const dataButtonDisabledStates = new Map();
 
   function tutorialActive() {
     return typeof app.isTutorialActive === "function" && app.isTutorialActive();
@@ -571,6 +572,12 @@
   function clearCloudLoadCache() {
     cloudLoadCache = null;
     cloudBaselineState = null;
+    invalidateDataComparison();
+  }
+
+  function invalidateDataComparison() {
+    lastDataComparison = null;
+    dataComparison.hidden = true;
   }
 
   function rememberCloudBaseline(result) {
@@ -1014,8 +1021,7 @@
       dataLocalRecordPlan,
     );
 
-    const localDiffers = cloudStateSignature(localState) !==
-      cloudStateSignature(remoteState);
+    const localDiffers = cloudStateSignature(localState) !== cloudStateSignature(remoteState);
     const guestDiffers = app.hasLearningData(guestState) &&
       app.hasIndependentChanges(guestState, app.mergeStates(localState, remoteState));
     const statusDifferences = countStatusDifferences(localState, remoteState);
@@ -1047,6 +1053,8 @@
     resolveDataDifferenceButton.hidden = !localDiffers && !guestDiffers;
     dataComparison.hidden = false;
     lastDataComparison = {
+      userId: currentUser?.id,
+      storageKey: app.getActiveStorageKey(),
       remote: normalized,
       localState,
       guestState,
@@ -1064,6 +1072,16 @@
       useLocalStateButton,
     ].forEach((button) => {
       button.disabled = busy;
+    });
+    [syncNowButton, compareDataButton, repairDataButton, importDataButton,
+      recoverGuestDataButton, resolveDataDifferenceButton].forEach(button => {
+      if (busy) {
+        if (!dataButtonDisabledStates.has(button)) dataButtonDisabledStates.set(button, button.disabled);
+        button.disabled = true;
+      } else if (dataButtonDisabledStates.has(button)) {
+        button.disabled = dataButtonDisabledStates.get(button);
+        dataButtonDisabledStates.delete(button);
+      }
     });
   }
 
@@ -1991,6 +2009,15 @@
   }
 
   function cloudStateSignature(candidate) {
+    // A read or upload acknowledges the whole account, not just the open book.
+    return JSON.stringify(stateBookEntries(candidate)
+      .filter(([, scope]) => app.hasLearningData(scope) ||
+        (scope?.wordListSort ?? "mastery") !== "mastery")
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([bookId, scope]) => [bookId, cloudScopeSignature(scope)]));
+  }
+
+  function cloudScopeSignature(candidate) {
     const scope = stateActiveBook(candidate);
     const dateKey = (value) => String(value ?? "").match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? "";
     const progressEvidenceDate = (progress) => {
@@ -2564,8 +2591,11 @@
 
   async function compareLocalCloudData() {
     if (dataComparePromise) return dataComparePromise;
+    if (conflictBusy) return null;
+    let comparisonScope = null;
     dataComparePromise = (async () => {
-      compareDataButton.disabled = true;
+      setConflictBusy(true);
+      invalidateDataComparison();
       setDataMessage();
       setOperationProgress(null, "正在确认账户会话");
       try {
@@ -2576,22 +2606,24 @@
           throw new Error("请先登录账户，再对比本机与云端记录。");
         }
         setOperationProgress(null, "本机账户记录已读取，正在准备对比");
-        const localState = app.getState();
-        const guestState = app.getGuestState();
+        comparisonScope = captureReconciliationContext();
         setOperationProgress(null, "正在只读读取云端记录");
         const remote = await loadCloudState("云端记录读取", { force: true });
-        if (!currentUser) return null;
+        if (!reconciliationScopeIsCurrent(comparisonScope)) return null;
+        const localState = app.getState();
+        const guestState = app.getGuestState();
         setOperationProgress(null, "正在计算两端差异");
         renderDataComparisonSnapshot({ remote, localState, guestState });
         setOperationProgress(100, "数据对比完成", "success");
         setDataMessage("本次对比只读取记录，尚未执行合并或覆盖。");
         return lastDataComparison;
       } catch (error) {
+        if (comparisonScope && !reconciliationScopeIsCurrent(comparisonScope)) return null;
         setOperationProgress(null, "数据对比未完成", "error");
         setDataMessage(error?.message ?? "数据对比失败，本机记录未改动。", "error");
         return null;
       } finally {
-        compareDataButton.disabled = false;
+        setConflictBusy(false);
         dataComparePromise = null;
       }
     })();
@@ -2599,7 +2631,12 @@
   }
 
   function resolveDataDifference() {
-    if (!lastDataComparison || !currentUser) return;
+    if (!lastDataComparison || !currentUser || conflictBusy) return;
+    if (lastDataComparison.userId !== currentUser.id ||
+        lastDataComparison.storageKey !== app.getActiveStorageKey()) {
+      invalidateDataComparison();
+      return;
+    }
     const {
       remote,
       localState,
@@ -3636,6 +3673,7 @@
         throw new Error("合并结果尚未同时写入本机和云端，请重试。");
       }
       setMessage("两边记录已合并，云端与本机新增进度均已保留。");
+      setDataMessage("两边记录已合并，云端与本机新增进度均已保留。");
       setOperationProgress(100, "两端记录已合并并核验保存", "success");
       resumePendingFeedback();
     } catch (error) {
@@ -3728,6 +3766,8 @@
       setMessage(isGuestConflictSource(localSource)
         ? "已忽略历史游客记录；当前账号的本机与云端进度均已保留。"
         : "已只使用云端学习记录。");
+      setDataMessage(isGuestConflictSource(localSource)
+        ? "已忽略历史游客记录，账户进度已保留。" : "已只使用云端学习记录。");
       resumePendingFeedback();
     } catch (error) {
       setMessage(error?.message ?? "读取云端记录失败，请稍后重试。", "error");
@@ -3908,6 +3948,7 @@
       account: currentUser?.email ?? null,
     });
     setMessage("学习数据已导出。");
+    setDataMessage("学习数据已导出。");
   }
 
   function exportConflictLocalData() {
@@ -3922,24 +3963,37 @@
   }
 
   async function importData(file) {
-    if (!file) return;
+    if (!file || conflictBusy) return;
+    const scope = captureReconciliationContext();
+    setConflictBusy(true);
     try {
       const parsed = JSON.parse(await file.text());
+      if (scope.userId !== currentUser?.id || scope.storageKey !== app.getActiveStorageKey() ||
+          scope.learningRevision !== app.getLearningTransactionRevision?.() || tutorialActive()) {
+        throw new Error("账户或学习轮次已变化，未导入或覆盖任何记录。");
+      }
       const importedState = parsed?.format === "sense-vocab-backup"
         ? parsed.state
         : parsed;
-      if (!importedState || typeof importedState !== "object") {
+      if (!importedState || typeof importedState !== "object" || Array.isArray(importedState) ||
+          !["bookStates", "plan", "progress", "introducedWords", "activityLog", "session"]
+            .some(key => Object.prototype.hasOwnProperty.call(importedState, key))) {
         throw new Error("文件中没有有效的学习数据。");
       }
-      app.replaceActiveState(importedState);
+      if (app.replaceActiveState(importedState) === false) {
+        throw new Error("导入记录未能完整保存，本机原记录未改动。请先导出数据，不要清除浏览器数据。");
+      }
       setMessage(currentUser
         ? "数据已导入，正在同步到云端。"
         : "数据已导入当前游客记录。");
+      setDataMessage(currentUser ? "数据已导入，正在同步到云端。" : "数据已导入当前游客记录。");
       if (currentUser) await syncNow({ replace: true });
     } catch (error) {
       setMessage(error?.message ?? "导入失败。", "error");
+      setDataMessage(error?.message ?? "导入失败。", "error");
     } finally {
       importDataInput.value = "";
+      setConflictBusy(false);
     }
   }
 
@@ -4097,7 +4151,8 @@
   acceptLegalConsentButton.addEventListener("click", acceptLegalConsents);
   declineLegalConsentButton.addEventListener("click", declineLegalConsents);
   syncNowButton.addEventListener("click", async () => {
-    syncNowButton.disabled = true;
+    if (conflictBusy) return;
+    setConflictBusy(true);
     setOperationProgress(null, "正在准备同步");
     try {
       if (!currentUser) {
@@ -4113,7 +4168,7 @@
       // document twice for every manual sync.
       await syncNow({ verifyPersistence: true, refreshRemote: true });
     } finally {
-      syncNowButton.disabled = false;
+      setConflictBusy(false);
     }
   });
   logoutButton.addEventListener("click", logout);
@@ -4144,7 +4199,8 @@
   recoverGuestDataButton.addEventListener("click", openGuestRecovery);
   compareDataButton.addEventListener("click", compareLocalCloudData);
   repairDataButton.addEventListener("click", async () => {
-    repairDataButton.disabled = true;
+    if (conflictBusy) return;
+    setConflictBusy(true);
     setDataMessage();
     setOperationProgress(0, "正在重建热力图与统计数据");
     try {
@@ -4174,7 +4230,7 @@
       setOperationProgress(null, "数据修复未完成", "error");
       setDataMessage(error?.message ?? "数据修复失败，请稍后重试。", "error");
     } finally {
-      repairDataButton.disabled = false;
+      setConflictBusy(false);
     }
   });
   closeDataComparisonButton.addEventListener("click", () => {
@@ -4234,6 +4290,7 @@
     // may bypass the dirty marker. `stampSync:false` alone is also used by
     // callers that replace local data and still need a cloud verification pass.
     if (event.detail?.syncRelevant === false) return;
+    invalidateDataComparison();
     saveSyncMeta(currentUser.id, { dirty: true });
     setSyncStatus(
       event.detail?.persisted === false
@@ -4243,6 +4300,8 @@
     );
     scheduleSync();
   });
+
+  window.addEventListener("sensevocab:scope-changed", invalidateDataComparison);
 
   window.addEventListener("sensevocab:storage-error", (event) => {
     if (event.detail?.backupFailed) {

@@ -3,6 +3,7 @@ const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 const ACCOUNT_STORAGE_PREFIX = `${STORAGE_KEY}:account:`;
 const LOCAL_STORAGE_COMPRESSION_PREFIX = "svlz1:";
 const DASHBOARD_SNAPSHOT_STORAGE_SEGMENT = ":dashboard-snapshot-v1:";
+const DASHBOARD_TIMELINE_STORAGE_SEGMENT = ":dashboard-timeline-v1:";
 const LEARNING_JOURNAL_STORAGE_SEGMENT = ":learning-journal-v1:";
 const LZ_MIN_MATCH = 4;
 const LZ_MAX_MATCH = 65538;
@@ -546,6 +547,8 @@ let learningJournalFallbackStore = null;
 let learningJournalFallbackWrites = Promise.resolve();
 let learningJournalFallbackError = null;
 let dirtyDashboardSnapshots = new Map();
+const dashboardTimelineCache = new Map();
+const dashboardTimelineReferenceCache = new Map();
 let studyHierarchyOrigin = null;
 let wordListHierarchyOrigin = null;
 let membershipAccess = {
@@ -1337,6 +1340,36 @@ function dashboardSnapshotStorageKey(storageKey, bookId, snapshotId) {
   return `${dashboardSnapshotStoragePrefix(storageKey)}${encodeURIComponent(bookId)}:${encodeURIComponent(snapshotId)}`;
 }
 
+function dashboardTimelineStorageKey(storageKey, bookId, token = null) {
+  return `${storageKey}${DASHBOARD_TIMELINE_STORAGE_SEGMENT}${encodeURIComponent(bookId)}${token ? `:${token}` : ""}`;
+}
+
+function readDashboardTimelineReferences(storageKey) {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    const cached = dashboardTimelineReferenceCache.get(storageKey);
+    if (cached?.raw === raw) return cached.references;
+    const refs = raw ? decodeStorageValue(raw, { retainTimelineRefs: true })?.__senseVocabTimelineRefs : null;
+    const references = refs && typeof refs === "object" && !Array.isArray(refs) ? refs : {};
+    dashboardTimelineReferenceCache.set(storageKey, { raw, references });
+    return references;
+  } catch {
+    return {};
+  }
+}
+
+function readDashboardTimeline(storageKey, bookId) {
+  const token = readDashboardTimelineReferences(storageKey)[bookId];
+  const key = dashboardTimelineStorageKey(storageKey, bookId, typeof token === "string" ? token : null);
+  const raw = localStorage.getItem(key);
+  if (!raw) return null;
+  const cached = dashboardTimelineCache.get(key);
+  if (cached?.raw === raw) return cached.snapshots;
+  const snapshots = window.SenseVocabDashboardStorage.decodeTimeline(decodeStorageValue(raw), bookId);
+  dashboardTimelineCache.set(key, { raw, snapshots });
+  return snapshots;
+}
+
 function markDashboardSnapshotDirty(bookId, snapshotId) {
   if (!bookId || !snapshotId) return;
   const ids = dirtyDashboardSnapshots.get(bookId) ?? new Set();
@@ -1358,7 +1391,7 @@ function dashboardSnapshotChanges(candidate, includeAll = false) {
     const ids = includeAll
       ? Object.keys(bookState?.dashboardSnapshots ?? {})
       : [...(dirtyDashboardSnapshots.get(bookId) ?? [])];
-    if (ids.length) changes.set(bookId, new Set(ids));
+    if (ids.length || includeAll) changes.set(bookId, new Set(ids));
   });
   return changes;
 }
@@ -1744,7 +1777,7 @@ function cloneStateForPersistence(candidate, changes = new Map()) {
 }
 
 function serializeDashboardSnapshotSidecar(bookId, snapshotId, snapshot) {
-  const json = JSON.stringify({ bookId, snapshotId, snapshot });
+  const json = JSON.stringify(window.SenseVocabDashboardStorage.encodeSidecar({ bookId, snapshotId, snapshot }));
   // Each date is small, but months of uncompressed sidecars share one quota.
   if (json.length < 1024) return json;
   const packed = LOCAL_STORAGE_COMPRESSION_PREFIX + compressStorageText(json);
@@ -1765,7 +1798,7 @@ function compactDashboardSnapshotSidecars() {
   keys.forEach(([key, storageKey]) => {
     try {
       const raw = localStorage.getItem(key);
-      if (!raw || raw.startsWith(LOCAL_STORAGE_COMPRESSION_PREFIX)) return;
+      if (!raw) return;
       const value = decodeStorageValue(raw);
       if (typeof value?.bookId !== "string" || typeof value?.snapshotId !== "string" ||
         !value.snapshot || typeof value.snapshot !== "object" || Array.isArray(value.snapshot) ||
@@ -1779,6 +1812,8 @@ function compactDashboardSnapshotSidecars() {
 }
 
 function readDashboardSnapshotSidecar(storageKey, bookId, snapshotId) {
+  const timeline = readDashboardTimeline(storageKey, bookId);
+  if (timeline) return timeline[snapshotId] ? cloneSerializable(timeline[snapshotId]) : null;
   const raw = localStorage.getItem(
     dashboardSnapshotStorageKey(storageKey, bookId, snapshotId),
   );
@@ -1795,6 +1830,17 @@ function readDashboardSnapshotSidecar(storageKey, bookId, snapshotId) {
 }
 
 function hydrateDashboardSnapshotSidecars(storageKey, candidate) {
+  const bundledBooks = new Set();
+  Object.entries(candidate?.bookStates ?? {}).forEach(([bookId, bookState]) => {
+    try {
+      const timeline = readDashboardTimeline(storageKey, bookId);
+      if (!timeline) return;
+      bookState.dashboardSnapshots = cloneSerializable(timeline);
+      bundledBooks.add(bookId);
+    } catch {
+      // Legacy copies remain usable if one bundled record is unreadable.
+    }
+  });
   const prefix = dashboardSnapshotStoragePrefix(storageKey);
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
@@ -1808,6 +1854,7 @@ function hydrateDashboardSnapshotSidecars(storageKey, candidate) {
       const snapshot = decoded?.snapshot;
       const bookState = candidate?.bookStates?.[bookId];
       if (!bookState || !snapshotId || !snapshot || typeof snapshot !== "object") continue;
+      if (bundledBooks.has(bookId)) continue;
       bookState.dashboardSnapshots[snapshotId] = snapshot;
     } catch {
       // Ignore one damaged sidecar without discarding the remaining history.
@@ -1820,32 +1867,56 @@ function persistDashboardSnapshotChanges(
   storageKey,
   candidate,
   changes,
-  { prune = false } = {},
 ) {
   let compacted = false;
+  const references = { ...readDashboardTimelineReferences(storageKey) };
+  const timelinePrefix = `${storageKey}${DASHBOARD_TIMELINE_STORAGE_SEGMENT}`;
+  const committedKeys = new Set(Object.entries(references).map(([bookId, token]) => (
+    dashboardTimelineStorageKey(storageKey, bookId, token)
+  )));
+  const orphans = [];
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(timelinePrefix) && key.slice(timelinePrefix.length).includes(":") &&
+        !committedKeys.has(key)) orphans.push(key);
+  }
+  orphans.forEach(key => { localStorage.removeItem(key); dashboardTimelineCache.delete(key); });
   changes.forEach((snapshotIds, bookId) => {
     const snapshots = candidate?.bookStates?.[bookId]?.dashboardSnapshots ?? {};
-    snapshotIds.forEach((snapshotId) => {
-      const key = dashboardSnapshotStorageKey(storageKey, bookId, snapshotId);
-      const snapshot = snapshots[snapshotId];
-      if (!snapshot) return;
-      const serialized = serializeDashboardSnapshotSidecar(bookId, snapshotId, snapshot);
-      try {
-        localStorage.setItem(key, serialized);
-      } catch (error) {
-        if (!isStorageQuotaError(error) || compacted) throw error;
-        compacted = true;
-        compactDashboardSnapshotSidecars();
-        localStorage.setItem(key, serialized);
-      }
-    });
+    const encoded = window.SenseVocabDashboardStorage.encodeTimeline(bookId, snapshots);
+    const json = JSON.stringify(encoded);
+    const packed = LOCAL_STORAGE_COMPRESSION_PREFIX + compressStorageText(json);
+    const serialized = packed.length < json.length ? packed : json;
+    const previousKey = dashboardTimelineStorageKey(storageKey, bookId, references[bookId]);
+    if (localStorage.getItem(previousKey) === serialized) return;
+    const token = window.crypto?.randomUUID?.() ??
+      `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+    const key = dashboardTimelineStorageKey(storageKey, bookId, token);
+    try {
+      localStorage.setItem(key, serialized);
+    } catch (error) {
+      if (!isStorageQuotaError(error) || compacted) throw error;
+      compacted = true;
+      compactDashboardSnapshotSidecars();
+      localStorage.setItem(key, serialized);
+    }
+    references[bookId] = token;
+    dashboardTimelineCache.delete(key);
   });
-
-  if (prune) pruneDashboardSnapshotSidecars(storageKey, candidate, changes, { prune });
+  return references;
 }
 
 function pruneDashboardSnapshotSidecars(storageKey, candidate, changes, { prune = false } = {}) {
   const staleKeys = new Set();
+  const references = readDashboardTimelineReferences(storageKey);
+  const bundledBooks = new Set(Object.keys(references).map(bookId => encodeURIComponent(bookId)));
+  const prefix = dashboardSnapshotStoragePrefix(storageKey);
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (!key?.startsWith(prefix)) continue;
+    const scope = key.slice(prefix.length).split(":", 1)[0];
+    if (bundledBooks.has(scope)) staleKeys.add(key);
+  }
   changes.forEach((snapshotIds, bookId) => {
     snapshotIds.forEach((snapshotId) => {
       if (!candidate?.bookStates?.[bookId]?.dashboardSnapshots?.[snapshotId]) {
@@ -1866,17 +1937,26 @@ function pruneDashboardSnapshotSidecars(storageKey, candidate, changes, { prune 
       if (key?.startsWith(prefix) && !retainedKeys.has(key)) staleKeys.add(key);
     }
   }
-  staleKeys.forEach((key) => localStorage.removeItem(key));
+  const timelinePrefix = `${storageKey}${DASHBOARD_TIMELINE_STORAGE_SEGMENT}`;
+  const retainedTimelines = new Set(Object.entries(references).map(([bookId, token]) => (
+    dashboardTimelineStorageKey(storageKey, bookId, token)
+  )));
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index);
+    if (key?.startsWith(timelinePrefix) && !retainedTimelines.has(key)) staleKeys.add(key);
+  }
+  staleKeys.forEach((key) => { localStorage.removeItem(key); dashboardTimelineCache.delete(key); });
 }
 
 function removeDashboardSnapshotSidecars(storageKey) {
   const prefix = dashboardSnapshotStoragePrefix(storageKey);
+  const timelinePrefix = `${storageKey}${DASHBOARD_TIMELINE_STORAGE_SEGMENT}`;
   const keys = [];
   for (let index = 0; index < localStorage.length; index += 1) {
     const key = localStorage.key(index);
-    if (key?.startsWith(prefix)) keys.push(key);
+    if (key?.startsWith(prefix) || key?.startsWith(timelinePrefix)) keys.push(key);
   }
-  keys.forEach((key) => localStorage.removeItem(key));
+  keys.forEach((key) => { localStorage.removeItem(key); dashboardTimelineCache.delete(key); });
 }
 
 function hasEmbeddedDashboardSnapshots(candidate) {
@@ -1885,11 +1965,13 @@ function hasEmbeddedDashboardSnapshots(candidate) {
   });
 }
 
-function migrateStoredStateToCompactFormat(storageKey, normalized, raw) {
+function migrateStoredStateToCompactFormat(storageKey, normalized, raw, references = null) {
   if (!isRootStateStorageKey(storageKey)) return;
   if (!raw) return;
   try {
-    const compact = serializeLocalState(normalized);
+    const compact = serializeLocalState(normalized, {
+      timelineRefs: references ?? readDashboardTimelineReferences(storageKey),
+    });
     if (compact !== raw && (
       !raw.startsWith(LOCAL_STORAGE_COMPRESSION_PREFIX) ||
       compact.length < raw.length
@@ -1928,20 +2010,20 @@ function compactKnownStateCaches() {
     const { raw, parsed } = readStoredState(key);
     if (!parsed) return;
     const normalized = normalizeRootState(parsed);
+    let references = null;
     if (hasEmbeddedDashboardSnapshots(normalized)) {
       try {
-        persistDashboardSnapshotChanges(
+        references = persistDashboardSnapshotChanges(
           key,
           normalized,
           dashboardSnapshotChanges(normalized, true),
-          { prune: true },
         );
       } catch {
         // Never remove the only copy of another account's historical charts.
         return;
       }
     }
-    migrateStoredStateToCompactFormat(key, normalized, raw);
+    migrateStoredStateToCompactFormat(key, normalized, raw, references);
   });
 }
 
@@ -1955,7 +2037,9 @@ function loadState(storageKey = activeStorageKey) {
   if (embeddedSnapshots) {
     const allSnapshots = dashboardSnapshotChanges(normalized, true);
     try {
-      persistDashboardSnapshotChanges(storageKey, normalized, allSnapshots, { prune: true });
+      const references = persistDashboardSnapshotChanges(storageKey, normalized, allSnapshots);
+      localStorage.setItem(storageKey, serializeLocalState(normalized, { timelineRefs: references }));
+      pruneDashboardSnapshotSidecars(storageKey, normalized, allSnapshots, { prune: true });
     } catch {
       // Keep the legacy embedded copy if the one-time sidecar migration cannot finish.
       return normalized;
@@ -2094,14 +2178,14 @@ function saveState(options = {}) {
       });
       state = rootState.bookStates[activeBookId()];
     }
-    const serialized = serializeLocalState(nextRootState);
-    attemptedCharacters = serialized.length;
     writePhase = "dashboard-snapshots";
-    persistDashboardSnapshotChanges(
+    const references = persistDashboardSnapshotChanges(
       activeStorageKey,
       rootState,
       snapshotChanges,
     );
+    const serialized = serializeLocalState(nextRootState, { timelineRefs: references });
+    attemptedCharacters = serialized.length;
     writePhase = "learning-state";
     writeStoredState(activeStorageKey, serialized);
     // Do not delete old history until the new root has committed successfully.
@@ -3300,16 +3384,21 @@ function decodeLocalStorageState(value) {
   return decodeScope(decoded, activeId);
 }
 
-function decodeStorageValue(raw) {
+function decodeStorageValue(raw, { retainTimelineRefs = false } = {}) {
   if (typeof raw !== "string" || !raw) return null;
   const json = raw.startsWith(LOCAL_STORAGE_COMPRESSION_PREFIX)
     ? decompressStorageText(raw.slice(LOCAL_STORAGE_COMPRESSION_PREFIX.length))
     : raw;
-  return decodeLocalStorageState(JSON.parse(json));
+  const decoded = window.SenseVocabDashboardStorage.decodeSidecar(decodeLocalStorageState(JSON.parse(json)));
+  if (!retainTimelineRefs && decoded && typeof decoded === "object") {
+    delete decoded.__senseVocabTimelineRefs;
+  }
+  return decoded;
 }
 
-function serializeLocalState(candidate) {
+function serializeLocalState(candidate, { timelineRefs = null } = {}) {
   const encoded = encodeLocalStorageState(candidate);
+  if (timelineRefs && Object.keys(timelineRefs).length) encoded.__senseVocabTimelineRefs = timelineRefs;
   const json = JSON.stringify(encoded);
   if (json.length < 256000) return json;
   // The existing reader (including older deployed clients) supports svlz1.
@@ -10833,6 +10922,16 @@ function blockNonTutorialClick(event) {
 }
 
 async function initializeApp() {
+  if (!window.SenseVocabDashboardStorage) {
+    // A partial asset load must not turn an unreadable account into an empty save.
+    document.documentElement.dataset.appReady = "false";
+    wordText.textContent = "存储组件未载入";
+    setBootProgress(null, "存储组件未载入，请刷新页面；本机记录未改动");
+    document.querySelectorAll("button, input, select, textarea").forEach(element => {
+      element.disabled = true;
+    });
+    return;
+  }
   const learningJournalFallbackReady = loadLearningJournalFallbacks();
   setBootProgress(0, "正在准备本机学习空间");
   wordText.textContent = "加载中";

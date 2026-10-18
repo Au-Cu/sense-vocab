@@ -8,6 +8,19 @@ import {
   rootDir,
 } from "./op-verification-lib.mjs";
 
+test("Windows verification power assertion preserves command output and failure status", {
+  skip: process.platform !== "win32",
+}, () => {
+  const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/run-awake-command.ps1", process.execPath];
+  const output = execFileSync("powershell.exe", [...args, "-p", "1+2"], {
+    cwd: rootDir, encoding: "utf8", windowsHide: true,
+  });
+  assert.equal(output.trim(), "3");
+  assert.throws(() => execFileSync("powershell.exe", [...args, "-e", "process.exit(7)"], {
+    cwd: rootDir, encoding: "utf8", windowsHide: true,
+  }), error => error.status === 7);
+});
+
 test("package version changes invalidate verification inputs", () => {
   const left = normalizeManifestContent(
     "package.json",

@@ -198,7 +198,11 @@ if (requireFreeze && candidate?.inputHash !== initialSource.hash) {
             "test",
             "--reporter=dot,./tools/compact-playwright-reporter.cjs",
           ];
-          const tests = await runCaptured(process.execPath, testCommand, {
+          const testInvocation = process.platform === "win32"
+            ? { command: "powershell.exe", args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+              path.join(rootDir, "tools", "run-awake-command.ps1"), process.execPath, ...testCommand] }
+            : { command: process.execPath, args: testCommand };
+          const tests = await runCaptured(testInvocation.command, testInvocation.args, {
             gate: "release-test",
             env: { SENSE_VOCAB_TEST_SUMMARY_PATH: summaryPath },
           });
@@ -216,7 +220,7 @@ if (requireFreeze && candidate?.inputHash !== initialSource.hash) {
             git: gitEvidence(),
             commands: [
               ["npm", "run", "build:web"],
-              [process.execPath, ...testCommand],
+              [testInvocation.command, ...testInvocation.args],
             ],
             startedAt,
             finishedAt: new Date().toISOString(),

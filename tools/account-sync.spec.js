@@ -902,6 +902,76 @@ test("cloud comparison includes the top-level active book from compact transport
   await expect(page.locator("#resolveDataDifferenceButton")).toBeHidden();
 });
 
+test("data comparison detects progress differences in an inactive book", async ({ page }) => {
+  await installFakeCloud(page, { found: true, revision: 10, state: makeState(3) }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.waitForFunction(() => window.__fakeCloud.activeLoadStateCalls === 0);
+  await openData(page);
+  await page.evaluate(() => {
+    const remote = window.SenseVocabApp.getState();
+    remote.bookStates.ielts.progress["act:v-1"] = { status: "mastered" };
+    remote.bookStates.ielts.introducedWords = ["act"];
+    window.__fakeCloud.remote.state = remote;
+  });
+  await page.locator("#compareDataButton").click();
+  await expect(page.locator("#dataComparison")).toBeVisible();
+  await expect(page.locator("#resolveDataDifferenceButton")).toBeVisible();
+  await expect(page.locator("#dataComparisonStatus")).not.toContainText("记录一致");
+});
+
+test("manual sync applies cloud updates in an inactive book", async ({ page }) => {
+  await installFakeCloud(page, { found: true, revision: 10, state: makeState(3) }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.waitForFunction(() => window.__fakeCloud.activeLoadStateCalls === 0);
+  await openData(page);
+  await page.evaluate(() => {
+    const remote = window.SenseVocabApp.getState();
+    remote.bookStates.ielts.progress["act:v-1"] = { status: "mastered" };
+    remote.bookStates.ielts.introducedWords = ["act"];
+    window.__fakeCloud.remote.state = remote;
+    window.__fakeCloud.remote.revision += 1;
+  });
+  await page.locator("#syncNowButton").click();
+  await expect(page.locator("#syncNowButton")).toBeEnabled();
+  expect(await page.evaluate(() => window.SenseVocabApp.getState().bookStates.ielts.progress["act:v-1"]?.status))
+    .toBe("mastered");
+});
+
+test("data comparison is invalidated when the account signs out", async ({ page }) => {
+  await installFakeCloud(page, { found: true, revision: 10, state: makeState(3) }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await openData(page);
+  await page.locator("#compareDataButton").click();
+  await expect(page.locator("#dataComparison")).toBeVisible();
+  await page.evaluate(() => {
+    window.__fakeCloud.session = null;
+    window.__fakeCloud.authCallback("SIGNED_OUT", null);
+  });
+  await expect(page.locator("#dataComparison")).toBeHidden();
+  await expect(page.locator("#dataAccountState")).toHaveText("游客");
+});
+
+test("invalid data imports report the error on the visible data page", async ({ page }) => {
+  await installFakeCloud(page);
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await openData(page);
+  await page.locator("#importDataInput").setInputFiles({ name: "invalid.json", mimeType: "application/json",
+    buffer: Buffer.from("{") });
+  await expect(page.locator("#dataMessage")).toHaveClass(/is-error/);
+  await expect(page.locator("#dataMessage")).not.toHaveText("");
+  await expect(page.locator("#dataPanel")).toBeVisible();
+});
+
 test("large learning history remains durable under a local storage quota", async ({ page }) => {
   const keys = require("../data/vocabulary-bundle.json").books.find((book) => book.id === "kaoyan")
     .entries.flatMap((entry) => entry.senseIds.map((id) => `${entry.wordId}:${id}`)).slice(0, 4000);
