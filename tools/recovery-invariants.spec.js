@@ -92,6 +92,7 @@ test(`a recovered ${scenario} preserves today's recorded quota and learning day`
   await page.goto(APP_URL);
   await page.waitForFunction(() => document.documentElement.dataset.accountReady === "true");
   await page.locator("#startStudyButton").click();
+  await expect(page.locator("#studyPanel")).toBeVisible({ timeout: 20_000 });
   const result = await page.evaluate(() => {
     const state = window.SenseVocabApp.getState();
     return { newCards: state.session.queue.filter((card) => card.type === "new").length,
@@ -129,6 +130,7 @@ test(`a missing completed queue ${pendingReview ? "retains due review" : "offers
   await page.waitForFunction(() => document.documentElement.dataset.accountReady === "true");
   expect(await page.evaluate(() => window.SenseVocabApp.getState().session.baseCompleted)).toBe(!pendingReview);
   await page.locator("#startStudyButton").click();
+  await expect(page.locator("#studyPanel")).toBeVisible({ timeout: 20_000 });
   const session = await page.evaluate(() => window.SenseVocabApp.getState().session);
   expect(session.activeLearningDay).toBe(8);
   expect(session.activeBatchType).toBe(pendingReview ? "planned" : "extra");
