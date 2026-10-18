@@ -2856,6 +2856,13 @@ function reconcileLearningPosition(bookState, bookWords) {
   return changed;
 }
 
+function normalizeQueueIndex(value, length) {
+  const index = Number(value);
+  return Number.isFinite(index)
+    ? Math.min(length, Math.max(0, Math.floor(index)))
+    : 0;
+}
+
 function sanitizeState() {
   if (state.plan) {
     const advancedDays = Number(state.plan.advancedDays);
@@ -2920,18 +2927,21 @@ function sanitizeState() {
     }
   });
 
-  if (state.session?.queue) {
+  if (state.session) {
     if (!["hidden", "select", "examples"].includes(state.session.cardPhase)) {
       state.session.cardPhase = state.session.revealed ? "select" : "hidden";
     }
 
-    state.session.queue = state.session.queue
-      .filter((card) => wordById.has(card.wordId) && Array.isArray(card.senseKeys))
-      .map((card) => {
+    const originalQueue = Array.isArray(state.session.queue) ? state.session.queue : [];
+    const originalIndex = state.session.currentIndex;
+    const retainedIndexes = [];
+    state.session.queue = originalQueue
+      .flatMap((card, index) => {
+        if (!card || !wordById.has(card.wordId) || !Array.isArray(card.senseKeys)) return [];
         const activeSenseKeys = Array.isArray(card.activeSenseKeys)
           ? card.activeSenseKeys
           : card.senseKeys;
-        return refreshCardDisplayKeys({
+        const normalized = refreshCardDisplayKeys({
           ...card,
           type: card.type === "new-review" ? "reinforcement" : card.type,
           activeSenseKeys: sortSenseKeysByImportance(activeSenseKeys),
@@ -2946,12 +2956,22 @@ function sanitizeState() {
             ? card.expandedMasteredKeys.filter(isKnownSenseKey)
             : [],
         });
-      })
-      .filter((card) => card.senseKeys.length > 0);
-    state.session.currentIndex = Math.min(
-      state.session.currentIndex ?? 0,
-      state.session.queue.length,
-    );
+        if (!normalized.senseKeys.length) return [];
+        retainedIndexes.push(index);
+        return [normalized];
+      });
+    // Positions refer to the original queue, including cards removed above.
+    // Count the retained prefix so a removed card cannot skip unfinished work.
+    const remapIndex = (value) => {
+      const boundary = normalizeQueueIndex(value, originalQueue.length);
+      return retainedIndexes.filter((index) => index < boundary).length;
+    };
+    state.session.currentIndex = remapIndex(originalIndex);
+    if (state.session.historyView && typeof state.session.historyView === "object") {
+      state.session.historyView.originIndex = remapIndex(
+        state.session.historyView.originIndex ?? originalIndex,
+      );
+    }
     if (state.session.snapshotTimingVersion !== 2) {
       const activeIndex = state.session.historyView?.originIndex ??
         state.session.currentIndex;
@@ -3837,6 +3857,18 @@ function currentPlanDate(dayOffset = 0) {
   return addDays(currentDate(), dayOffset);
 }
 
+function remainingPlannedNewCount(bookState = state, date = currentDate()) {
+  const activity = bookState.activityLog?.[date];
+  const introduced = new Set(bookState.introducedWords ?? []);
+  const pendingRecorded = Array.isArray(activity?.newWords)
+    ? new Set(activity.newWords.filter((wordId) => !introduced.has(wordId))).size
+    : 0;
+  // Reconstructed activity may include an encountered but unfinished word.
+  // Keep legacy aggregate counts while reserving a slot for unfinished words.
+  const completed = Math.max(0, (Number(activity?.newCount) || 0) - pendingRecorded);
+  return Math.max(0, (Number(bookState.plan?.dailyTarget) || 0) - completed);
+}
+
 function ensureTodaySession() {
   const date = currentDate();
   let openWindow = activeStudyWindow();
@@ -3848,7 +3880,7 @@ function ensureTodaySession() {
     state.session.activePlanDate < date;
   if (expiredPlanDate) {
     // A current-day session cannot legitimately point at an older planned
-    // date. Close a leftover window before dropping that queue; otherwise the
+    // date. Close a leftover window before replacing that queue; otherwise the
     // window itself would make the stale session look resumable forever.
     if (openWindow) {
       finishStudyWindow("stale-plan-recovery");
@@ -3863,15 +3895,30 @@ function ensureTodaySession() {
     state.session.date !== date;
 
   if (!state.session || (state.session.date !== date && !keepOpenCrossDaySession)) {
+    const activity = state.activityLog?.[date];
+    const hasStartedToday = (Number(activity?.newCount) || 0) +
+      (Number(activity?.reviewCount) || 0) > 0 ||
+      state.studyWindows.some((window) => window.activityDate === date);
+    const recordedDays = (activity?.learningDays ?? []).filter((day) => Number.isInteger(day) && day > 0);
+    const restoredDay = hasStartedToday
+      ? Math.max(1, Number(state.learningDayCounter) || 0, ...recordedDays)
+      : null;
+    const hasPendingReview = restoredDay !== null && Object.values(state.progress).some((progress) => (
+      [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].includes(progress?.status) &&
+      (!Number.isFinite(progress.dueLearningDay) || progress.dueLearningDay <= restoredDay)
+    ));
+    const completed = hasStartedToday && !hasPendingReview &&
+      (activity?.baseCompleted === true || remainingPlannedNewCount(state, date) === 0);
+    if (restoredDay !== null) state.learningDayCounter = Math.max(state.learningDayCounter, restoredDay);
     state.session = {
       date,
       queue: [],
       currentIndex: 0,
       revealed: false,
       cardPhase: "hidden",
-      baseNewAdded: false,
-      baseCompleted: false,
-      activeBatchType: null,
+      baseNewAdded: completed,
+      baseCompleted: completed,
+      activeBatchType: completed ? "planned" : null,
       activePlanDate: currentPlanDate(),
       extraBatches: 0,
       advanceBatches: 0,
@@ -3879,8 +3926,8 @@ function ensureTodaySession() {
       reinforcementAdded: false,
       reinforcedKeys: [],
       reviewPromotedKeys: [],
-      activeLearningDay: null,
-      baseLearningDay: null,
+      activeLearningDay: restoredDay,
+      baseLearningDay: restoredDay,
       historyView: null,
       snapshotTimingVersion: 2,
     };
@@ -3890,9 +3937,8 @@ function ensureTodaySession() {
     state.session.cardPhase = state.session.revealed ? "select" : "hidden";
   }
   state.session.queue = Array.isArray(state.session.queue) ? state.session.queue : [];
-  state.session.currentIndex = Math.min(
-    Math.max(0, state.session.currentIndex ?? 0),
-    state.session.queue.length,
+  state.session.currentIndex = normalizeQueueIndex(
+    state.session.currentIndex, state.session.queue.length,
   );
   state.session.reinforcedKeys = Array.isArray(state.session.reinforcedKeys)
     ? state.session.reinforcedKeys.filter(isKnownSenseKey)
@@ -4378,7 +4424,7 @@ function todayNewWordCount() {
   }
 
   if (!session.baseNewAdded && !session.baseCompleted) {
-    return Math.min(state.plan.dailyTarget, availableNewWordCount());
+    return Math.min(remainingPlannedNewCount(), availableNewWordCount());
   }
 
   return 0;
@@ -5221,10 +5267,7 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
     new Set(bookWords.map((word) => String(word.id))),
     targetForBookDate(bookState, today),
   );
-  const remainingNew = Math.max(
-    0,
-    (Number(bookState.plan?.dailyTarget) || 0) - (Number(todayActivity.newCount) || 0),
-  );
+  const remainingNew = remainingPlannedNewCount(bookState, today);
   const newCandidates = [
     ...bookWords.filter((word) => {
       return introduced.has(String(word.id)) &&
@@ -5264,7 +5307,7 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
   session.historyView = null;
   session.reinforcementAdded = false;
   session.baseCompleted = session.queue.length === 0 &&
-    (Number(todayActivity.newCount) || 0) >= (Number(todayActivity.target) || 0);
+    (todayActivity.baseCompleted === true || remainingNew === 0);
   if (session.baseCompleted) todayActivity.baseCompleted = true;
   return stableStateStringify(session) !== before;
 }
@@ -8186,7 +8229,7 @@ async function startStudy(event) {
       session.activePlanDate = currentPlanDate();
       session.queue = buildStudyQueue({
         includeReviews: true,
-        newLimit: state.plan.dailyTarget,
+        newLimit: remainingPlannedNewCount(),
         newType: "new",
         reviewLearningDay: learningDay,
       });
@@ -11099,13 +11142,15 @@ document.addEventListener("visibilitychange", () => {
   }
 });
 window.addEventListener("sensevocab:membership", (event) => {
-  membershipAccess = {
+  const next = {
     loggedIn: Boolean(event.detail?.loggedIn),
     active: event.detail?.active !== false,
     pending: Boolean(event.detail?.pending),
     expiresAt: event.detail?.expiresAt ?? null,
   };
-  if (state) render();
+  const changed = Object.entries(next).some(([key, value]) => membershipAccess[key] !== value);
+  membershipAccess = next;
+  if (state && changed) render();
 });
 
 initializeApp();

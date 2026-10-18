@@ -95,6 +95,9 @@ async function installFakeCloud(page, remote = null, options = {}) {
         inviteCode: "A1B2C3D4E5F6",
         inviteUsedAt: null,
       },
+      holdProfileLoads: false,
+      heldProfileLoads: [],
+      loadAccountProfileCalls: 0,
       notifications: {
         authenticated: true,
         unreadCount: 1,
@@ -196,7 +199,14 @@ async function installFakeCloud(page, remote = null, options = {}) {
         };
       },
       async loadAccountProfile() {
-        return { ...window.__fakeCloud.profile };
+        window.__fakeCloud.loadAccountProfileCalls += 1;
+        const profile = { ...window.__fakeCloud.profile };
+        if (window.__fakeCloud.holdProfileLoads) {
+          await new Promise((resolve, reject) => {
+            window.__fakeCloud.heldProfileLoads.push({ resolve, reject });
+          });
+        }
+        return profile;
       },
       async loadNotifications() {
         return JSON.parse(JSON.stringify(window.__fakeCloud.notifications));
@@ -1582,6 +1592,81 @@ test("announcements show only title and date until explicitly expanded", async (
 
   await announcement.locator(".notification-expand-button").click();
   await expect(announcement.locator(".notification-item-content")).toBeHidden();
+});
+
+test("background profile refreshes preserve the active card and share one pending request", async ({ page }) => {
+  await installFakeCloud(page, { found: true, revision: 10, state: makeState(2) }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await expect(page.locator("#accountInviteCode")).toHaveText("A1B2C3D4E5F6");
+  await page.locator("#startStudyButton").click();
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#senseArea")).toBeVisible();
+  const result = await page.evaluate(() => {
+    const button = document.querySelector("#studyPanel #senseList .sense-item");
+    window.__profileSenseButton = button;
+    window.__fakeCloud.holdProfileLoads = true;
+    const before = window.__fakeCloud.loadAccountProfileCalls;
+    window.dispatchEvent(new Event("focus"));
+    window.dispatchEvent(new Event("focus"));
+    return { retained: button.isConnected, calls: window.__fakeCloud.loadAccountProfileCalls - before };
+  });
+  expect(result).toEqual({ retained: true, calls: 1 });
+  await page.evaluate(async () => {
+    window.__fakeCloud.heldProfileLoads.forEach((request) => request.resolve());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(await page.evaluate(() => window.__profileSenseButton.isConnected)).toBe(true);
+});
+
+test("an expired cached membership survives a failed background profile refresh", async ({ page }) => {
+  await installFakeCloud(page, { found: true, revision: 10, state: makeState(2) }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await page.evaluate(() => {
+    window.__fakeCloud.profile.memberActive = false;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(page.locator("#startStudyButton")).toBeDisabled();
+  const duringRefresh = await page.evaluate(() => {
+    window.__fakeCloud.holdProfileLoads = true;
+    window.dispatchEvent(new Event("focus"));
+    return document.querySelector("#startStudyButton").disabled;
+  });
+  expect(duringRefresh).toBe(true);
+  await page.evaluate(async () => {
+    window.__fakeCloud.heldProfileLoads.forEach((request) => request.reject(new Error("profile temporarily unavailable")));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await expect(page.locator("#startStudyButton")).toBeDisabled();
+});
+
+test("a delayed profile response cannot replace a different account's profile", async ({ page }) => {
+  await installFakeCloud(page, { found: true, revision: 10, state: makeState(2) }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  await expect(page.locator("#accountInviteCode")).toHaveText("A1B2C3D4E5F6");
+  await page.evaluate(() => {
+    window.__fakeCloud.holdProfileLoads = true;
+    window.dispatchEvent(new Event("focus"));
+    window.__fakeCloud.profile.inviteCode = "ACCOUNT-TWO";
+    window.__fakeCloud.session = { user: { id: "user-2", email: "second@example.com" } };
+    window.__fakeCloud.authCallback("SIGNED_IN", window.__fakeCloud.session);
+  });
+  await page.waitForFunction(() => window.__fakeCloud.heldProfileLoads.length >= 2);
+  await page.evaluate(() => window.__fakeCloud.heldProfileLoads[1].resolve());
+  await expect(page.locator("#accountInviteCode")).toHaveText("ACCOUNT-TWO");
+  await page.evaluate(async () => {
+    window.__fakeCloud.heldProfileLoads[0].resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await expect(page.locator("#accountInviteCode")).toHaveText("ACCOUNT-TWO");
 });
 
 test("an expired signed-in membership disables study while guest mode stays available", async ({ page }) => {

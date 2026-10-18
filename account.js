@@ -285,6 +285,8 @@
   let pendingConsentSession = null;
   let consentBusy = false;
   let accountProfile = null;
+  let accountProfileUserId = null;
+  let profileRefreshRequest = null;
   let notificationsBusy = false;
   let notificationSnapshot = { authenticated: false, unreadCount: 0, items: [] };
   let localQuotaWarning = false;
@@ -1097,6 +1099,8 @@
 
   function applyAccountProfile(profile = null) {
     accountProfile = profile && typeof profile === "object" ? profile : null;
+    accountProfileUserId = accountProfile ? currentUser?.id ?? null : null;
+    if (!accountProfile) profileRefreshRequest = null;
     accountMembershipExpiry.textContent = accountProfile
       ? formatAccountDate(accountProfile.membershipExpiresAt)
       : currentUser
@@ -1121,18 +1125,33 @@
       applyAccountProfile(null);
       return null;
     }
-    announceMembership(accountProfile, { pending: true });
-    try {
-      const profile = await cloud.loadAccountProfile();
-      if (currentUser) applyAccountProfile(profile);
-      return profile;
-    } catch (error) {
-      if (!options.silent) {
-        setMessage(error?.message ?? "会员信息读取失败。", "error");
+    const userId = currentUser.id;
+    if (profileRefreshRequest?.userId === userId) return profileRefreshRequest.promise;
+    if (accountProfile && accountProfileUserId !== userId) applyAccountProfile(null);
+    const request = { userId, promise: null };
+    profileRefreshRequest = request;
+    request.promise = (async () => {
+      // Refresh an already confirmed profile without changing study access or
+      // replacing the active card while the network request is outstanding.
+      announceMembership(accountProfile, { pending: !accountProfile });
+      try {
+        const profile = await cloud.loadAccountProfile();
+        if (currentUser?.id !== userId || profileRefreshRequest !== request) return null;
+        applyAccountProfile(profile);
+        return profile;
+      } catch (error) {
+        if (currentUser?.id !== userId || profileRefreshRequest !== request) return null;
+        if (!options.silent) {
+          setMessage(error?.message ?? "会员信息读取失败。", "error");
+        }
+        if (accountProfile) announceMembership(accountProfile);
+        else applyAccountProfile(null);
+        return null;
+      } finally {
+        if (profileRefreshRequest === request) profileRefreshRequest = null;
       }
-      applyAccountProfile(null);
-      return null;
-    }
+    })();
+    return request.promise;
   }
 
   function showRegistrationWelcome(receipt) {

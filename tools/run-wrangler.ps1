@@ -24,6 +24,11 @@ $nodeCandidates += @(
   (Join-Path $env:LOCALAPPDATA "Programs\nodejs\node.exe"),
   (Join-Path $env:ProgramFiles "nodejs\node.exe")
 )
+$managedNodeRoots = Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA "sense-vocab-tools") -Directory -Filter "node-v*" -ErrorAction SilentlyContinue
+foreach ($managedNodeRoot in $managedNodeRoots) {
+  $nodeCandidates += Get-ChildItem -LiteralPath $managedNodeRoot.FullName -Filter "node.exe" -File -Recurse -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty FullName
+}
 $tempNodeRoots = Get-ChildItem -LiteralPath $env:TEMP -Directory -Filter "sense-vocab-node-x64-v*" -ErrorAction SilentlyContinue
 foreach ($tempNodeRoot in $tempNodeRoots) {
   $nodeCandidates += Get-ChildItem -LiteralPath $tempNodeRoot.FullName -Filter "node.exe" -File -Recurse -ErrorAction SilentlyContinue |
