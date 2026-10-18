@@ -79,6 +79,9 @@ before(async () => {
     grant execute on function public.load_user_state_chunk(bigint,integer) to authenticated;
   `);
   if (process.env.SENSE_VOCAB_TEST_BEFORE !== '1') await admin.query(await sql(migration));
+  if (process.env.SENSE_VOCAB_TEST_COMPACTION_BEFORE !== '1') {
+    await admin.query(await sql('20261018122945_bound_transport_compaction_memory.sql'));
+  }
   await admin.query("insert into public.user_state_meta(user_id,revision) values ($1,7)", [ownerId]);
   await admin.query("update public.user_state_meta set transport_chunk_count=1 where user_id=$1", [ownerId]);
   await admin.query("insert into public.user_state_transport_chunks(user_id,revision,chunk_index,chunk_count,chunk_data,chunk_bytes) values ($1,7,0,1,'{}',2)", [ownerId]);
@@ -268,3 +271,50 @@ test('incremental writes retain history and update normalized calendar dates', a
   const summary = await admin.query('select count(*)::int as days,max(activity_date)::text as latest from public.daily_activity where user_id=$1',[ownerId]);
   assert.deepEqual(summary.rows[0], { days: 2, latest: '2026-10-16' });
 }, { timeout: 60000 });
+
+test('active-book mirror compaction does not rebuild a discarded history copy', async () => {
+  await installFunction('20261001180000_compact_session_and_delta_guards.sql',
+    'compact_user_session_transport','compact_user_session_transport_reference');
+  const session={queue:[{wordId:'alpha',encounterSnapshot:{progress:{alpha:{status:'review'}}}}]};
+  const history={day1:{statuses:{alpha:'review'},enteredAt:{alpha:'2026-10-01T00:00:00Z'}}};
+  const scope={session,dashboardSnapshots:history,custom:{retained:true}};
+  const state={activeBookId:'kaoyan',session,dashboardSnapshots:history,
+    bookStates:{kaoyan:scope,ielts:{session}},custom:{rootWins:true}};
+  const expected=(await admin.query('select public.compact_user_state_transport($1) as result',[state])).rows[0].result;
+  const calls=[];
+  const notice=event=>{if(event.message==='transport-session-work') calls.push(event.message);};
+  admin.on('notice',notice);
+  await admin.query(`create or replace function public.compact_user_session_transport(p_session jsonb)
+    returns jsonb language plpgsql immutable security invoker set search_path='' as $$
+    begin raise notice 'transport-session-work';
+      return public.compact_user_session_transport_reference(p_session); end; $$`);
+  try {
+    const actual=(await admin.query('select public.compact_user_state_transport($1) as result',[state])).rows[0].result;
+    assert.deepEqual(actual,expected);
+    assert.equal(calls.length,2,'Only the root session and retained inactive-book session need compaction.');
+  } finally {
+    admin.off('notice',notice);
+    await installFunction('20261001180000_compact_session_and_delta_guards.sql','compact_user_session_transport');
+  }
+});
+
+test('bounded transport compaction preserves legacy nulls, supplements and precedence', async () => {
+  await installFunction('20261001180000_compact_session_and_delta_guards.sql',
+    'compact_user_state_transport','compact_user_state_transport_reference');
+  const session={queue:[null,'legacy',{wordId:'alpha',encounterSnapshot:{preserveLocally:true},confirmedKeys:['a:n-1']}],custom:1};
+  const shapes=[null,42,[],{}, {session}, {session:null}, {bookStates:null,session},
+    {bookStates:[],session}, {bookStates:'legacy',session},
+    ...Array.from({length:36},(_,i)=>({
+      ...(i%3===0?{}:{activeBookId:i%2===0?'kaoyan':'ielts'}),
+      ...(i%4===0?{}:{session:i%5===0?null:session}),
+      ...(i%6===0?{}:{custom:i%7===0?null:'root'}),
+      bookStates:{kaoyan:{session,custom:'book',unknown:{retained:true},plan:{dailyNew:40}},
+        ielts:i%8===0?null:{session,custom:'other',progress:{'alpha:n-1':{status:'review'}}}},
+    })),
+  ];
+  for(const state of shapes){
+    const r=await admin.query(`select public.compact_user_state_transport($1) as actual,
+      public.compact_user_state_transport_reference($1) as reference`,[state]);
+    assert.deepEqual(r.rows[0].actual,r.rows[0].reference);
+  }
+});

@@ -26,7 +26,8 @@
     "20261003035519_fix_staged_upload_progress_and_throughput.sql",
     "20261003090913_fix_compact_full_upload_deletion_guard.sql",
     "20261003091607_avoid_duplicate_transport_chunk_rebuild.sql",
-    "20261015125641_optimize_state_transport_locking.sql"
+    "20261015125641_optimize_state_transport_locking.sql",
+    "20261018122945_bound_transport_compaction_memory.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -817,7 +818,7 @@
       "key": "public.compact_user_state_transport(p_state jsonb)",
       "schema": "public",
       "name": "compact_user_state_transport",
-      "latestMigration": "20261001180000_compact_session_and_delta_guards.sql",
+      "latestMigration": "20261018122945_bound_transport_compaction_memory.sql",
       "securityDefiner": false,
       "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
