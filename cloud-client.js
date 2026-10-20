@@ -20176,6 +20176,27 @@ ${suffix}`;
     if (result?.error) throw result.error;
     return result?.data ?? null;
   }
+  function isTransientReadNetworkFailure(error) {
+    if (error?.code && !["NETWORK_ERROR", "ECONNRESET"].includes(error.code)) return false;
+    return /(?:load failed|failed to fetch|networkerror|network request failed|fetch failed)/i.test(String(error?.message ?? error));
+  }
+  function waitForReadRetry(delay, signal) {
+    return new Promise((resolve, reject) => {
+      const abort = () => {
+        clearTimeout(timer);
+        reject(new DOMException("Cloud state read cancelled", "AbortError"));
+      };
+      if (signal?.aborted) {
+        reject(new DOMException("Cloud state read cancelled", "AbortError"));
+        return;
+      }
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      }, delay);
+      signal?.addEventListener("abort", abort, { once: true });
+    });
+  }
   var cloudProgressRequestId = 0;
   var expectedLoadStateBytes = null;
   function normalizeExpectedBytes(value) {
@@ -20301,13 +20322,36 @@ ${suffix}`;
           p_metadata: metadata
         }));
       }
+      async function readStateRpc(procedure, parameters, signal, label) {
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          if (signal?.aborted) throw new DOMException("Cloud state read cancelled", "AbortError");
+          try {
+            const request = client.rpc(procedure, parameters);
+            if (signal) request.abortSignal(signal);
+            return assertResult(await request);
+          } catch (error) {
+            if (signal?.aborted || error?.name === "AbortError") {
+              throw new DOMException("Cloud state read cancelled", "AbortError");
+            }
+            if (!isTransientReadNetworkFailure(error)) throw error;
+            if (attempt === 3) {
+              const failure = new Error(`${label}\u8BFB\u53D6\u5931\u8D25\uFF0C\u5DF2\u4FDD\u7559\u672C\u673A\u8BB0\u5F55\uFF1A${error?.message ?? error}`);
+              failure.cause = error;
+              failure.code = error?.code ?? "";
+              failure.syncReadRpc = procedure;
+              failure.syncReadAttempts = attempt;
+              failure.syncReadChunkIndex = parameters?.p_chunk_index ?? null;
+              throw failure;
+            }
+            await waitForReadRetry(250 * attempt, signal);
+          }
+        }
+      }
       async function loadStateChunk(revision, chunkIndex, signal = null) {
-        const request = client.rpc("load_user_state_chunk", {
+        return readStateRpc("load_user_state_chunk", {
           p_revision: revision,
           p_chunk_index: chunkIndex
-        });
-        if (signal) request.abortSignal(signal);
-        return assertResult(await request);
+        }, signal, `\u4E91\u7AEF\u8BB0\u5F55\u5206\u6BB5 ${Number(chunkIndex) + 1} `);
       }
       return {
         async getSession() {
@@ -20419,9 +20463,7 @@ ${suffix}`;
           let snapshotAttempt = 0;
           try {
             while (true) {
-              const request = client.rpc("load_user_state");
-              if (signal) request.abortSignal(signal);
-              const envelope = assertResult(await request);
+              const envelope = await readStateRpc("load_user_state", void 0, signal, "\u4E91\u7AEF\u8BB0\u5F55");
               if (!envelope?.chunked) return envelope;
               const revision = Number(envelope.revision);
               const chunkCount = Number(envelope.chunks);
@@ -20502,9 +20544,7 @@ ${suffix}`;
           return loadStateChunk(revision, chunkIndex, signal);
         },
         async loadStateManifest(signal = null) {
-          const request = client.rpc("load_user_state_manifest");
-          if (signal) request.abortSignal(signal);
-          return assertResult(await request);
+          return readStateRpc("load_user_state_manifest", void 0, signal, "\u4E91\u7AEF\u8BB0\u5F55\u6E05\u5355");
         },
         async saveState(state, expectedRevision = null, force = false, signal = null) {
           const request = client.rpc("save_user_state", {

@@ -32,11 +32,38 @@ function makeEnvelope() {
 async function installChunkRoutes(page, envelope, options = {}) {
   const requests = [];
   let staleReturned = false;
+  let networkFailures = options.networkFailures ?? 0;
   await page.route(`${CLOUD_URL}/rest/v1/rpc/**`, async (route) => {
     const request = route.request();
     const procedure = new URL(request.url()).pathname.split("/").pop();
     const body = JSON.parse(request.postData() || "{}");
     requests.push({ procedure, body });
+
+    if (networkFailures > 0 && procedure === options.failProcedure &&
+        (options.failChunk === undefined || body.p_chunk_index === options.failChunk)) {
+      networkFailures -= 1;
+      await route.abort("failed");
+      if (options.abortOnFailure) {
+        await page.evaluate(() => window.__chunkReadController?.abort());
+      }
+      return;
+    }
+    if (options.denyChunk === body.p_chunk_index && procedure === "load_user_state_chunk") {
+      await route.fulfill({
+        status: 403, contentType: "application/json",
+        body: JSON.stringify({ code: "42501", message: "permission denied", details: null, hint: null }),
+      });
+      return;
+    }
+
+    if (procedure === "load_user_state_manifest") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ found: true, revision: 7, bytes: envelope.bytes }),
+      });
+      return;
+    }
 
     if (procedure === "load_user_state") {
       await route.fulfill({
@@ -107,8 +134,8 @@ async function installChunkRoutes(page, envelope, options = {}) {
   return requests;
 }
 
-async function loadThroughClient(page) {
-  return page.evaluate(async ({ cloudUrl }) => {
+async function loadThroughClient(page, { manifest = false, abortable = false } = {}) {
+  return page.evaluate(async ({ cloudUrl, manifest, abortable }) => {
     const progress = [];
     const onProgress = (event) => {
       if (event.detail?.operation === "load-state") progress.push(event.detail);
@@ -119,19 +146,107 @@ async function loadThroughClient(page) {
         supabaseUrl: cloudUrl,
         supabaseAnonKey: "test-anon-key",
       });
-      const document = await cloud.loadState();
+      const controller = abortable ? new AbortController() : null;
+      window.__chunkReadController = controller;
+      const metadata = manifest ? await cloud.loadStateManifest(controller?.signal) : null;
+      const document = await cloud.loadState(controller?.signal, metadata?.bytes);
       return { document, progress, error: null };
     } catch (error) {
       return {
         document: null,
         progress,
         error: String(error?.message ?? error),
+        errorName: error?.name,
       };
     } finally {
       window.removeEventListener("sensevocab:cloud-progress", onProgress);
+      delete window.__chunkReadController;
+    }
+  }, { cloudUrl: CLOUD_URL, manifest, abortable });
+}
+
+test("retries only a transiently failed read chunk without restarting the download", async ({ page }) => {
+  const envelope = makeEnvelope();
+  const requests = await installChunkRoutes(page, envelope, {
+    failProcedure: "load_user_state_chunk", failChunk: 1, networkFailures: 1,
+  });
+  await page.goto(APP_URL);
+  const result = await loadThroughClient(page);
+  expect(result.error).toBeNull();
+  expect(result.document).toEqual(JSON.parse(envelope.document));
+  expect(requests.map(({ procedure, body }) => [procedure, body.p_chunk_index])).toEqual([
+    ["load_user_state", undefined],
+    ["load_user_state_chunk", 0],
+    ["load_user_state_chunk", 1],
+    ["load_user_state_chunk", 1],
+  ]);
+  expect(result.progress.at(-1)).toMatchObject({ received: envelope.bytes, done: true });
+});
+
+test("recovers a transient manifest network failure before reading state", async ({ page }) => {
+  const envelope = makeEnvelope();
+  const requests = await installChunkRoutes(page, envelope, {
+    failProcedure: "load_user_state_manifest", networkFailures: 1,
+  });
+  await page.goto(APP_URL);
+  const result = await loadThroughClient(page, { manifest: true });
+  expect(result.error).toBeNull();
+  expect(result.document).toEqual(JSON.parse(envelope.document));
+  expect(requests.filter(x => x.procedure === "load_user_state_manifest")).toHaveLength(2);
+  expect(requests.filter(x => x.procedure === "load_user_state")).toHaveLength(1);
+});
+
+test("reports a persistent read network failure without claiming completion", async ({ page }) => {
+  const envelope = makeEnvelope();
+  const requests = await installChunkRoutes(page, envelope, {
+    failProcedure: "load_user_state_chunk", failChunk: 1, networkFailures: 10,
+  });
+  await page.goto(APP_URL);
+  const result = await loadThroughClient(page);
+  expect(result.document).toBeNull();
+  expect(result.error).toContain("分段 2");
+  expect(requests.filter(x => x.body.p_chunk_index === 0)).toHaveLength(1);
+  expect(requests.filter(x => x.body.p_chunk_index === 1)).toHaveLength(3);
+  expect(result.progress.some(x => x.done && x.received === envelope.bytes)).toBe(false);
+});
+
+test("aborts a failed read before another retry can start", async ({ page }) => {
+  const envelope = makeEnvelope();
+  const requests = await installChunkRoutes(page, envelope, {
+    failProcedure: "load_user_state_chunk", failChunk: 1, networkFailures: 10,
+    abortOnFailure: true,
+  });
+  await page.goto(APP_URL);
+  const result = await loadThroughClient(page, { abortable: true });
+  expect(result.document).toBeNull();
+  expect(result.errorName).toBe("AbortError");
+  expect(requests.filter(x => x.body.p_chunk_index === 1)).toHaveLength(1);
+  expect(result.progress.some(x => x.done && x.received === envelope.bytes)).toBe(false);
+});
+
+test("does not retry denied reads or interrupted writes", async ({ page }) => {
+  const envelope = makeEnvelope();
+  const requests = await installChunkRoutes(page, envelope, {
+    denyChunk: 1, failProcedure: "save_user_state_delta", networkFailures: 1,
+  });
+  await page.goto(APP_URL);
+  const denied = await loadThroughClient(page);
+  expect(denied.error).toContain("permission denied");
+  expect(requests.filter(x => x.body.p_chunk_index === 1)).toHaveLength(1);
+  const writeError = await page.evaluate(async ({ cloudUrl }) => {
+    const cloud = window.SenseVocabCloud.create({
+      supabaseUrl: cloudUrl, supabaseAnonKey: "test-anon-key",
+    });
+    try {
+      await cloud.saveStateDelta({ version: 1, books: {} }, 7);
+      return null;
+    } catch (error) {
+      return String(error?.message ?? error);
     }
   }, { cloudUrl: CLOUD_URL });
-}
+  expect(writeError).toContain("Failed to fetch");
+  expect(requests.filter(x => x.procedure === "save_user_state_delta")).toHaveLength(1);
+});
 
 test("reassembles chunked cloud state and reports byte progress", async ({ page }) => {
   const envelope = makeEnvelope();

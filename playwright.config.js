@@ -14,6 +14,7 @@ module.exports = defineConfig({
     "translation-ui.spec.js",
     "learning-flow.spec.js",
     "recovery-invariants.spec.js",
+    "queue-continuation.spec.js",
     "account-sync.spec.js",
     "sync-concurrency.spec.js",
     "sync-invariants.spec.js",

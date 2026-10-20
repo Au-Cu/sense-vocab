@@ -2134,6 +2134,9 @@
           kind,
           phase: label,
           elapsedMs: Date.now() - startedAt,
+          readRpc: error?.syncReadRpc ?? null,
+          readAttempts: error?.syncReadAttempts ?? null,
+          readChunkIndex: error?.syncReadChunkIndex ?? null,
           networkFailure: /(?:TypeError.*(?:load failed|failed to fetch)|networkerror)/i
             .test(`${error?.name ?? ""}: ${error?.message ?? error}`),
         });

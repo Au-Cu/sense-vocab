@@ -2931,7 +2931,7 @@ function reconcileLearningPosition(bookState, bookWords) {
       session.baseLearningDay = todayLearningDay;
       session.reinforcedKeys = [];
       session.reviewPromotedKeys = [];
-      rebuildMergedSession(null, bookState, bookWords, bookState.activityLog ?? {});
+      rebuildMergedSession(null, bookState, bookWords, bookState.activityLog ?? {}, { resetPosition: true });
     } else {
       bookState.session = null;
     }
@@ -3068,6 +3068,29 @@ function sanitizeState() {
         }
       });
       state.session.snapshotTimingVersion = 2;
+    }
+    const resumeIndex = state.session.historyView?.originIndex ?? state.session.currentIndex;
+    const resumeLearningDay = state.session.activeLearningDay ?? state.learningDayCounter;
+    const resumeRevealed = state.session.historyView?.originRevealed ?? state.session.revealed;
+    const resumePhase = state.session.historyView?.originPhase ?? state.session.cardPhase;
+    const stalePendingQueue = state.session.queue.slice(resumeIndex).some((card, offset) => {
+      if (!["review", "new", "reinforcement"].includes(card.type)) return false;
+      const keys = card.activeSenseKeys ?? card.senseKeys;
+      if (card.type === "review" && keys.some((key) => {
+        const progress = state.progress[key];
+        return completedFirstStageOn(progress, resumeLearningDay, state.session.date);
+      })) return true;
+      if (offset === 0 && (resumeRevealed || resumePhase === "examples" || card.confirmedKeys.length ||
+          awaitsNewWordAcknowledgement(state, state.session, card))) return false;
+      return keys.length > 0 && keys.every((key) => {
+        const progress = state.progress[key];
+        return progress?.status === SENSE_STATUS.MASTERED ||
+          ([SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].includes(progress?.status) &&
+            Number.isFinite(progress.dueLearningDay) && progress.dueLearningDay > resumeLearningDay);
+      });
+    });
+    if (stalePendingQueue && !["study", "confusion"].includes(state.view)) {
+      rebuildMergedSession(activeBookId(), state, words, state.activityLog);
     }
   }
 
@@ -4164,6 +4187,24 @@ function dueReviewKeys(learningDay = upcomingLearningDay()) {
     .filter(isKnownSenseKey);
 }
 
+function completedFirstStageOn(progress, learningDay, date) {
+  return progress?.status === SENSE_STATUS.REINFORCE &&
+    progress.lastLearningDay === learningDay &&
+    (progress.lastSeenActual ?? progress.lastSeen) === date;
+}
+
+function awaitsNewWordAcknowledgement(bookState, session, card) {
+  if (card?.type !== "new" || bookState.introducedWords?.includes(card.wordId)) return false;
+  const keys = Array.isArray(card.activeSenseKeys) ? card.activeSenseKeys : card.senseKeys ?? [];
+  const learningDay = session.activeLearningDay ?? bookState.learningDayCounter;
+  return keys.some((key) => {
+    const progress = bookState.progress?.[key];
+    return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW, SENSE_STATUS.MASTERED].includes(progress?.status) &&
+      (progress.lastSeenActual ?? progress.lastSeen) >= session.date &&
+      !(progress.lastLearningDay > learningDay);
+  });
+}
+
 function planStartOffset() {
   const session = ensureTodaySession();
   return session.baseCompleted ? 1 : 0;
@@ -4207,6 +4248,10 @@ function buildReviewCards(reviewLearningDay = upcomingLearningDay()) {
   const reviewGroups = new Map();
 
   dueReviewKeys(reviewLearningDay).forEach((key) => {
+    const progress = state.progress[key];
+    // A missed first-stage sense stays due today for reinforcement, not for
+    // another pass through the initial review stage after a reload.
+    if (completedFirstStageOn(progress, reviewLearningDay, currentDate())) return;
     const { wordId } = splitSenseKey(key);
     const group = reviewGroups.get(wordId) ?? [];
     group.push(key);
@@ -5294,7 +5339,7 @@ function normalizeRepairActivity(entry, knownWordIds, defaultTarget) {
   };
 }
 
-function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
+function rebuildMergedSession(bookId, bookState, bookWords, activityLog, options = {}) {
   const session = bookState?.session;
   const today = currentDate();
   if (
@@ -5307,6 +5352,8 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
   }
 
   const before = stableStateStringify(session);
+  const originalQueue = Array.isArray(session.queue) ? session.queue : [];
+  const samePlan = session.activePlanDate === today && !options.resetPosition;
   const introduced = new Set((bookState.introducedWords ?? []).map(String));
   const importance = new Map();
   const keysByWord = new Map();
@@ -5318,6 +5365,30 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
     });
     keysByWord.set(String(word.id), keys);
   });
+  const retainedIndexes = [];
+  const previousQueue = originalQueue.filter((card, index) => {
+    if (!card || !keysByWord.has(String(card.wordId)) || !Array.isArray(card.senseKeys) ||
+        !card.senseKeys.some((key) => importance.has(key))) return false;
+    retainedIndexes.push(index);
+    return true;
+  });
+  const remapIndex = (value) => {
+    const boundary = normalizeQueueIndex(value, originalQueue.length);
+    return retainedIndexes.filter((index) => index < boundary).length;
+  };
+  const resumeIndex = samePlan ? remapIndex(session.historyView?.originIndex ?? session.currentIndex) : 0;
+  const historyIndex = samePlan ? remapIndex(session.currentIndex) : 0;
+  const prefix = samePlan ? previousQueue.slice(0, resumeIndex) : [];
+  const current = samePlan ? previousQueue[resumeIndex] : null;
+  const currentRevealed = session.historyView?.originRevealed ?? session.revealed;
+  const currentPhase = session.historyView?.originPhase ?? session.cardPhase;
+  const retainCurrent = Boolean(current && (
+    currentRevealed || currentPhase === "examples" || current.confirmedKeys?.length ||
+    awaitsNewWordAcknowledgement(bookState, session, current)
+  ));
+  const completedFirstStageKeys = new Set(prefix
+    .filter((card) => card.type !== "reinforcement")
+    .flatMap((card) => card.activeSenseKeys ?? card.senseKeys ?? []));
   const sortKeys = (keys) => [...new Set(keys)].sort((left, right) => {
     return (importance.get(right) ?? 0) - (importance.get(left) ?? 0) ||
       left.localeCompare(right);
@@ -5331,6 +5402,8 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
     return [SENSE_STATUS.REINFORCE, SENSE_STATUS.REVIEW].includes(progress?.status) &&
       (!Number.isFinite(progress.dueLearningDay) || progress.dueLearningDay <= learningDay);
   };
+  const firstStageDone = (key) => completedFirstStageKeys.has(key) ||
+    completedFirstStageOn(progressForKey(key), learningDay, session.date);
   const makeCard = (type, wordId, activeKeys, newKeys = []) => ({
     type,
     wordId,
@@ -5344,6 +5417,7 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
   const reviewByWord = new Map();
   Object.keys(bookState.progress ?? {}).forEach((key) => {
     if (!isDue(key)) return;
+    if (progressForKey(key).status === SENSE_STATUS.REINFORCE && firstStageDone(key)) return;
     const { wordId } = splitSenseKey(key);
     if (!keysByWord.has(String(wordId))) return;
     const keys = reviewByWord.get(String(wordId)) ?? [];
@@ -5357,19 +5431,27 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
     targetForBookDate(bookState, today),
   );
   const remainingNew = remainingPlannedNewCount(bookState, today);
+  const currentNewWord = retainCurrent && current.type === "new" && !introduced.has(String(current.wordId))
+    ? bookWords.find((word) => String(word.id) === String(current.wordId))
+    : null;
   const newCandidates = [
+    ...(currentNewWord ? [currentNewWord] : []),
     ...bookWords.filter((word) => {
       return introduced.has(String(word.id)) &&
         (keysByWord.get(String(word.id)) ?? []).some((key) => {
           return (progressForKey(key)?.status ?? SENSE_STATUS.NEW) === SENSE_STATUS.NEW;
         });
     }),
-    ...bookWords.filter((word) => !introduced.has(String(word.id))),
+    ...bookWords.filter((word) => word !== currentNewWord && !introduced.has(String(word.id))),
   ].slice(0, remainingNew);
 
   const standaloneNew = [];
   newCandidates.forEach((word) => {
     const wordId = String(word.id);
+    if (currentNewWord === word) {
+      standaloneNew.push(current);
+      return;
+    }
     const newKeys = (keysByWord.get(wordId) ?? []).filter((key) => {
       return (progressForKey(key)?.status ?? SENSE_STATUS.NEW) === SENSE_STATUS.NEW;
     });
@@ -5381,6 +5463,7 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
     }
     standaloneNew.push(makeCard("new", wordId, newKeys, newKeys));
   });
+  if (currentNewWord && !standaloneNew.includes(current)) standaloneNew.unshift(current);
 
   const reviewCards = [...reviewByWord.entries()].map(([wordId, keys]) => {
     const newKeys = keys.filter((key) => {
@@ -5388,14 +5471,71 @@ function rebuildMergedSession(bookId, bookState, bookWords, activityLog) {
     });
     return makeCard("review", wordId, keys, newKeys);
   });
-  session.queue = [...reviewCards, ...standaloneNew];
+  const firstStageCards = [...reviewCards, ...standaloneNew];
+  if (retainCurrent && current.type === "review") {
+    const index = firstStageCards.findIndex((card) => card.type === current.type && card.wordId === current.wordId);
+    if (index >= 0) firstStageCards[index] = current;
+    else firstStageCards.unshift(current);
+  }
+  const retainOrder = (cards) => {
+    const pending = new Map(cards.map((card) => [`${card.type}:${card.wordId}`, card]));
+    const ordered = [];
+    previousQueue.slice(resumeIndex).forEach((previous) => {
+      const id = `${previous.type}:${previous.wordId}`;
+      const next = pending.get(id);
+      if (!next) return;
+      ordered.push(next === current ? current : { ...previous, ...next });
+      pending.delete(id);
+    });
+    return [...ordered, ...pending.values()];
+  };
+  const pendingFirstStage = retainOrder(firstStageCards);
+  const reinforcementAdded = session.reinforcementAdded === true || pendingFirstStage.length === 0;
+  const reinforcementByWord = new Map();
+  const pendingFirstStageKeys = new Set(pendingFirstStage.flatMap((card) => card.activeSenseKeys ?? card.senseKeys ?? []));
+  const alreadyReinforced = new Set(session.reinforcedKeys ?? []);
+  if (reinforcementAdded) {
+    Object.keys(bookState.progress ?? {}).forEach((key) => {
+      if (!isDue(key) || progressForKey(key).status !== SENSE_STATUS.REINFORCE ||
+          pendingFirstStageKeys.has(key) || alreadyReinforced.has(key)) return;
+      const { wordId } = splitSenseKey(key);
+      if (!keysByWord.has(String(wordId))) return;
+      const keys = reinforcementByWord.get(String(wordId)) ?? [];
+      keys.push(key);
+      reinforcementByWord.set(String(wordId), keys);
+    });
+  }
+  const reinforcementCards = [...reinforcementByWord.entries()].map(([wordId, keys]) => {
+    const card = makeCard("reinforcement", wordId, keys);
+    card.confirmedKeys = (session.reviewPromotedKeys ?? []).filter((key) => (
+      splitSenseKey(key).wordId === wordId && progressForKey(key)?.status === SENSE_STATUS.REVIEW
+    ));
+    return card;
+  });
+  if (retainCurrent && current.type === "reinforcement") {
+    const index = reinforcementCards.findIndex((card) => card.wordId === current.wordId);
+    if (index >= 0) reinforcementCards[index] = current;
+    else reinforcementCards.unshift(current);
+  }
+  session.queue = [...prefix, ...pendingFirstStage, ...retainOrder(reinforcementCards)];
   session.activePlanDate = today;
-  session.currentIndex = 0;
-  session.revealed = false;
-  session.cardPhase = "hidden";
-  session.historyView = null;
-  session.reinforcementAdded = false;
-  session.baseCompleted = session.queue.length === 0 &&
+  const next = session.queue[resumeIndex];
+  const currentRetained = Boolean(current && next?.type === current.type && next.wordId === current.wordId);
+  if (samePlan && session.historyView && historyIndex < resumeIndex) {
+    session.currentIndex = historyIndex;
+    session.historyView.originIndex = resumeIndex;
+    if (!currentRetained) {
+      session.historyView.originRevealed = false;
+      session.historyView.originPhase = "hidden";
+    }
+  } else {
+    session.currentIndex = resumeIndex;
+    session.historyView = null;
+    session.revealed = currentRetained ? Boolean(currentRevealed) : false;
+    session.cardPhase = currentRetained ? currentPhase || "hidden" : "hidden";
+  }
+  session.reinforcementAdded = reinforcementAdded;
+  session.baseCompleted = session.queue.length === resumeIndex &&
     (todayActivity.baseCompleted === true || remainingNew === 0);
   if (session.baseCompleted) todayActivity.baseCompleted = true;
   return stableStateStringify(session) !== before;
@@ -9249,6 +9389,9 @@ function exitStudy(transitionOrigin = null) {
   commitUiTransition("backward", () => {
     finishStudyWindow("return-home");
     const session = ensureTodaySession();
+    if (Number.isInteger(session.historyView?.originIndex)) {
+      session.currentIndex = normalizeQueueIndex(session.historyView.originIndex, session.queue.length);
+    }
     session.historyView = null;
     session.revealed = false;
     session.cardPhase = "hidden";

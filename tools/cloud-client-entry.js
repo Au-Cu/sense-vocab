@@ -6,6 +6,30 @@ function assertResult(result) {
   return result?.data ?? null;
 }
 
+function isTransientReadNetworkFailure(error) {
+  if (error?.code && !["NETWORK_ERROR", "ECONNRESET"].includes(error.code)) return false;
+  return /(?:load failed|failed to fetch|networkerror|network request failed|fetch failed)/i
+    .test(String(error?.message ?? error));
+}
+
+function waitForReadRetry(delay, signal) {
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Cloud state read cancelled", "AbortError"));
+    };
+    if (signal?.aborted) {
+      reject(new DOMException("Cloud state read cancelled", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, delay);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
 let cloudProgressRequestId = 0;
 let expectedLoadStateBytes = null;
 
@@ -175,13 +199,39 @@ window.SenseVocabCloud = {
       }));
     }
 
+    async function readStateRpc(procedure, parameters, signal, label) {
+      // These POST RPCs only read learning facts. Never apply this recovery to
+      // uploads: an interrupted write may already have committed its CAS.
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        if (signal?.aborted) throw new DOMException("Cloud state read cancelled", "AbortError");
+        try {
+          const request = client.rpc(procedure, parameters);
+          if (signal) request.abortSignal(signal);
+          return assertResult(await request);
+        } catch (error) {
+          if (signal?.aborted || error?.name === "AbortError") {
+            throw new DOMException("Cloud state read cancelled", "AbortError");
+          }
+          if (!isTransientReadNetworkFailure(error)) throw error;
+          if (attempt === 3) {
+            const failure = new Error(`${label}读取失败，已保留本机记录：${error?.message ?? error}`);
+            failure.cause = error;
+            failure.code = error?.code ?? "";
+            failure.syncReadRpc = procedure;
+            failure.syncReadAttempts = attempt;
+            failure.syncReadChunkIndex = parameters?.p_chunk_index ?? null;
+            throw failure;
+          }
+          await waitForReadRetry(250 * attempt, signal);
+        }
+      }
+    }
+
     async function loadStateChunk(revision, chunkIndex, signal = null) {
-      const request = client.rpc("load_user_state_chunk", {
+      return readStateRpc("load_user_state_chunk", {
         p_revision: revision,
         p_chunk_index: chunkIndex,
-      });
-      if (signal) request.abortSignal(signal);
-      return assertResult(await request);
+      }, signal, `云端记录分段 ${Number(chunkIndex) + 1} `);
     }
 
     return {
@@ -319,9 +369,7 @@ window.SenseVocabCloud = {
         let snapshotAttempt = 0;
         try {
           while (true) {
-            const request = client.rpc("load_user_state");
-            if (signal) request.abortSignal(signal);
-            const envelope = assertResult(await request);
+            const envelope = await readStateRpc("load_user_state", undefined, signal, "云端记录");
             if (!envelope?.chunked) return envelope;
 
             const revision = Number(envelope.revision);
@@ -412,9 +460,7 @@ window.SenseVocabCloud = {
       },
 
       async loadStateManifest(signal = null) {
-        const request = client.rpc("load_user_state_manifest");
-        if (signal) request.abortSignal(signal);
-        return assertResult(await request);
+        return readStateRpc("load_user_state_manifest", undefined, signal, "云端记录清单");
       },
 
       async saveState(state, expectedRevision = null, force = false, signal = null) {
