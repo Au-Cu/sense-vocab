@@ -27,7 +27,8 @@
     "20261003090913_fix_compact_full_upload_deletion_guard.sql",
     "20261003091607_avoid_duplicate_transport_chunk_rebuild.sql",
     "20261015125641_optimize_state_transport_locking.sql",
-    "20261018122945_bound_transport_compaction_memory.sql"
+    "20261018122945_bound_transport_compaction_memory.sql",
+    "20261020072404_deduplicate_authoritative_state_mirrors.sql"
   ],
   "policy": {
     "allLegacyFunctionExecutionRevoked": true,
@@ -39,9 +40,9 @@
     "defaultFunctionExposureRevoked": true
   },
   "counts": {
-    "discoveredFunctionSignatures": 82,
+    "discoveredFunctionSignatures": 84,
     "securityDefinerSignatures": 66,
-    "explicitFinalGrants": 72,
+    "explicitFinalGrants": 73,
     "browserRpcNames": 42
   },
   "grants": [
@@ -478,6 +479,12 @@
       "roles": [
         "authenticated"
       ]
+    },
+    {
+      "signature": "public.save_user_state(jsonb,bigint,boolean)",
+      "roles": [
+        "authenticated"
+      ]
     }
   ],
   "functions": [
@@ -818,7 +825,7 @@
       "key": "public.compact_user_state_transport(p_state jsonb)",
       "schema": "public",
       "name": "compact_user_state_transport",
-      "latestMigration": "20261018122945_bound_transport_compaction_memory.sql",
+      "latestMigration": "20261020072404_deduplicate_authoritative_state_mirrors.sql",
       "securityDefiner": false,
       "declaredEmptySearchPath": true,
       "checksCallerIdentity": false
@@ -1022,6 +1029,24 @@
       "checksCallerIdentity": false
     },
     {
+      "key": "public.prepare_user_state_extra(p_state jsonb, p_delta boolean default false, p_active_book_id text default null)",
+      "schema": "public",
+      "name": "prepare_user_state_extra",
+      "latestMigration": "20261020072404_deduplicate_authoritative_state_mirrors.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
+      "key": "public.project_user_state_deletions(p_state jsonb)",
+      "schema": "public",
+      "name": "project_user_state_deletions",
+      "latestMigration": "20261020072404_deduplicate_authoritative_state_mirrors.sql",
+      "securityDefiner": false,
+      "declaredEmptySearchPath": true,
+      "checksCallerIdentity": false
+    },
+    {
       "key": "public.put_user_state_upload_part(p_upload_id uuid, p_chunk_index integer, p_chunk_count integer, p_chunk_data text)",
       "schema": "public",
       "name": "put_user_state_upload_part",
@@ -1088,7 +1113,7 @@
       "key": "public.save_user_state(p_state jsonb, p_expected_revision bigint default null, p_force boolean default false)",
       "schema": "public",
       "name": "save_user_state",
-      "latestMigration": "20261003090913_fix_compact_full_upload_deletion_guard.sql",
+      "latestMigration": "20261020072404_deduplicate_authoritative_state_mirrors.sql",
       "securityDefiner": true,
       "declaredEmptySearchPath": false,
       "checksCallerIdentity": true
@@ -1133,7 +1158,7 @@
       "key": "public.state_has_undeclared_deletions(p_existing jsonb, p_incoming jsonb)",
       "schema": "public",
       "name": "state_has_undeclared_deletions",
-      "latestMigration": "20261003090913_fix_compact_full_upload_deletion_guard.sql",
+      "latestMigration": "20261020072404_deduplicate_authoritative_state_mirrors.sql",
       "securityDefiner": false,
       "declaredEmptySearchPath": true,
       "checksCallerIdentity": false

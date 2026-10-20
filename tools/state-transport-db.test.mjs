@@ -16,6 +16,21 @@ const migration = '20261015125641_optimize_state_transport_locking.sql';
 let admin;
 let reader;
 let writer;
+let beforeMirrorDefinitions;
+const mirrorMigration = '20261020072404_deduplicate_authoritative_state_mirrors.sql';
+function firstDifference(actual, expected, at = '$') {
+  if (actual === expected) return null;
+  if (!actual || !expected || typeof actual !== 'object' || typeof expected !== 'object') return at;
+  if (Array.isArray(actual) !== Array.isArray(expected)) return at;
+  const keys=Object.keys(actual), expectedKeys=Object.keys(expected);
+  if (keys.length!==expectedKeys.length) return `${at} [keys]`;
+  for(const key of expectedKeys){
+    if(!Object.hasOwn(actual,key)) return `${at}.${key} [missing]`;
+    const different=firstDifference(actual[key],expected[key],`${at}.${key}`);
+    if(different) return different;
+  }
+  return null;
+}
 
 async function sql(name) {
   return (await readFile(new URL(`../supabase/migrations/${name}`, import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
@@ -60,7 +75,8 @@ before(async () => {
   for (const name of ['confusion_links_are_valid','state_confusion_links_are_valid','enforce_state_confusion_links']) await installFunction('20260808150845_confusion_links_account_sync_guard.sql', name);
   await installFunction('20260808150845_confusion_links_account_sync_guard.sql','state_has_undeclared_deletions','state_has_undeclared_deletions_unexpanded');
   await installFunction('20260808150845_confusion_links_account_sync_guard.sql','state_has_undeclared_deletions','state_has_undeclared_deletions_reference');
-  for (const name of ['compact_user_session_transport','compact_user_state_transport','state_has_learning_evidence']) await installFunction('20261001180000_compact_session_and_delta_guards.sql', name);
+  for (const name of ['compact_user_session_transport','compact_user_state_transport']) await installFunction('20261001180000_compact_session_and_delta_guards.sql', name);
+  await installFunction('20261001203000_fix_state_learning_evidence.sql','state_has_learning_evidence');
   for (const name of ['expand_user_state_transport','state_has_undeclared_deletions']) await installFunction('20261003090913_fix_compact_full_upload_deletion_guard.sql', name);
   await installFunction('20261001090000_materialize_user_state_transport.sql', 'materialize_user_state_transport');
   await installFunction('20260929151638_optimize_user_state_sync.sql','save_user_state','save_user_state_legacy');
@@ -82,6 +98,12 @@ before(async () => {
   if (process.env.SENSE_VOCAB_TEST_COMPACTION_BEFORE !== '1') {
     await admin.query(await sql('20261018122945_bound_transport_compaction_memory.sql'));
   }
+  beforeMirrorDefinitions = (await admin.query(`select pg_get_functiondef(signature::regprocedure) as source
+    from unnest(array['public.user_state_document(uuid)',
+      'public.save_user_state_legacy(jsonb,bigint,boolean)',
+      'public.save_user_state(jsonb,bigint,boolean)',
+      'public.save_user_state_delta(jsonb,bigint,boolean)']) signature`)).rows.map(row => row.source);
+  if (process.env.SENSE_VOCAB_TEST_MIRRORS_BEFORE !== '1') await admin.query(await sql(mirrorMigration));
   await admin.query("insert into public.user_state_meta(user_id,revision) values ($1,7)", [ownerId]);
   await admin.query("update public.user_state_meta set transport_chunk_count=1 where user_id=$1", [ownerId]);
   await admin.query("insert into public.user_state_transport_chunks(user_id,revision,chunk_index,chunk_count,chunk_data,chunk_bytes) values ($1,7,0,1,'{}',2)", [ownerId]);
@@ -317,4 +339,179 @@ test('bounded transport compaction preserves legacy nulls, supplements and prece
       public.compact_user_state_transport_reference($1) as reference`,[state]);
     assert.deepEqual(r.rows[0].actual,r.rows[0].reference);
   }
+});
+
+test('large full and incremental commits store one history mirror without changing canonical data', async () => {
+  const progress=Object.fromEntries(Array.from({length:1200},(_,i)=>[`fixture-${i}:n-1`,{status:'review',lastReviewedAt:'2026-10-15'}]));
+  const history=Object.fromEntries(Array.from({length:20},(_,i)=>[`day-${i}`,{progress,custom:'preserved'}]));
+  const state={schemaVersion:1,activeBookId:'kaoyan',bookStates:{ielts:{custom:'inactive',progress:{}}},
+    plan:{dailyNew:40},session:null,introducedWords:['fixture-0'],progress,
+    activityLog:{'2026-10-15':{newWords:1}},studyWindows:[],dashboardSnapshots:history,
+    dashboardEvents:{event:{key:'fixture-0:n-1'}},planTargetHistory:{'2026-10-15':40},
+    confusionLinks:{},_sync:{},customRoot:{kept:true}};
+  const patch={version:1,activeBookId:'kaoyan',books:{kaoyan:{maps:{
+    progress:{upsert:{'fixture-0:n-1':{status:'mastered',lastReviewedAt:'2026-10-16'}}},
+    activityLog:{upsert:{'2026-10-16':{reviewWords:1}}},
+  }}}};
+  await admin.query('begin');
+  try {
+    await admin.query("select set_config('request.jwt.claim.sub',$1,true)",[ownerId]);
+    const revision=Number((await admin.query('select revision from public.user_state_meta where user_id=$1',[ownerId])).rows[0].revision);
+    await admin.query('savepoint reference');
+    for(const source of beforeMirrorDefinitions) await admin.query(source);
+    assert.equal((await admin.query('select public.save_user_state($1,$2,true) as r',[state,revision])).rows[0].r.ok,true);
+    const expectedFull=(await admin.query('select public.user_state_document($1) as state,transport_state from public.user_state_meta where user_id=$1',[ownerId])).rows[0];
+    assert.equal((await admin.query('select public.save_user_state_delta($1,$2,true) as r',[patch,revision+1])).rows[0].r.ok,true);
+    const expectedDelta=(await admin.query('select public.user_state_document($1) as state,transport_state from public.user_state_meta where user_id=$1',[ownerId])).rows[0];
+    await admin.query('rollback to savepoint reference');
+    assert.equal((await admin.query('select public.save_user_state($1,$2,true) as r',[state,revision])).rows[0].r.ok,true);
+    let actual=(await admin.query(`select public.user_state_document($1) as state,transport_state,
+      extra_state ? 'dashboardSnapshots' as redundant_root_history,
+      extra_state#>'{bookStates,kaoyan,dashboardSnapshots}' as history
+      from public.user_state_meta where user_id=$1`,[ownerId])).rows[0];
+    assert.equal(firstDifference(actual.state,expectedFull.state),null);
+    assert.equal(firstDifference(actual.transport_state,expectedFull.transport_state),null);
+    assert.equal(actual.redundant_root_history,false,'Do not persist an equivalent multi-megabyte root history twice.');
+    assert.equal(firstDifference(actual.history,history),null);
+    assert.equal((await admin.query('select public.save_user_state_delta($1,$2,true) as r',[patch,revision+1])).rows[0].r.ok,true);
+    actual=(await admin.query('select public.user_state_document($1) as state,transport_state from public.user_state_meta where user_id=$1',[ownerId])).rows[0];
+    assert.equal(firstDifference(actual.state,expectedDelta.state),null);
+    assert.equal(firstDifference(actual.transport_state,expectedDelta.transport_state),null);
+  } finally { await admin.query('rollback'); }
+}, {timeout:120000});
+
+test('authoritative mirror aliases preserve missing, null, distinct and legacy values', async () => {
+  const extras=['planTargetHistory','dashboardEvents','dashboardSnapshots','confusionLinks','_sync'];
+  const core=['view','plan','session','introducedWords','progress','activityLog','studyWindows',
+    'learningDayCounter','wordListSort','wordBrowse','dataVersion'];
+  const cases=[{}, {custom:'legacy'}, {bookStates:null},
+    ...Array.from({length:30},(_,i)=>({activeBookId:'kaoyan',customRoot:{preserved:true},
+      ...(i%4===0?{}:{dashboardSnapshots:i%3===0?null:{source:'root'}}),
+      bookStates:{kaoyan:{customBook:{preserved:true},
+        ...(i%5===0?{}:{dashboardSnapshots:i%3===0?null:{source:i%2===0?'root':'book'}}),
+        confusionLinks:{},_sync:{},planTargetHistory:{'2026-10-15':40}},ielts:{progress:{}}}})),
+  ];
+  for(const state of cases){
+    const row=(await admin.query(`select public.expand_user_state_transport($1) as expanded,
+      p.* from public.prepare_user_state_extra($1) p`,[state])).rows[0];
+    const restored=structuredClone(row.extra_state);
+    for(const key of row.mirror_keys){
+      assert.ok(extras.includes(key));
+      assert.equal(Object.hasOwn(restored,key),false);
+      restored[key]=restored.bookStates[restored.activeBookId][key];
+    }
+    const expected=structuredClone(row.expanded);
+    for(const key of core) delete expected[key];
+    assert.deepEqual(restored,expected);
+    if(state.activeBookId){
+      const delta=(await admin.query('select * from public.prepare_user_state_extra($1,true,$2)',[state,state.activeBookId])).rows[0];
+      const deltaRestored=structuredClone(delta.extra_state);
+      for(const key of delta.mirror_keys) deltaRestored[key]=deltaRestored.bookStates[state.activeBookId][key];
+      const deltaExpected=structuredClone(expected);
+      delete deltaExpected.planTargetHistory;
+      for(const key of extras.filter(key=>key!=='planTargetHistory')) deltaExpected[key]=row.expanded.bookStates[state.activeBookId][key]??null;
+      assert.deepEqual(deltaRestored,deltaExpected);
+    }
+  }
+  const denied=(await admin.query(`select has_function_privilege('authenticated',
+    'public.prepare_user_state_extra(jsonb,boolean,text)','execute') as prepare,
+    has_function_privilege('anon','public.project_user_state_deletions(jsonb)','execute') as projection`)).rows[0];
+  assert.deepEqual(denied,{prepare:false,projection:false});
+});
+
+test('deletion guards ignore large derived history but retain every durable tombstone rule', async () => {
+  const book={introducedWords:['alpha'],progress:{'alpha:n-1':{status:'review'}},
+    activityLog:{'2026-10-15':{newWords:1}},studyWindows:[{id:'w1'}],confusionLinks:{},
+    dashboardSnapshots:{large:'x'.repeat(2000000)}};
+  const states=[{activeBookId:'kaoyan',...book,bookStates:{ielts:{}}},
+    {activeBookId:'kaoyan',bookStates:{kaoyan:book,ielts:{}}},
+    {confusionLinks:{pair:{left:'alpha',right:'beta'}}}];
+  for(const existing of states){
+    const incoming=structuredClone(existing);
+    const active=incoming.bookStates?.kaoyan??incoming;
+    if(active.progress) delete active.progress['alpha:n-1'];
+    else active.confusionLinks={};
+    for(const candidate of [existing,incoming]){
+      const row=(await admin.query(`select public.state_has_undeclared_deletions($1,$2) as actual,
+        public.state_has_undeclared_deletions_unexpanded(public.expand_user_state_transport($1),
+          public.expand_user_state_transport($2)) as reference,
+        octet_length(public.project_user_state_deletions($1)::text) as bytes`,[existing,candidate])).rows[0];
+      assert.equal(row.actual,row.reference);
+      assert.ok(row.bytes<20000);
+    }
+  }
+  await assert.rejects(admin.query("select public.state_has_undeclared_deletions('{}', $1)",[
+    {activeBookId:'kaoyan',bookStates:{ielts:{confusionLinks:{bad:{left:'same',right:'same'}}}}},
+  ]),{code:'22023'});
+});
+
+test('batched deltas preserve old missing-field, null, inactive-book and sync semantics', async () => {
+  const state={activeBookId:'kaoyan',plan:{dailyNew:40},session:null,introducedWords:['alpha'],
+    progress:{'alpha:n-1':{status:'review'}},activityLog:{},studyWindows:[],
+    dashboardSnapshots:{day:{statuses:{'alpha:n-1':'review'}}},
+    dashboardEvents:{event:{key:'alpha:n-1'}},confusionLinks:{},_sync:{counters:{device:1},records:{}},
+    bookStates:{ielts:{progress:{'beta:n-1':{status:'mastered'}},custom:'inactive'}},custom:'root'};
+  const patches=[{}, {scalars:{session:null}}, {scalars:{plan:{dailyNew:60},learningDayCounter:3}},
+    {maps:{progress:{upsert:{'beta:n-1':{status:'review'}}}}},
+    {maps:{activityLog:{upsert:{'2026-10-18':{reviewWords:2}}}}},
+    {maps:{dashboardSnapshots:{upsert:{second:{statuses:{'alpha:n-1':'mastered'}}}}}},
+    {maps:{dashboardEvents:null,confusionLinks:null}},
+    {maps:{progress:{delete:['alpha:n-1']}}},
+    {replacements:{introducedWords:['alpha','beta'],studyWindows:[{id:'w2'}]}},
+    {sync:{counters:{device:2},records:{progress:{'alpha:n-1':{counter:2}}}}},
+  ];
+  await admin.query('begin');
+  try {
+    await admin.query("select set_config('request.jwt.claim.sub',$1,true)",[ownerId]);
+    const current=Number((await admin.query('select revision from public.user_state_meta where user_id=$1',[ownerId])).rows[0].revision);
+    assert.equal((await admin.query('select public.save_user_state($1,$2,true) r',[state,current])).rows[0].r.ok,true);
+    const revision=current+1;
+    await admin.query('savepoint fixture');
+    for(const [index,bookPatch] of patches.entries()){
+      for(const bookId of ['kaoyan','ielts']){
+        const patch={version:1,activeBookId:'kaoyan',books:{[bookId]:bookPatch}};
+        for(const source of beforeMirrorDefinitions) await admin.query(source);
+        assert.equal((await admin.query('select public.save_user_state_delta($1,$2,true) r',[patch,revision])).rows[0].r.ok,true);
+        const expected=(await admin.query('select public.user_state_document($1) as state,transport_state from public.user_state_meta where user_id=$1',[ownerId])).rows[0];
+        await admin.query('rollback to savepoint fixture');
+        assert.equal((await admin.query('select public.save_user_state_delta($1,$2,true) r',[patch,revision])).rows[0].r.ok,true);
+        const actual=(await admin.query('select public.user_state_document($1) as state,transport_state from public.user_state_meta where user_id=$1',[ownerId])).rows[0];
+        assert.equal(firstDifference(actual,expected),null,`Patch ${index}, ${bookId}`);
+        await admin.query('rollback to savepoint fixture');
+      }
+    }
+  } finally {await admin.query('rollback');}
+});
+
+test('small deltas do not process untouched historical maps', async () => {
+  await admin.query('begin');
+  const calls=[];
+  const notice=event=>{if(event.message==='delta-map-work') calls.push(event.message);};
+  admin.on('notice',notice);
+  try {
+    await admin.query("select set_config('request.jwt.claim.sub',$1,true)",[ownerId]);
+    let source=(await admin.query("select pg_get_functiondef('public.save_user_state_delta(jsonb,bigint,boolean)'::regprocedure) as source")).rows[0].source;
+    const needle="      v_map := coalesce(v_book -> v_domain, '{}'::jsonb);";
+    assert.ok(source.includes(needle));
+    source=source.replace(needle,"      raise notice 'delta-map-work';\n"+needle);
+    await admin.query(source);
+    const revision=(await admin.query('select revision from public.user_state_meta where user_id=$1',[ownerId])).rows[0].revision;
+    const patch={version:1,activeBookId:'kaoyan',books:{kaoyan:{maps:{progress:{upsert:{'alpha:n-1':{status:'review'}}}}}}};
+    assert.equal((await admin.query('select public.save_user_state_delta($1,$2,true) r',[patch,revision])).rows[0].r.ok,true);
+    assert.equal(calls.length,1,'Only the supplied progress map should be processed, not all six historical domains.');
+  } finally {admin.off('notice',notice);await admin.query('rollback');}
+});
+
+test('a rejected stale full upload cannot delete the current download chunks', async () => {
+  const before=(await admin.query(`select count(*)::int as chunks,md5(string_agg(chunk_data,'' order by chunk_index)) as checksum
+    from public.user_state_transport_chunks where user_id=$1`,[ownerId])).rows[0];
+  assert.ok(before.chunks>0);
+  const revision=Number((await admin.query('select revision from public.user_state_meta where user_id=$1',[ownerId])).rows[0].revision);
+  const rejected=(await reader.query('select public.save_user_state($1,$2,false) as r',[
+    {activeBookId:'kaoyan',introducedWords:[],progress:{}},revision-1,
+  ])).rows[0].r;
+  assert.equal(rejected.conflict,true);
+  const after=(await admin.query(`select count(*)::int as chunks,md5(string_agg(chunk_data,'' order by chunk_index)) as checksum
+    from public.user_state_transport_chunks where user_id=$1`,[ownerId])).rows[0];
+  assert.deepEqual(after,before,'A rejected writer must not force cold repair of an unchanged revision.');
 });
