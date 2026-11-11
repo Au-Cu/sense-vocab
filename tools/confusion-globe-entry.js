@@ -118,19 +118,10 @@ function createSphereGridGeometry({
   return geometry;
 }
 
-function create(options = {}) {
-  const container = options.container;
-  if (!(container instanceof HTMLElement)) {
-    throw new TypeError("A globe container is required.");
-  }
+let reusableSurface = null;
+let releaseActiveGlobe = null;
 
-  const words = Array.isArray(options.words) ? options.words : [];
-  const currentIndex = Math.max(
-    0,
-    words.findIndex((word) => word.id === options.currentWordId),
-  );
-  const points = orientCurrentWord(distributedPoints(words.length), currentIndex);
-  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function createSurface() {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 100);
   camera.position.set(0, 0, 3.45);
@@ -192,6 +183,25 @@ function create(options = {}) {
   warmLight.position.set(3, -2, 2.5);
   scene.add(warmLight);
 
+  return { scene, camera, renderer, labelRenderer, globe, sphere, grid, halo };
+}
+
+function create(options = {}) {
+  const container = options.container;
+  if (!(container instanceof HTMLElement)) {
+    throw new TypeError("A globe container is required.");
+  }
+  releaseActiveGlobe?.();
+  const words = Array.isArray(options.words) ? options.words : [];
+  const currentIndex = Math.max(0, words.findIndex((word) => word.id === options.currentWordId));
+  const points = orientCurrentWord(distributedPoints(words.length), currentIndex);
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // Retain one small surface, not a WebGL context and shader compile per visit.
+  // Word labels, input handlers and animation frames are still released on exit.
+  reusableSurface ??= createSurface();
+  const { scene, camera, renderer, labelRenderer, globe, sphere, grid, halo } = reusableSurface;
+  globe.quaternion.identity();
+
   const labelEntries = words.map((word, index) => {
     const anchor = document.createElement("div");
     anchor.className = "confusion-globe-word-anchor";
@@ -251,7 +261,13 @@ function create(options = {}) {
   );
   const targetQuaternion = globe.quaternion.clone();
 
+  function scheduleRender() {
+    if (destroyed || animationFrame || document.hidden || renderer.getContext().isContextLost()) return;
+    animationFrame = window.requestAnimationFrame(renderFrame);
+  }
+
   function resize() {
+    if (destroyed) return;
     const rect = container.getBoundingClientRect();
     width = Math.max(1, Math.round(rect.width));
     height = Math.max(1, Math.round(rect.height));
@@ -260,6 +276,7 @@ function create(options = {}) {
     camera.aspect = width / height;
     camera.position.z = camera.aspect < 1 ? 4.7 : 3.45;
     camera.updateProjectionMatrix();
+    scheduleRender();
   }
 
   const resizeObserver = new ResizeObserver(resize);
@@ -268,13 +285,14 @@ function create(options = {}) {
   setPresentationProgress(presentationProgress);
 
   function setPresentationProgress(value) {
+    if (destroyed) return;
     presentationProgress = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
     const depthProgress = smoothstep(0, 1, presentationProgress);
     globe.scale.z = 0.06 + depthProgress * 0.94;
     sphere.material.opacity = 0.94 * presentationProgress;
     grid.material.opacity = 0.18 * presentationProgress;
     halo.material.opacity = 0.08 * presentationProgress;
-    updateLabelVisibility();
+    scheduleRender();
   }
 
   function updateLabelVisibility() {
@@ -304,7 +322,8 @@ function create(options = {}) {
   }
 
   function renderFrame(now) {
-    if (destroyed) return;
+    animationFrame = 0;
+    if (destroyed || document.hidden) return;
     const elapsedSeconds = THREE.MathUtils.clamp(
       (now - lastFrameAt) / 1000,
       1 / 240,
@@ -357,12 +376,18 @@ function create(options = {}) {
       paintWaiters.clear();
       waiters.forEach((resolve) => resolve(true));
     }
-    animationFrame = window.requestAnimationFrame(renderFrame);
+    const moving = Math.abs(velocityX) > 0.00005 ||
+      Math.abs(velocityY) > 0.00005 || Math.abs(velocityRoll) > 0.00005;
+    if (focusAnimation || (!reducedMotion && activePointers.size === 0 && moving) ||
+      globe.quaternion.angleTo(targetQuaternion) > 0.0001) scheduleRender();
   }
 
   function nextPaint() {
     if (destroyed) return Promise.resolve(false);
-    return new Promise((resolve) => paintWaiters.add(resolve));
+    return new Promise((resolve) => {
+      paintWaiters.add(resolve);
+      scheduleRender();
+    });
   }
 
   function rotateTarget(deltaX, deltaY, deltaRoll = 0) {
@@ -383,6 +408,7 @@ function create(options = {}) {
       .premultiply(pitch)
       .premultiply(roll)
       .normalize();
+    scheduleRender();
   }
 
   function gestureSnapshot() {
@@ -467,6 +493,7 @@ function create(options = {}) {
     activePointers.delete(event.pointerId);
     lastGesture = gestureSnapshot();
     if (activePointers.size === 0) container.classList.remove("is-dragging");
+    scheduleRender();
   }
 
   function onKeyDown(event) {
@@ -479,14 +506,27 @@ function create(options = {}) {
     event.preventDefault();
   }
 
+  function onVisibilityChange() {
+    if (document.hidden) {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+    } else {
+      lastFrameAt = performance.now();
+      scheduleRender();
+    }
+  }
+
   container.addEventListener("pointerdown", onPointerDown);
   container.addEventListener("pointermove", onPointerMove);
   container.addEventListener("pointerup", onPointerUp);
   container.addEventListener("pointercancel", onPointerUp);
   container.addEventListener("keydown", onKeyDown);
-  animationFrame = window.requestAnimationFrame(renderFrame);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  renderer.domElement.addEventListener("webglcontextrestored", scheduleRender);
+  scheduleRender();
 
   function focusWord(wordId, duration = 420) {
+    if (destroyed) return Promise.resolve();
     const entry = labelEntries.find(({ word }) => word.id === wordId);
     if (!entry) return Promise.resolve();
     cancelFocusAnimation();
@@ -497,9 +537,10 @@ function create(options = {}) {
       entry.point.clone().normalize(),
       FRONT,
     );
-    if (reducedMotion || duration <= 0) {
+    if (reducedMotion || duration <= 0 || globe.quaternion.angleTo(target) < 0.0001) {
       globe.quaternion.copy(target);
       targetQuaternion.copy(target);
+      scheduleRender();
       return Promise.resolve();
     }
     return new Promise((resolve) => {
@@ -510,6 +551,7 @@ function create(options = {}) {
         startedAt: performance.now(),
         resolve,
       };
+      scheduleRender();
     });
   }
 
@@ -537,8 +579,10 @@ function create(options = {}) {
   }
 
   function destroy() {
+    if (destroyed) return;
     destroyed = true;
     window.cancelAnimationFrame(animationFrame);
+    cancelFocusAnimation();
     paintWaiters.forEach((resolve) => resolve(false));
     paintWaiters.clear();
     resizeObserver.disconnect();
@@ -555,15 +599,15 @@ function create(options = {}) {
     container.removeEventListener("pointerup", onPointerUp);
     container.removeEventListener("pointercancel", onPointerUp);
     container.removeEventListener("keydown", onKeyDown);
-    renderer.dispose();
-    sphere.geometry.dispose();
-    sphere.material.dispose();
-    grid.geometry.dispose();
-    grid.material.dispose();
-    halo.geometry.dispose();
-    halo.material.dispose();
+    document.removeEventListener("visibilitychange", onVisibilityChange);
+    renderer.domElement.removeEventListener("webglcontextrestored", scheduleRender);
+    labelEntries.forEach(({ object }) => object.removeFromParent());
+    renderer.renderLists.dispose();
     container.replaceChildren();
+    if (releaseActiveGlobe === destroy) releaseActiveGlobe = null;
   }
+
+  releaseActiveGlobe = destroy;
 
   return Object.freeze({
     destroy,

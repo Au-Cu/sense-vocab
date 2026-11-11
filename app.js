@@ -1585,10 +1585,10 @@ function mergeJournalWindows(previous, next, limit = null) {
 function learningJournalSyncChangeOptions(journal = {}) {
   const bookId = String(journal.bookId || activeBookId());
   const changedMapKeys = {
-    progress: Object.keys(journal.progress ?? {}),
+    progress: [...new Set([...Object.keys(journal.progress ?? {}), ...(journal.removedProgressKeys ?? [])])],
     activityLog: Object.keys(journal.activityLog ?? {}),
     dashboardEvents: Object.keys(journal.dashboardEvents ?? {}),
-    introducedWords: [...new Set(journal.introducedWords ?? [])],
+    introducedWords: [...new Set([...(journal.introducedWords ?? []), ...(journal.removedIntroducedWords ?? [])])],
     studyWindows: (journal.studyWindows ?? []).map((entry, index) => (
       String(entry?.id ?? `${entry?.startedAt ?? ""}-${index}`)
     )),
@@ -1617,10 +1617,15 @@ function writeLearningJournal(options = {}) {
   const progressKeys = new Set(changed.progress ?? []);
   const card = currentCard();
   (card?.activeSenseKeys ?? []).forEach((key) => progressKeys.add(key));
-  const progress = {};
+  const progress = { ...(previous.progress ?? {}) };
+  const removedProgressKeys = new Set(previous.removedProgressKeys ?? []);
   progressKeys.forEach((key) => {
     if (Object.prototype.hasOwnProperty.call(state.progress ?? {}, key)) {
       progress[key] = cloneSerializable(state.progress[key]);
+      removedProgressKeys.delete(key);
+    } else {
+      delete progress[key];
+      removedProgressKeys.add(key);
     }
   });
   const activityDates = new Set(changed.activityLog ?? []);
@@ -1633,7 +1638,16 @@ function writeLearningJournal(options = {}) {
     }
   });
   const introducedWords = new Set(previous.introducedWords ?? []);
-  (changed.introducedWords ?? []).forEach((wordId) => introducedWords.add(String(wordId)));
+  const removedIntroducedWords = new Set(previous.removedIntroducedWords ?? []);
+  (changed.introducedWords ?? []).forEach((wordId) => {
+    if (state.introducedWords.includes(wordId)) {
+      introducedWords.add(wordId);
+      removedIntroducedWords.delete(wordId);
+    } else {
+      introducedWords.delete(wordId);
+      removedIntroducedWords.add(wordId);
+    }
+  });
   const dashboardEvents = Object.fromEntries(
     Object.entries(state.dashboardEvents ?? {}).filter(([, event]) => event?.date === date),
   );
@@ -1643,10 +1657,12 @@ function writeLearningJournal(options = {}) {
     updatedAt: new Date().toISOString(),
     bookId,
     session: compactSessionForPersistence(state.session, { activity: state.activityLog?.[date] }),
-    progress: mergeJournalMaps(previous.progress, progress),
+    progress,
+    removedProgressKeys: [...removedProgressKeys],
     activityLog: mergeJournalMaps(previous.activityLog, activityLog),
     dashboardEvents: mergeJournalMaps(previous.dashboardEvents, dashboardEvents),
     introducedWords: [...introducedWords],
+    removedIntroducedWords: [...removedIntroducedWords],
     studyWindows: mergeJournalWindows(previous.studyWindows, state.studyWindows?.slice(-3)),
     learningDayCounter: Math.max(
       Number(previous.learningDayCounter) || 0,
@@ -1711,6 +1727,7 @@ function applyLearningJournal(storageKey, candidate) {
     ...(bookState.progress ?? {}),
     ...(journal.progress ?? {}),
   };
+  (journal.removedProgressKeys ?? []).forEach((key) => { delete bookState.progress[key]; });
   bookState.activityLog = {
     ...(bookState.activityLog ?? {}),
     ...(journal.activityLog ?? {}),
@@ -1722,7 +1739,7 @@ function applyLearningJournal(storageKey, candidate) {
   bookState.introducedWords = [...new Set([
     ...(bookState.introducedWords ?? []),
     ...(journal.introducedWords ?? []),
-  ])];
+  ])].filter((wordId) => !(journal.removedIntroducedWords ?? []).includes(wordId));
   bookState.studyWindows = mergeJournalWindows(
     bookState.studyWindows,
     journal.studyWindows,
@@ -4247,11 +4264,7 @@ function sortSenseKeysByImportance(keys) {
 function buildReviewCards(reviewLearningDay = upcomingLearningDay()) {
   const reviewGroups = new Map();
 
-  dueReviewKeys(reviewLearningDay).forEach((key) => {
-    const progress = state.progress[key];
-    // A missed first-stage sense stays due today for reinforcement, not for
-    // another pass through the initial review stage after a reload.
-    if (completedFirstStageOn(progress, reviewLearningDay, currentDate())) return;
+  pendingFirstStageReviewKeys(reviewLearningDay).forEach((key) => {
     const { wordId } = splitSenseKey(key);
     const group = reviewGroups.get(wordId) ?? [];
     group.push(key);
@@ -4520,7 +4533,7 @@ function progressFor(key) {
 }
 
 function isMastered(key) {
-  return progressFor(key).status === SENSE_STATUS.MASTERED;
+  return state.progress[key]?.status === SENSE_STATUS.MASTERED;
 }
 
 function activeLearningCount() {
@@ -4542,6 +4555,14 @@ function dueWordCount(status, learningDay = upcomingLearningDay()) {
       })
       .map(([key]) => splitSenseKey(key).wordId),
   ).size;
+}
+
+function pendingFirstStageReviewKeys(learningDay = upcomingLearningDay()) {
+  // Both pending states enter the opening review. Senses already reviewed
+  // today stay due for reinforcement, not another pass through this stage.
+  return dueReviewKeys(learningDay).filter((key) => (
+    !completedFirstStageOn(state.progress[key], learningDay, currentDate())
+  ));
 }
 
 function todayNewWordCount() {
@@ -4568,7 +4589,7 @@ function todayPlanCounts() {
   return {
     newWords: todayNewWordCount(),
     reinforceWords: dueWordCount(SENSE_STATUS.REINFORCE),
-    reviewWords: dueWordCount(SENSE_STATUS.REVIEW),
+    reviewWords: new Set(pendingFirstStageReviewKeys().map((key) => splitSenseKey(key).wordId)).size,
   };
 }
 
@@ -5107,7 +5128,7 @@ function render() {
   appShell.classList.toggle("is-study-view", state.view === "study");
   confusionPanel.hidden = state.view !== "confusion";
   if (state.view === "home" || state.view === "dashboard") renderHome();
-  renderStudy();
+  if (state.view === "study") renderStudy();
   if (state.view !== "study") {
     clearStudyCompletionAnimation();
   }
@@ -8882,7 +8903,7 @@ function ensureConfusionGlobeReady() {
   if (confusionGlobeLoader) return confusionGlobeLoader;
   confusionGlobeLoader = new Promise((resolve) => {
     const script = document.createElement("script");
-    script.src = "./confusion-globe.js?v=20260803-4";
+    script.src = "./confusion-globe.js?v=20261112-1";
     script.async = true;
     script.addEventListener("load", () => {
       resolve(Boolean(window.SenseVocabConfusionGlobe));
@@ -9163,7 +9184,6 @@ function confusionEntryForOpen(rootWordId, currentWordId) {
 }
 
 async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) {
-  const globeReady = await ensureConfusionGlobeReady();
   const currentWordId = currentWord()?.id;
   const inheritedEntry = state.wordBrowse?.confusionEntry;
   const returningFromRelatedCard =
@@ -9176,14 +9196,16 @@ async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) 
     state.view !== "study" ||
     (currentWordId !== rootWordId && !returningFromRelatedCard) ||
     !rootWordId ||
-    !wordById.has(rootWordId) ||
-    !globeReady
+    !wordById.has(rootWordId)
   ) return;
 
   const originWord = currentWord();
   if (!originWord) return;
   confusionTransitioning = true;
   const transitionToken = ++confusionTransitionToken;
+  const scopeKey = activeStorageKey;
+  const bookId = activeBookId();
+  const cardKey = currentCardKey();
   const sourceRect = revealButton.getBoundingClientRect();
   const sourceFont = Number.parseFloat(window.getComputedStyle(wordText).fontSize) || 72;
   const transition = createWordGlobeTransition(
@@ -9191,6 +9213,28 @@ async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) 
     originWord.word,
     sourceFont,
   );
+  revealButton.setAttribute("aria-busy", "true");
+  const pressedFeedback = !prefersReducedMotion() && transition.animate
+    ? transition.animate([{ transform: "scale(1)" }, { transform: "scale(0.985)" }], {
+      duration: 80, fill: "forwards",
+    })
+    : null;
+  // Paint the pressed handoff before loading/evaluating Three.js or creating
+  // its first WebGL surface. Neither belongs in the input's first frame.
+  await nextAnimationFrame();
+  await nextAnimationFrame();
+  const globeReady = await ensureConfusionGlobeReady();
+  pressedFeedback?.cancel();
+  revealButton.removeAttribute("aria-busy");
+  if (!globeReady || transitionToken !== confusionTransitionToken ||
+    activeStorageKey !== scopeKey || activeBookId() !== bookId ||
+    state.view !== "study" || currentCardKey() !== cardKey) {
+    transition.remove();
+    studyPanel.classList.remove("is-transitioning");
+    confusionTransitioning = false;
+    if (!globeReady && state.view === "study") queueProgress.textContent = "球体加载失败，请重试";
+    return;
+  }
   studyPanel.classList.add("is-transitioning");
   const entry = confusionEntryForOpen(rootWordId, originWord.id);
   confusionRuntime = {
@@ -9201,7 +9245,21 @@ async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) 
   };
   confusionSearchInput.value = "";
   state.view = "confusion";
-  render();
+  try {
+    render();
+  } catch {
+    state.view = "study";
+    confusionRuntime = null;
+    confusionGlobe?.destroy();
+    confusionGlobe = null;
+    confusionGlobeSignature = null;
+    confusionTransitioning = false;
+    transition.remove();
+    studyPanel.classList.remove("is-transitioning");
+    render();
+    queueProgress.textContent = "球体暂不可用，请重试";
+    return;
+  }
   confusionPanel.classList.add("is-transitioning");
   await nextAnimationFrame();
   const targetRect = confusionSphereRect();
@@ -10457,9 +10515,24 @@ function resetCurrentMarking() {
   session.revealed = true;
   session.cardPhase = "select";
   clearStudyCompletionAnimation();
-  saveState();
   closeResetDialog();
   render();
+  saveWordResetAfterInteraction(card.wordId);
+}
+
+function saveWordResetAfterInteraction(wordId) {
+  saveStateAfterInteractionFrame({
+    syncChangeOptions: {
+      changedMaps: ["progress", "introducedWords", "dashboardEvents"],
+      changedScalars: ["session", "plan"],
+      changedMapKeysByBook: {
+        [activeBookId()]: {
+          progress: allSenseKeysForWord(wordById.get(wordId)),
+          introducedWords: [wordId],
+        },
+      },
+    },
+  });
 }
 
 function relearnCurrentWord() {
@@ -10511,9 +10584,9 @@ function relearnCurrentWord() {
   session.revealed = false;
   session.cardPhase = "hidden";
   clearStudyCompletionAnimation();
-  saveState();
   closeResetDialog();
   render();
+  saveWordResetAfterInteraction(card.wordId);
 }
 
 const TUTORIAL_HINTS = Object.freeze({

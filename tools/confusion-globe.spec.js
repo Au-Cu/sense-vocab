@@ -34,6 +34,108 @@ async function openGlobe(page) {
   await page.waitForTimeout(900);
 }
 
+test("globe loading feedback paints before the module arrives without rendering hidden study", async ({ page }) => {
+  let releaseModule;
+  const moduleGate = new Promise((resolve) => { releaseModule = resolve; });
+  await page.route("**/confusion-globe.js?*", async (route) => {
+    await moduleGate;
+    await route.continue();
+  });
+  await prepareStudy(page);
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#senseArea")).toBeVisible();
+  await page.evaluate(() => {
+    window.__hiddenStudyRenders = 0;
+    const original = window.renderStudy;
+    window.renderStudy = function trackHiddenStudy() {
+      if (document.querySelector("#studyPanel").hidden) window.__hiddenStudyRenders += 1;
+      return original();
+    };
+  });
+  const firstFrame = await page.evaluate(async () => {
+    document.querySelector("#revealButton").click();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return Boolean(document.querySelector(".word-globe-transition"));
+  });
+  releaseModule();
+  expect(firstFrame).toBe(true);
+  await expect(page.locator("#confusionPanel")).toBeVisible();
+  await expect(page.locator("#confusionPanel")).not.toHaveClass(/is-transitioning/);
+  expect(await page.evaluate(() => window.__hiddenStudyRenders)).toBe(0);
+});
+
+test("idle globes stop drawing and reuse one WebGL surface on reentry", async ({ page }) => {
+  await prepareStudy(page);
+  await openGlobe(page);
+  await expect(page.locator(".word-globe-transition")).toHaveCount(0);
+  await page.evaluate(() => {
+    window.__globeCanvas = document.querySelector("#confusionGlobeStage canvas");
+    window.__globeDraws = 0;
+    const prototype = WebGL2RenderingContext.prototype;
+    const original = prototype.drawElements;
+    prototype.drawElements = function countDraws(...args) {
+      if (this.canvas === window.__globeCanvas) window.__globeDraws += 1;
+      return original.apply(this, args);
+    };
+  });
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__globeDraws)).toBe(0);
+  await page.locator("#confusionGlobeStage").press("ArrowRight");
+  await expect.poll(() => page.evaluate(() => window.__globeDraws)).toBeGreaterThan(0);
+  await page.locator("#confusionBackButton").click();
+  await expect(page.locator(".word-globe-transition")).toHaveCount(0);
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#confusionPanel")).toBeVisible();
+  await expect(page.locator(".word-globe-transition")).toHaveCount(0);
+  expect(await page.evaluate(() => document.querySelector("#confusionGlobeStage canvas") === window.__globeCanvas)).toBe(true);
+});
+
+test("disposed globe callbacks cannot change the reused surface", async ({ page }) => {
+  await prepareStudy(page);
+  await openGlobe(page);
+  await expect(page.locator(".word-globe-transition")).toHaveCount(0);
+  const result = await page.evaluate(async () => {
+    const container = document.querySelector("#confusionGlobeStage");
+    const options = { container, words: [{ id: "act", word: "act" }], currentWordId: "act" };
+    const old = window.SenseVocabConfusionGlobe.create(options);
+    await old.nextPaint();
+    old.destroy();
+    const current = window.SenseVocabConfusionGlobe.create(options);
+    await current.nextPaint();
+    const alpha = () => {
+      const canvas = container.querySelector("canvas");
+      const gl = canvas.getContext("webgl2");
+      const pixel = new Uint8Array(4);
+      gl.readPixels(Math.floor(canvas.width / 2), Math.floor(canvas.height / 2), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+      return pixel[3];
+    };
+    const before = alpha();
+    old.setPresentationProgress(0);
+    await current.nextPaint();
+    const after = alpha();
+    current.destroy();
+    return { before, after };
+  });
+  expect(result.before).toBeGreaterThan(200);
+  expect(result.after).toBe(result.before);
+});
+
+test("a failed globe load leaves the learning card usable and can be retried", async ({ page }) => {
+  await page.route("**/confusion-globe.js?*", (route) => route.abort());
+  await prepareStudy(page);
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#senseArea")).toBeVisible();
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#queueProgress")).toHaveText("球体加载失败，请重试");
+  await expect(page.locator(".word-globe-transition")).toHaveCount(0);
+  await expect(page.locator("#studyPanel")).not.toHaveClass(/is-transitioning/);
+  await expect(page.locator("#revealButton")).not.toHaveAttribute("aria-busy");
+  await page.unroute("**/confusion-globe.js?*");
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#confusionPanel")).toBeVisible();
+  await expect(page.locator(".word-globe-transition")).toHaveCount(0);
+});
+
 test("users build symmetric pairwise confusing-word globes without transitive links", async ({ page }) => {
   test.setTimeout(45000);
   await prepareStudy(page);

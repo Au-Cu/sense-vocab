@@ -207,6 +207,148 @@ test("study progress separates stage words from combined sense progress", async 
   expect(pageErrors).toEqual([]);
 });
 
+for (const reviewedToday of [false, true]) {
+test(`home review demand matches both due states (${reviewedToday ? "after first stage" : "before study"})`, async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+  });
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.evaluate((reviewed) => {
+    const root = window.SenseVocabApp.getState();
+    const scope = root.bookStates.kaoyan;
+    const date = new Date().toLocaleDateString("sv-SE");
+    const yesterday = new Date(Date.now() - 86400000).toLocaleDateString("sv-SE");
+    const pending = (status, dueLearningDay, seen = yesterday, day = 4) => ({
+      status, dueLearningDay, lastLearningDay: day,
+      firstSeen: yesterday, firstSeenActual: yesterday,
+      lastSeen: seen, lastSeenActual: seen,
+    });
+    scope.plan = { dailyTarget: 1, startedOn: yesterday, createdOn: yesterday };
+    scope.learningDayCounter = 5;
+    scope.introducedWords = ["act", "action", "ability"];
+    scope.progress = {
+      "act:v-1": pending("reinforce", 5),
+      "act:n-3": pending("review", 5),
+      "action:n-1": pending("reinforce", 5, reviewed ? date : yesterday, reviewed ? 5 : 4),
+      "ability:n-1": pending("review", 6),
+      "not-a-known-word:n-1": pending("review", 5),
+    };
+    scope.session = {
+      date, activePlanDate: date, activeLearningDay: 5, baseLearningDay: 5,
+      queue: [], currentIndex: 0, baseNewAdded: false, baseCompleted: false,
+    };
+    Object.assign(root, scope);
+    if (!window.SenseVocabApp.replaceActiveState(root, { notify: false })) {
+      throw new Error("Cannot persist review-demand fixture");
+    }
+  }, reviewedToday);
+  await expect(page.locator("#todayReviewCount")).toHaveText(reviewedToday ? "1" : "2");
+  await page.locator("#startStudyButton").click();
+  const reviewWords = await page.evaluate(() => window.SenseVocabApp.getState().session.queue
+    .filter((card) => card.type === "review").map((card) => card.wordId));
+  expect(reviewWords.sort()).toEqual(reviewedToday ? ["act"] : ["act", "action"]);
+});
+}
+
+for (const action of ["marking", "relearn"]) {
+test(`reset actions keep full storage out of the input frame (${action})`, async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+  });
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await page.locator("#planButton").click();
+  await page.locator("#dailyTargetInput").fill("2");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#startStudyButton").click();
+  await reveal(page);
+  await page.locator('.sense-item[data-key="act:v-1"]').click();
+  await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+  await page.locator("#resetButton").click();
+  if (action === "relearn") await page.locator("#relearnWordButton").click();
+  const timing = await page.evaluate(({ key, selector }) => {
+    const original = Storage.prototype.setItem;
+    let rootWrites = 0;
+    Storage.prototype.setItem = function slowRootWrite(name, value) {
+      if (name === key) {
+        rootWrites += 1;
+        const end = performance.now() + 220;
+        while (performance.now() < end) {}
+      }
+      return original.call(this, name, value);
+    };
+    window.__restoreRootWriter = () => { Storage.prototype.setItem = original; };
+    const start = performance.now();
+    document.querySelector(selector).click();
+    return { elapsed: performance.now() - start, rootWrites };
+  }, { key: STORAGE_KEY, selector: action === "relearn" ? "#confirmResetButton" : "#resetMarkingButton" });
+  expect(timing.rootWrites).toBe(0);
+  expect(timing.elapsed).toBeLessThan(150);
+  await page.evaluate(() => {
+    window.__restoreRootWriter();
+    window.dispatchEvent(new Event("pagehide"));
+  });
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  const restored = await page.evaluate(() => {
+    const scope = window.SenseVocabApp.getState();
+    return { status: scope.progress["act:v-1"]?.status ?? "new", phase: scope.session.cardPhase };
+  });
+  expect(restored).toEqual({ status: "new", phase: action === "relearn" ? "hidden" : "select" });
+  if (await page.locator("#homePanel").isVisible()) await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("act");
+});
+}
+
+test("relearning journals remove persisted progress and can record learning again", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+  });
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.evaluate(() => {
+    const root = window.SenseVocabApp.getState();
+    const scope = root.bookStates.kaoyan;
+    const date = new Date().toLocaleDateString("sv-SE");
+    scope.plan = { dailyTarget: 1, startedOn: date, createdOn: date };
+    scope.learningDayCounter = 1;
+    scope.introducedWords = ["act", "ability"];
+    scope.progress = {
+      "act:v-1": { status: "review", dueLearningDay: 2, lastLearningDay: 1 },
+      "ability:n-1": { status: "mastered", lastLearningDay: 1 },
+    };
+    scope.session = null;
+    Object.assign(root, scope);
+    if (!window.SenseVocabApp.replaceActiveState(root, { notify: false })) throw new Error("Cannot seed reset");
+  });
+  await page.locator("#startStudyButton").click();
+  await expect(page.locator("#wordText")).toHaveText("act");
+  await page.locator("#resetButton").click();
+  await page.locator("#relearnWordButton").click();
+  await page.locator("#confirmResetButton").click();
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  let saved = await readState(page);
+  expect(saved.introducedWords).not.toContain("act");
+  expect(saved.progress["act:v-1"]?.status ?? "new").toBe("new");
+  expect(saved.progress["ability:n-1"].status).toBe("mastered");
+  if (await page.locator("#homePanel").isVisible()) await page.locator("#startStudyButton").click();
+  await reveal(page);
+  await page.locator('.sense-item[data-key="act:v-1"]').click();
+  await expect(page.locator("#senseList")).not.toHaveClass(/is-reordering/);
+  await completeAndAdvance(page);
+  await page.evaluate(() => window.dispatchEvent(new Event("pagehide")));
+  await page.reload();
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  saved = await readState(page);
+  expect(saved.introducedWords).toContain("act");
+  expect(saved.progress["act:v-1"].status).toBe("mastered");
+  expect(saved.progress["ability:n-1"].status).toBe("mastered");
+});
+
 test("study interactions do not block input frames on learning-journal storage", async ({ page }) => {
   await page.goto(APP_URL);
   await page.evaluate(() => localStorage.clear());
@@ -1232,7 +1374,7 @@ test("familiar senses move to the bottom and word-level resets restore the right
   await page.locator("#resetMarkingButton").click();
   await expect(page.locator("#resetDialog")).toBeHidden();
   await expect(page.locator(`.sense-item[data-key="${firstKey}"]`)).not.toHaveClass(/is-mastered|is-confirmed/);
-  let saved = await readState(page);
+  let saved = await waitForState(page, (candidate) => !candidate.progress[firstKey]);
   expect(saved.progress[firstKey]).toBeUndefined();
 
   await page.locator(`.sense-item[data-key="${firstKey}"]`).click();
@@ -1260,7 +1402,7 @@ test("familiar senses move to the bottom and word-level resets restore the right
   await expect(page.locator("#resetConfirmCopy")).toContainText("待新学状态");
   await page.locator("#confirmResetButton").click();
   await expect(page.locator("#senseArea")).toBeHidden();
-  saved = await readState(page);
+  saved = await waitForState(page, (candidate) => !candidate.introducedWords.includes("act"));
   expect(saved.introducedWords).not.toContain("act");
   expect(Object.keys(saved.progress).filter((key) => key.startsWith("act:"))).toEqual([]);
 });
@@ -2398,7 +2540,7 @@ test("completed activity counts survive relearning and repair previously shorten
   await page.locator("#resetButton").click();
   await page.locator("#relearnWordButton").click();
   await page.locator("#confirmResetButton").click();
-  saved = await readState(page);
+  saved = await waitForState(page, (candidate) => !candidate.introducedWords.includes("act"));
   expect(saved.introducedWords).not.toContain("act");
   expect(saved.activityLog["2026-07-24"].newCount).toBe(40);
   expect(saved.activityLog["2026-07-24"].newWords).toContain("act");
