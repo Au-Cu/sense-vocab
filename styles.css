@@ -5362,3 +5362,67 @@ html[data-ui-transition-scope="hierarchy"] .app-main-nav {
     gap: 6px;
   }
 }
+
+/* Device colour preference is independent of the interface style. */
+.color-setting { display: block; margin-top: 14px; }
+.color-setting legend { padding: 0 6px; font-weight: 750; }
+.color-mode-options { display: flex; flex-wrap: wrap; gap: 12px 22px; }
+.color-mode-options label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; min-height: 40px; }
+.color-mode-options input { accent-color: var(--accent); width: 18px; height: 18px; }
+.color-setting p { color: var(--muted); font-size: .78rem; margin: 8px 0 0; }
+
+html[data-color-mode="dark"],
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] {
+  color-scheme: dark;
+  --paper: #10171b;
+  --surface: #1b252b;
+  --ink: #e4eceb;
+  --muted: #adbbb9;
+  --line: #425259;
+  --accent: #65cdbb;
+  --accent-strong: #9ae6d8;
+  --warm: #e6ad6c;
+  --danger: #ff9f94;
+  --shadow: 0 18px 60px rgba(0, 0, 0, .4);
+  --glass-fill: rgba(26, 37, 47, .9);
+  --glass-fill-strong: rgba(30, 43, 54, .96);
+  --glass-border: rgba(160, 190, 210, .22);
+  --glass-shadow: 0 20px 52px rgba(0, 0, 0, .38), 0 1px 0 rgba(255, 255, 255, .08) inset;
+}
+html[data-color-mode="dark"] body,
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] body,
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .boot-screen { background: #10171d; color: var(--ink); }
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] body {
+  background: radial-gradient(circle at 15% 10%, #203744, transparent 45%), radial-gradient(circle at 85% 85%, #302b45, transparent 45%), #10171d;
+}
+html[data-color-mode="dark"] :where(.study-panel, .boot-card, .reset-dialog, .tutorial-tip, .page-bottom-nav, .study-actions, .dashboard-hover-tooltip) { background: var(--surface); color: var(--ink); border-color: var(--line); }
+html[data-color-mode="dark"] :where(.home-card, .stats, .dashboard-card, .dashboard-toolbar, .dashboard-chart-scroll, .dashboard-chart-frame, .dashboard-sankey-frame, .word-button, .sense-item, .settings-action, .interface-setting, .data-status-card, .data-comparison, .sync-record-card, .sync-record-stat, .account-membership-card, .notification-item, .study-sense-progress, .word-list-filters, .word-list-search, .word-list-sort, .sort-field select, .audio-button, .icon-button, .number-input, .plan-select, .account-input, .account-textarea, .account-tabs, .secondary-button, .danger-outline-button, .feedback-image-item, .account-state-badge, .vocabulary-status, .confusion-search-action, .word-list-badge.is-new, .word-list-badge.is-duration) {
+  background: #26343b; color: var(--ink); border-color: var(--line); box-shadow: none;
+}
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] :where(.study-panel, .boot-card, .reset-dialog, .page-bottom-nav) { background: var(--glass-fill); border-color: var(--glass-border); box-shadow: var(--glass-shadow); }
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] :where(.home-card, .stats, .dashboard-card, .dashboard-toolbar, .word-button, .sense-item, .settings-action, .interface-setting, .data-status-card, .data-comparison, .sync-record-card, .notification-item, .secondary-button, .account-input, .account-textarea, .audio-button, .number-input, .plan-select, .word-list-search, .word-list-sort, .word-list-filters, .dashboard-chart-frame, .dashboard-sankey-frame) { background: rgba(37, 52, 64, .96); color: var(--ink); border-color: var(--line); box-shadow: none; }
+html[data-color-mode="dark"] :where(.word-list-item:hover, .word-list-item:focus-visible, .sense-item:hover, .sense-item:focus-visible, .audio-button:hover, .secondary-button:hover) { background: #314b50; }
+html[data-color-mode="dark"] :where(.sense-item.is-confirmed, .sense-item.is-mastered, .sense-item.is-confirming, .word-button.is-mastered) { background: #194635; border-color: #4b9f79; color: #d9f7e7; }
+html[data-color-mode="dark"] :where(.primary-button) { background: #228675; color: #fff; }
+html[data-color-mode="dark"] :where(.app-bottom-nav .app-nav-item.is-active) { background: #284b4a; color: #b9f2e5; }
+html[data-color-mode="dark"] .heatmap-day { filter: brightness(.48); }
+html[data-color-mode="dark"] .interface-theme-badge,
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .interface-theme-badge { background: #31504f; color: #c5f4e9; border-color: #719d98; }
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .vocabulary-status { background: #263f45; color: #b9e9e2; border-color: #526f75; }
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .app-bottom-nav .app-nav-item { color: #acbfca; }
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .app-bottom-nav .app-nav-item.is-active { background: #355456; color: #dbfff6; border-color: #69918e; box-shadow: none; }
+html[data-color-mode="dark"] .word-search-field,
+html[data-color-mode="dark"] .sense-item.is-example,
+html[data-color-mode="dark"] .word-list-badge.is-new,
+html[data-color-mode="dark"] .word-list-badge.is-duration { background: #26343b; color: var(--ink); border-color: var(--line); }
+html[data-color-mode="dark"] .word-list-badge.is-review { background: #20433f; color: #b3ede1; }
+html[data-color-mode="dark"] .word-list-badge.is-reinforce { background: #4a3926; color: #f5d6a2; }
+html[data-color-mode="dark"] .word-list-badge.is-mastered { background: #194635; color: #c5f3d8; }
+html[data-color-mode="dark"] .sense-item.is-confirmed,
+html[data-color-mode="dark"] .sense-item.is-mastered,
+html[data-color-mode="dark"] .sense-item.is-confirming,
+html[data-color-mode="dark"] .word-button.is-mastered { background: #194635; color: #d9f7e7; border-color: #4b9f79; }
+html[data-color-mode="dark"] .sense-item.is-collapsible::after { color: #a4e7c1; }
+html[data-color-mode="dark"] .secondary-button:disabled,
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .secondary-button:disabled { background: #303c42; color: #99a5aa; border-color: #46575e; }
+html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .study-actions { background: #1b252e; box-shadow: 0 -8px 18px rgba(0, 0, 0, .2); }

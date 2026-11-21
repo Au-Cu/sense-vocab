@@ -1,12 +1,14 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(toolsDir, "..");
 const bundlePath = path.join(rootDir, "data", "vocabulary-bundle.json");
 const reportPath = path.join(rootDir, "data", "content-rights-audit.json");
 const summaryPath = path.join(rootDir, "data", "content-rights-summary.json");
+const auditHistoryDir = path.join(rootDir, ".op-cache", "content-audit");
 const strict = process.argv.includes("--strict");
 
 async function writeFileWithRetry(filePath, contents) {
@@ -24,7 +26,9 @@ async function writeFileWithRetry(filePath, contents) {
   throw lastError;
 }
 
-const bundle = JSON.parse(await readFile(bundlePath, "utf8"));
+const bundleBytes = await readFile(bundlePath);
+const bundle = JSON.parse(bundleBytes.toString("utf8"));
+const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const findings = {
   remoteAudioWithoutCompleteAttribution: [],
   quotationExamplesRequiringReview: [],
@@ -122,6 +126,8 @@ const counts = Object.fromEntries(
 );
 const report = {
   generatedAt: new Date().toISOString(),
+  inputSha256: hash(bundleBytes),
+  auditScriptSha256: hash(await readFile(fileURLToPath(import.meta.url))),
   bundleSchemaVersion: bundle.schemaVersion,
   counts,
   releasePolicy: {
@@ -136,21 +142,37 @@ const report = {
 };
 
 await writeFileWithRetry(reportPath, `${JSON.stringify(report, null, 2)}\n`);
-await writeFileWithRetry(
-  summaryPath,
-  `${JSON.stringify({
+await mkdir(auditHistoryDir, { recursive: true });
+const resultSha256 = hash(JSON.stringify({ bundleSchemaVersion: report.bundleSchemaVersion, counts, releasePolicy: report.releasePolicy, findings }));
+await appendFile(path.join(auditHistoryDir, "runs.jsonl"), `${JSON.stringify({
+  auditedAt: report.generatedAt, inputSha256: report.inputSha256,
+  auditScriptSha256: report.auditScriptSha256, resultSha256, counts,
+})}\n`, "utf8");
+const summary = {
     generatedAt: report.generatedAt,
     bundleSchemaVersion: report.bundleSchemaVersion,
     counts,
     releasePolicy: report.releasePolicy,
-  }, null, 2)}\n`,
-);
+};
+let previousSummary;
+try {
+  previousSummary = JSON.parse(await readFile(summaryPath, "utf8"));
+} catch (error) {
+  if (error.code !== "ENOENT" && !(error instanceof SyntaxError)) throw error;
+}
+const withoutTime = ({ generatedAt, ...rest }) => rest;
+const summaryChanged = !previousSummary ||
+  JSON.stringify(withoutTime(previousSummary)) !== JSON.stringify(withoutTime(summary));
+if (summaryChanged) {
+  await writeFileWithRetry(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
+}
 console.log("Content-rights audit:");
 for (const [key, count] of Object.entries(counts)) {
   console.log(`- ${key}: ${count}`);
 }
 console.log(`Report written to ${reportPath}`);
-console.log(`Public summary written to ${summaryPath}`);
+console.log(`Public summary ${summaryChanged ? "updated" : "unchanged"}: ${summaryPath}`);
+console.log(`Audit time: ${report.generatedAt}; input SHA-256: ${report.inputSha256}; audit script SHA-256: ${report.auditScriptSha256}; result SHA-256: ${resultSha256}`);
 
 if (strict && Object.values(counts).some((count) => count > 0)) {
   console.error("Strict content-rights audit failed.");

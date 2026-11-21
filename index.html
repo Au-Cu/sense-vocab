@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#f7f4ee" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <script src="./ui-theme.js?v=20261004-1"></script>
+    <script src="./ui-theme.js?v=20261122-1"></script>
     <script src="./platform/durable-storage.js?v=20261010-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=20261015-1" />
+    <link rel="stylesheet" href="./styles.css?v=20261122-1" />
   </head>
   <body aria-busy="true">
     <div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-atomic="true">
@@ -248,10 +248,25 @@
             <h1>更多</h1>
           </div>
         </header>
-        <section class="interface-setting" aria-labelledby="interfaceSettingTitle">
+        <div class="settings-action-list">
+          <button class="settings-action" id="interfaceButton" type="button"><span class="settings-action-copy"><strong>用户界面</strong></span><span class="settings-action-arrow" aria-hidden="true">›</span></button>
+          <button class="settings-action settings-action-primary" id="dataButton" type="button">
+            <span class="settings-action-copy"><strong>数据</strong></span><span class="settings-action-arrow" aria-hidden="true">›</span>
+          </button>
+          <button class="settings-action" id="accountButton" type="button"><span class="settings-action-copy"><strong>账户</strong></span><span class="settings-action-arrow" aria-hidden="true">›</span></button>
+          <button class="settings-action notification-entry-button" id="notificationsButton" type="button"><span class="settings-action-copy"><strong>消息通知</strong></span><span class="notification-badge" id="notificationBadge" hidden>0</span><span class="settings-action-arrow" aria-hidden="true">›</span></button>
+          <button class="settings-action" id="homeFeedbackButton" type="button"><span class="settings-action-copy"><strong>反馈问题</strong></span><span class="settings-action-arrow" aria-hidden="true">›</span></button>
+          <button class="settings-action" id="replayTutorialButton" type="button"><span class="settings-action-copy"><strong>重学教程</strong></span><span class="settings-action-arrow" aria-hidden="true">›</span></button>
+          <a class="settings-action legal-link-button" href="./legal.html" target="_blank" rel="noopener"><span class="settings-action-copy"><strong>条款、隐私与内容来源</strong></span><span class="settings-action-arrow" aria-hidden="true">›</span></a>
+        </div>
+      </section>
+
+      <section class="study-panel data-panel" id="interfacePanel" aria-labelledby="interfaceSettingTitle" hidden>
+        <header class="dashboard-page-header data-page-header"><div><p class="word-label">偏好与支持</p><h1 id="interfaceSettingTitle">用户界面</h1></div></header>
+        <section class="interface-setting" aria-label="界面风格">
           <div class="interface-setting-copy">
             <div class="interface-setting-heading">
-              <h2 id="interfaceSettingTitle">用户界面</h2>
+              <h2>界面风格</h2>
               <span class="interface-theme-badge" id="uiThemeBadge">经典</span>
             </div>
             <p id="uiThemeDescription" aria-live="polite">
@@ -272,45 +287,12 @@
             <span class="ui-theme-switch-label">液态玻璃</span>
           </label>
         </section>
-        <div class="settings-action-list">
-          <button class="settings-action settings-action-primary" id="dataButton" type="button">
-            <span class="settings-action-copy">
-              <strong>数据</strong>
-            </span>
-            <span class="settings-action-arrow" aria-hidden="true">›</span>
-          </button>
-          <button class="settings-action" id="accountButton" type="button">
-            <span class="settings-action-copy">
-              <strong>账户</strong>
-            </span>
-            <span class="settings-action-arrow" aria-hidden="true">›</span>
-          </button>
-          <button class="settings-action notification-entry-button" id="notificationsButton" type="button">
-            <span class="settings-action-copy">
-              <strong>消息通知</strong>
-            </span>
-            <span class="notification-badge" id="notificationBadge" hidden>0</span>
-            <span class="settings-action-arrow" aria-hidden="true">›</span>
-          </button>
-          <button class="settings-action" id="homeFeedbackButton" type="button">
-            <span class="settings-action-copy">
-              <strong>反馈问题</strong>
-            </span>
-            <span class="settings-action-arrow" aria-hidden="true">›</span>
-          </button>
-          <button class="settings-action" id="replayTutorialButton" type="button">
-            <span class="settings-action-copy">
-              <strong>重学教程</strong>
-            </span>
-            <span class="settings-action-arrow" aria-hidden="true">›</span>
-          </button>
-          <a class="settings-action legal-link-button" href="./legal.html" target="_blank" rel="noopener">
-            <span class="settings-action-copy">
-              <strong>条款、隐私与内容来源</strong>
-            </span>
-            <span class="settings-action-arrow" aria-hidden="true">›</span>
-          </a>
-        </div>
+        <fieldset class="interface-setting color-setting"><legend>颜色模式</legend><div class="color-mode-options">
+          <label><input type="radio" name="colorMode" value="light">浅色</label>
+          <label><input type="radio" name="colorMode" value="dark">深色</label>
+          <label><input type="radio" name="colorMode" value="system">跟随系统</label>
+        </div><p id="colorModeMessage" aria-live="polite">仅保存在当前设备。</p></fieldset>
+        <button class="secondary-button data-page-back-button" id="interfaceBackButton" type="button">返回</button>
       </section>
 
       <section class="study-panel data-panel" id="dataPanel" aria-live="polite" hidden>
@@ -1118,7 +1100,7 @@
     <script src="./cloud-client.js?v=20261020-1"></script>
     <script src="./sync-state.js?v=20261017-2"></script>
     <script src="./dashboard-storage.js?v=20261018-1"></script>
-    <script src="./app.js?v=20261112-1"></script>
+    <script src="./app.js?v=20261122-1"></script>
     <script src="./account.js?v=20261020-1"></script>
   </body>
 </html>

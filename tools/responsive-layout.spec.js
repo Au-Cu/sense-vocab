@@ -83,10 +83,11 @@ for (const theme of ["classic", "liquid-glass"]) {
 
       await page.locator("#globalSettingsNavButton").click();
       await expectPageFrame(page, "#settingsPanel", home);
-      const interfaceBox = await page.locator(".interface-setting").boundingBox();
-      const actionBox = await page.locator(".settings-action-list").boundingBox();
-      expect(Math.abs(interfaceBox.x - actionBox.x)).toBeLessThan(1);
-      expect(Math.abs(interfaceBox.width - actionBox.width)).toBeLessThan(1);
+      await page.locator("#interfaceButton").click();
+      await expectPageFrame(page, "#interfacePanel", home);
+      await expect(page.getByLabel("跟随系统")).toBeVisible();
+      await page.locator("#interfaceBackButton").click();
+      await expectPageFrame(page, "#settingsPanel", home);
 
       await page.locator("#dataButton").click();
       await expectPageFrame(page, "#dataPanel", home);

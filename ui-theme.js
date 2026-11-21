@@ -2,6 +2,25 @@
   "use strict";
 
   const STORAGE_KEY = "sense-vocab-ui-theme-v1";
+  const COLOR_KEY = "sense-vocab-color-mode-v1";
+  const colorMedia = window.matchMedia("(prefers-color-scheme: dark)");
+  const normalizeColor = (value) => ["light", "dark", "system"].includes(value) ? value : "light";
+  let colorMode = "light";
+  try { colorMode = normalizeColor(window.localStorage.getItem(COLOR_KEY)); } catch {}
+
+  function applyColor(value, persist = false) {
+    colorMode = normalizeColor(value);
+    const dark = colorMode === "dark" || (colorMode === "system" && colorMedia.matches);
+    document.documentElement.dataset.colorMode = dark ? "dark" : "light";
+    let saved = true;
+    if (persist) {
+      try { window.localStorage.setItem(COLOR_KEY, colorMode); } catch { saved = false; }
+    }
+    document.querySelectorAll('input[name="colorMode"]').forEach((input) => { input.checked = input.value === colorMode; });
+    const message = document.querySelector("#colorModeMessage");
+    if (message) message.textContent = saved ? "仅保存在当前设备。" : "当前浏览器未允许保存，刷新后可能恢复浅色。";
+    updateBrowserChrome(getTheme());
+  }
   const CLASSIC_THEME = "classic";
   const LIQUID_GLASS_THEME = "liquid-glass";
   const SUPPORTED_THEMES = new Set([CLASSIC_THEME, LIQUID_GLASS_THEME]);
@@ -34,7 +53,7 @@
     const themeColor = document.querySelector('meta[name="theme-color"]');
     themeColor?.setAttribute(
       "content",
-      theme === LIQUID_GLASS_THEME ? "#dfeaf8" : "#f7f4ee",
+      document.documentElement.dataset.colorMode === "dark" ? "#10171d" : theme === LIQUID_GLASS_THEME ? "#dfeaf8" : "#f7f4ee",
     );
   }
 
@@ -84,6 +103,7 @@
   }
 
   const initialPreference = readStoredTheme();
+  applyColor(colorMode);
   applyTheme(initialPreference.theme, { source: "bootstrap" });
   if (!initialPreference.storageAvailable) {
     document.documentElement.dataset.uiThemeStorage = "unavailable";
@@ -104,6 +124,10 @@
   function bindThemeControl() {
     const toggle = document.querySelector("#liquidGlassToggle");
     if (!toggle) return;
+    applyColor(colorMode);
+    document.querySelectorAll('input[name="colorMode"]').forEach((input) => {
+      input.addEventListener("change", () => { if (input.checked) applyColor(input.value, true); });
+    });
     syncThemeControl();
     toggle.addEventListener("change", () => {
       const nextTheme = toggle.checked ? LIQUID_GLASS_THEME : CLASSIC_THEME;
@@ -125,7 +149,9 @@
     syncThemeControl(event.detail);
   });
   window.addEventListener("storage", (event) => {
+    if (event.key === COLOR_KEY) { applyColor(event.newValue); return; }
     if (event.key !== STORAGE_KEY) return;
     applyTheme(event.newValue, { source: "storage" });
   });
+  colorMedia.addEventListener("change", () => { if (colorMode === "system") applyColor(colorMode); });
 })();

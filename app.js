@@ -302,6 +302,7 @@ const homePanel = document.querySelector("#homePanel");
 const studyPanel = document.querySelector("#studyPanel");
 const dashboardPanel = document.querySelector("#dashboardPanel");
 const settingsPanel = document.querySelector("#settingsPanel");
+const interfacePanel = document.querySelector("#interfacePanel");
 const dataPanel = document.querySelector("#dataPanel");
 const mainAppNav = document.querySelector("#mainAppNav");
 const modalLayer = document.querySelector("#modalLayer");
@@ -5114,6 +5115,7 @@ function render() {
   wordListPanel.hidden = state.view !== "word-list";
   dashboardPanel.hidden = state.view !== "dashboard";
   settingsPanel.hidden = state.view !== "settings";
+  interfacePanel.hidden = state.view !== "interface";
   dataPanel.hidden = state.view !== "data";
   const mainNavigationVisible = ["home", "dashboard", "settings"].includes(state.view);
   mainAppNav.hidden = !mainNavigationVisible;
@@ -7372,7 +7374,7 @@ function renderDashboard() {
 
 function applyAccountBootstrapGate() {
   const pending = document.documentElement.dataset.accountReady !== "true";
-  [studyPanel, wordListPanel, dashboardPanel, settingsPanel, dataPanel, confusionPanel]
+  [studyPanel, wordListPanel, dashboardPanel, settingsPanel, interfacePanel, dataPanel, confusionPanel]
     .forEach((panel) => {
     panel.inert = pending;
   });
@@ -8723,6 +8725,15 @@ function closeDashboard() {
 
 function openSettings() {
   openMainView("settings");
+}
+
+function setInterfacePage(open, event) {
+  if (!state) return;
+  const origin = getUiTransitionOrigin(event?.currentTarget ?? document.querySelector("#interfaceButton"));
+  commitUiTransition(open ? "forward" : "backward", () => {
+    state.view = open ? "interface" : "settings";
+    render();
+  }, { scope: "hierarchy", origin });
 }
 
 function openDataPage(event) {
@@ -11258,6 +11269,8 @@ dashboardBackButton?.addEventListener("click", closeDashboard);
 globalDashboardNavButton?.addEventListener("click", openDashboard);
 globalHomeNavButton?.addEventListener("click", () => openMainView("home"));
 globalSettingsNavButton?.addEventListener("click", openSettings);
+document.querySelector("#interfaceButton")?.addEventListener("click", (event) => setInterfacePage(true, event));
+document.querySelector("#interfaceBackButton")?.addEventListener("click", (event) => setInterfacePage(false, event));
 dataButton?.addEventListener("click", openDataPage);
 dataBackButton?.addEventListener("click", closeDataPage);
 window.addEventListener("sensevocab:open-data", (event) => openDataPage(event));
