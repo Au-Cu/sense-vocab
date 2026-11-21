@@ -138,6 +138,17 @@ test("a failed globe load leaves the learning card usable and can be retried", a
 
 test("users build symmetric pairwise confusing-word globes without transitive links", async ({ page }) => {
   test.setTimeout(45000);
+  await page.addInitScript(() => {
+    const NativeDate = Date;
+    const start = new NativeDate();
+    // This test covers globe navigation, not the separate cross-day confirmation flow.
+    start.setHours(12, 0, 0, 0);
+    const offset = start.getTime() - NativeDate.now();
+    window.Date = class extends NativeDate {
+      constructor(...args) { super(...(args.length ? args : [NativeDate.now() + offset])); }
+      static now() { return NativeDate.now() + offset; }
+    };
+  });
   await prepareStudy(page);
   await openGlobe(page);
 
