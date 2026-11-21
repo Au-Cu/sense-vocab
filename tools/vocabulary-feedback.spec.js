@@ -295,6 +295,22 @@ test("approved new senses are visible together on desktop and mobile", async ({ 
   await expect(page.locator("#wordSearchInput")).toHaveValue("sanction");
 });
 
+test("definition-only vocabulary entries show their English definition", async ({ page }) => {
+  const fixture = readJson("data/vocabulary-bundle.json");
+  const sense = byWord(fixture.words, "volunteer").senses.find((entry) => entry.id === "n-3");
+  sense.definition = "a volunteer fixture definition";
+  delete sense.definitionSentence;
+  await page.route("**/data/vocabulary-bundle.json*", (route) => route.fulfill({ json: fixture }));
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.vocabularyReady === "true");
+  await page.locator("#wordListButton").click();
+  await page.locator("#wordSearchInput").fill("volunteer");
+  await page.locator('.word-list-item[data-word-id="volunteer"]').click();
+  await expect(page.locator('.sense-item[data-key="volunteer:n-3"] .sense-definition'))
+    .toHaveText("释义：a volunteer fixture definition");
+});
+
 test("approved volunteer noun and visual example stay bound to both books", async ({ page }) => {
   const response = await page.request.get(`${APP_URL}data/vocabulary-bundle.json`);
   expect(response.ok()).toBeTruthy();

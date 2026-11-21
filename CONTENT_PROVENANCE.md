@@ -42,6 +42,12 @@ Wiktionary/Kaikki 记录保存词条页、编辑历史页、版权页、贡献�
 
 `data/kaoyan-source.json` 缺少可验证的商业权利链，仅允许内部审计，不进入网页发布目录，也不得用于继续生成内容或付费发行。该限制记录在 `data/source-policy.json`。
 
+2026-11-15 的内部溯源确认，该本地文件的 SHA-256 为 `75504c26f732303414c818c4d6d42d56844cef2c1d771317b2e80d4ec3882469`，Git blob 为 `d1a8cd53dfc12d428302dae17a72657c3c64c146`，与 [KyleBing/english-vocabulary 的考研 JSON](https://github.com/KyleBing/english-vocabulary/blob/5fd35467a810c945012b87e6e81de4dbfa10c277/json/5-%E8%80%83%E7%A0%94-%E9%A1%BA%E5%BA%8F.json) 在提交 `5fd35467a810c945012b87e6e81de4dbfa10c277` 中的文件一致。该提交于 2026-09-30 加入 [BSD 3-Clause 许可证](https://github.com/KyleBing/english-vocabulary/blob/5fd35467a810c945012b87e6e81de4dbfa10c277/LICENSE)，晚于本地文件的 2026-07-04 修改时间。
+
+该仓库的 [README](https://github.com/KyleBing/english-vocabulary/blob/5fd35467a810c945012b87e6e81de4dbfa10c277/README.md) 将词库追溯至 `kajweb/dict` 的派生整理；[上游说明](https://github.com/kajweb/dict/blob/3992bcb94c800a2fd38a9fd6ff95b2353e755363/README.md) 列出有道、新东方等词库及原始下载地址。内部只读比对发现，本地 9,602 个词条的顺序与上游该版本的 `KaoYan_1`、`KaoYan_2` 和 `KaoYan_3` 三份文件一致，13,840 条词性与中文翻译组合也逐条一致；上游将前两份标为有道、第三份标为新东方。
+
+仓库级许可证和文件哈希可证明直接分发来源，但不能单独证明每条上游词义及翻译均获相应权利人授权。因此，这一发现尚不自动解除隔离或清除逐字段权利门禁；后续应核对具体内容来源和许可范围，保留许可证及署名义务。
+
 ## 内容变更与验收
 
 1. 保持身份兼容边界。

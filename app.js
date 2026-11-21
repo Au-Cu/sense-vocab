@@ -772,6 +772,7 @@ function normalizeWordList(data) {
         pos: sense.pos,
         meaning: sense.meaning,
         definitionSentence: sense.definitionSentence,
+        definition: sense.definition,
         definitionZh: sense.definitionZh,
         example: sense.example,
         exampleZh: sense.exampleZh,
@@ -4439,7 +4440,8 @@ function visibleSenses() {
 }
 
 function definitionSentence(sense) {
-  return sense.definitionSentence ? `释义：${sense.definitionSentence}` : "";
+  const definition = sense.definitionSentence || sense.definition;
+  return definition ? `释义：${definition}` : "";
 }
 
 function definitionTranslation(sense) {
