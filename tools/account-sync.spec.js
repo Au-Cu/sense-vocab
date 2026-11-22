@@ -474,6 +474,33 @@ async function login(page, email = "learner@example.com") {
   await page.locator("#accountSubmitButton").click();
 }
 
+test("a retried account script restores the authenticated scope before unlocking", async ({ page }) => {
+  const local = makeState(45);
+  local.introducedWords = ["act"];
+  local.progress["act:v-1"] = { status: "mastered", lastSeenActual: "2026-09-27" };
+  await installFakeCloud(page, { found: true, revision: 10, state: local }, {
+    session: { user: { id: "user-1", email: "learner@example.com" } },
+  });
+  await page.addInitScript(({ key, state }) => {
+    localStorage.setItem(key, JSON.stringify(state));
+  }, { key: ACCOUNT_KEY, state: local });
+  let requests = 0;
+  await page.route("**/account.js?*", async (route) => {
+    requests += 1;
+    if (requests === 1) await route.abort("failed");
+    else await route.continue();
+  });
+  await page.goto(APP_URL);
+  await waitForAccount(page);
+  const state = await page.evaluate(() => ({
+    key: window.SenseVocabApp.getActiveStorageKey(),
+    target: window.SenseVocabApp.getState().plan.dailyTarget,
+    progress: window.SenseVocabApp.getState().progress["act:v-1"]?.status,
+  }));
+  expect(requests).toBe(2);
+  expect(state).toEqual({ key: ACCOUNT_KEY, target: 45, progress: "mastered" });
+});
+
 test("account startup retains a learned tail even when the dirty flag was lost", async ({ page }) => {
   const remote = makeState(20);
   remote.introducedWords = ["act"];

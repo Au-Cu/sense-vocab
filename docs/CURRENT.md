@@ -8,18 +8,18 @@
 
 | 项目 | 当前值 |
 | --- | --- |
-| 正式版本 | `1.14.2` |
+| 正式版本 | `1.15.0` |
 | 分支 | `main` |
-| 最新标签 | `v1.14.2` |
+| 最新标签 | `v1.15.0` |
 | 正式域名 | `https://sense-vocab.pages.dev/` |
-| 最近已验证部署 | `https://f49ddb13.sense-vocab.pages.dev`，已同步正式域名 `https://sense-vocab.pages.dev/`；产品提交 `bbebf0e`，验证输入 SHA-256 `b8e2a1891ba2339a2a26c74a57c7e9e124e092bc5bd2620a6213258c91483956`，产物 SHA-256 `8d5e8a2f0f43f01dbc8bdc09ee4af9b80868c5aa1207c67b0b0b82e376a42717`。完整回归 290/290，两地址各 5 个关键文件与验证产物一致，公网桌面和手机视口的颜色选择及跟随系统通过。未创建新 Release，版本仍为 `1.14.2`。 |
+| 最近已验证部署 | `https://38fad68f.sense-vocab.pages.dev`，已同步正式域名 `https://sense-vocab.pages.dev/`；验证输入 SHA-256 `294ec79722bb50b539d5ea989a68349245c194dc1eb632585f37f7b2516a636b`，产物 SHA-256 `f72d5b04864b69fd1b8b88a71a7c906c137b3a600e10ea3dc8ba7d4b9ef63447`。完整回归 293/293，两地址各 9 个关键文件与验证产物一致。账户脚本明确加载失败时有限重试并保留账户门禁；此前偶发初始化超时的唯一原因仍未确认。 |
 | 最近数据库迁移 | `20261020072404_deduplicate_authoritative_state_mirrors` 已完成远端事务回滚预演、完整门禁，并将 DDL 与追加迁移历史原子应用；权限及生产定义回读通过。新列只描述被省略的等价镜像，旧记录不改写，迁移前后用户最新完整学习状态校验值一致。固定修订读取、CAS、上传会话锁、删除墓碑、完整快照、UTF-8 分片和 64 MiB 边界均保留；没有通过删除历史、降低安全边界或改动自动重试次数来处理问题 |
 | 后台 | `https://sense-vocab.pages.dev/admin.html`，无前台入口 |
 | 工作区 | `D:\Files\sense-vocab-mvp` |
 | 原生研发工作副本 | `D:\Files\sense-vocab-native-dev`，本地分支 `rnd/native-platform`；从最新 `main` 建立，不是第二个正式发布入口 |
 | 本地恢复点 | `D:\Files\sense-vocab-recovery-20261025`；原状态保存在本地分支 `archive/local-pre-reconcile-20261025`，提交 `45e43f9cf3f0a4ed3fdbf4e7e9394d322db21b9d`，离线 bundle 及原始文件哈希均已核验 |
 
-`v1.14.2` 归属于 2026-11-15（Asia/Hong_Kong）发布批次，聚合上次正式发布以来的已验证 Web 修复；正式版本维护记录只见 GitHub Release，不追加 CHANGELOG 或逐日 CURRENT 历史。正式工作区是唯一发布入口；原有 91 个文件条目已经保全和对照，不再作为未完成产品任务反复报告。未完成的原生研发保持隔离，本版本不宣称恢复此前未成功持久化的学习操作。
+`v1.15.0` 归属于 2026-11-22（Asia/Hong_Kong）发布批次，聚合上次正式发布以来的已验证 Web 修复；正式版本维护记录只见 GitHub Release，不追加 CHANGELOG 或逐日 CURRENT 历史。正式工作区是唯一发布入口；原有 91 个文件条目已经保全和对照，不再作为未完成产品任务反复报告。未完成的原生研发保持隔离，本版本不宣称恢复此前未成功持久化的学习操作。
 
 ## 工作区状态
 
@@ -93,7 +93,7 @@
 
 ## 验证基线
 
-- 当前版本最终构建及完整门禁为 287/287，输入和产物哈希见发布快照；构建、测试、部署日志分别为 `.op-cache/logs/2026-11-15T06-59-50-974Z-release-build.log`、`.op-cache/logs/2026-11-15T07-00-10-954Z-release-test.log` 和 `.op-cache/logs/2026-11-15T07-18-53-817Z-deploy-verified.log`。两地址各 34 文件的完整核验位于 `.op-cache/evidence/op-release-20261115/public/public.json`。此前同产品代码的正式域名九项复核保留，其产物与本版本只在 SBOM、第三方许可和内容权利摘要元数据上不同；没有删除用户文件、改变依赖版本或修改生产记录。
+- 当前版本最终构建及完整门禁为 293/293，输入和产物哈希见发布快照；构建、测试、部署日志分别为 `.op-cache/logs/2026-11-22T05-07-56-471Z-release-build.log`、`.op-cache/logs/2026-11-22T05-08-09-076Z-release-test.log` 和 `.op-cache/logs/2026-11-22T05-26-40-959Z-deploy-verified.log`。两地址各 9 个关键文件的哈希核验位于 `.op-cache/evidence/release-v1.15.0/public-hashes.json`。本次没有删除用户文件、改变依赖版本或修改生产记录。
 
 - 学习队列既有专项包括 17 个队列用例、108 项学习/恢复/词书/并发/读取检查和 3 项账户边界检查；真实底稿隔离回放保持已完成位置和原始义项，并验证旧错误队列的自动恢复。用户此前已自行验收相关日间修复；本次版本聚合未操作手机或回退真实数据。
 

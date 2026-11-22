@@ -8,6 +8,47 @@ const cards = bundle.books.find((book) => book.id === "kaoyan").entries.slice(0,
 
 test.use({ launchOptions: { executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" } });
 
+const startupDiagnostics = new WeakMap();
+
+test.beforeEach(async ({ page }) => {
+  const diagnostics = { failedScripts: [], pageErrors: [] };
+  startupDiagnostics.set(page, diagnostics);
+  page.on("requestfailed", (request) => {
+    const url = new URL(request.url());
+    if (request.resourceType() === "script" && url.origin === new URL(APP_URL).origin) {
+      diagnostics.failedScripts.push({ path: url.pathname, error: request.failure()?.errorText ?? "unknown" });
+    }
+  });
+  page.on("pageerror", (error) => {
+    diagnostics.pageErrors.push({ name: error.name, message: error.message.slice(0, 200) });
+  });
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status === testInfo.expectedStatus) return;
+  let timer;
+  try {
+    const snapshot = await Promise.race([
+      page.evaluate(() => ({
+        appReady: document.documentElement.dataset.appReady ?? null,
+        accountReady: document.documentElement.dataset.accountReady ?? null,
+        vocabularyReady: document.documentElement.dataset.vocabularyReady ?? null,
+        bootLabel: document.querySelector("#bootProgressLabel")?.textContent ?? null,
+        scripts: performance.getEntriesByType("resource").filter((entry) => {
+          const path = new URL(entry.name).pathname;
+          return path.endsWith("/app.js") || path.endsWith("/account.js");
+        }).map((entry) => ({ path: new URL(entry.name).pathname, duration: entry.duration, responseStatus: entry.responseStatus })),
+      })),
+      new Promise((resolve) => { timer = setTimeout(() => resolve({ unavailable: true }), 1500); }),
+    ]);
+    console.error(JSON.stringify({ startupDiagnostics: startupDiagnostics.get(page), snapshot }));
+  } catch (error) {
+    console.error(JSON.stringify({ startupDiagnostics: startupDiagnostics.get(page), snapshot: "unavailable" }));
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 async function restore(page, queue, currentIndex, historyView = null) {
   await page.addInitScript(({ key, queue, currentIndex, historyView }) => {
     const today = new Date().toLocaleDateString("sv-SE", { timeZone: "Asia/Hong_Kong" });
@@ -138,3 +179,43 @@ test(`a missing completed queue ${pendingReview ? "retains due review" : "offers
   expect(session.queue[0].type).toBe(pendingReview ? "review" : "extra");
 });
 }
+
+test("startup recovers from one interrupted account script request", async ({ page }) => {
+  let requests = 0;
+  const accountKey = `${STORAGE_KEY}:account:test-account`;
+  const accountRecord = JSON.stringify({ sentinel: "preserve-account-record" });
+  await page.addInitScript(({ accountKey, accountRecord }) => {
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem(accountKey, accountRecord);
+  }, { accountKey, accountRecord });
+  await page.route("**/account.js?*", async (route) => {
+    requests += 1;
+    if (requests === 1) await route.abort("failed");
+    else await route.continue();
+  });
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.accountReady === "true", null, { timeout: 5000 });
+  expect(requests).toBe(2);
+  expect(await page.evaluate((key) => localStorage.getItem(key), accountKey)).toBe(accountRecord);
+});
+
+test("startup remains locked when both account script requests fail", async ({ page }) => {
+  let requests = 0;
+  const accountKey = `${STORAGE_KEY}:account:test-account`;
+  const accountRecord = JSON.stringify({ sentinel: "preserve-account-record" });
+  await page.addInitScript(({ accountKey, accountRecord }) => {
+    localStorage.setItem("sense-vocab-tutorial-complete-v1:guest", "completed");
+    localStorage.setItem(accountKey, accountRecord);
+  }, { accountKey, accountRecord });
+  await page.route("**/account.js?*", async (route) => {
+    requests += 1;
+    await route.abort("failed");
+  });
+  await page.goto(APP_URL);
+  await page.waitForFunction(() => document.documentElement.dataset.appReady === "true");
+  await expect(page.locator("#bootProgressLabel")).toHaveText("账户组件未能载入，请刷新页面；本机学习记录已保留");
+  await expect(page.locator("#appShell")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.dataset.accountReady)).not.toBe("true");
+  expect(requests).toBe(2);
+  expect(await page.evaluate((key) => localStorage.getItem(key), accountKey)).toBe(accountRecord);
+});

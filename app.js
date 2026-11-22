@@ -11483,4 +11483,34 @@ window.addEventListener("sensevocab:membership", (event) => {
   if (state && changed) render();
 });
 
+// A failed account script otherwise leaves the account gate closed forever.
+let accountScriptRetryAttempted = false;
+window.addEventListener("error", (event) => {
+  const script = event.target;
+  if (!(script instanceof HTMLScriptElement) || !script.src) return;
+  const failedUrl = new URL(script.src, document.baseURI);
+  const accountUrl = new URL("./account.js", document.baseURI);
+  if (failedUrl.origin !== accountUrl.origin || failedUrl.pathname !== accountUrl.pathname) return;
+
+  if (script.dataset.accountRetry === "true") {
+    const reportFailure = () => {
+      if (document.documentElement.dataset.accountReady !== "true") {
+        setBootProgress(null, "账户组件未能载入，请刷新页面；本机学习记录已保留");
+      }
+    };
+    reportFailure();
+    if (document.documentElement.dataset.appReady !== "true") {
+      window.addEventListener("sensevocab:app-ready", reportFailure, { once: true });
+    }
+    return;
+  }
+  if (accountScriptRetryAttempted) return;
+  accountScriptRetryAttempted = true;
+  setBootProgress(null, "账户组件载入中断，正在重试");
+  const retry = document.createElement("script");
+  retry.src = script.src;
+  retry.dataset.accountRetry = "true";
+  document.head.appendChild(retry);
+}, true);
+
 initializeApp();
