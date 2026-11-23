@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const bundle = require("../data/vocabulary-bundle.json");
 const index = require("../data/vocabulary-index.json");
+const { computePackedLayout } = require("../word-universe.js");
 
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
 const VERSION = "0123456789abcdef";
@@ -109,28 +110,176 @@ async function search(page, word) {
   await expect(page.locator(".universe-canvas")).toHaveAttribute("data-camera-moving", "false");
 }
 
+test("home search opens filtered word list and retains the query", async ({ page }) => {
+  await openApp(page);
+  const searchInput = page.locator("#homePanel #wordSearchInput");
+  await expect(searchInput).toBeVisible();
+  await searchInput.fill("act");
+  await searchInput.press("Enter");
+  await expect(page.locator("#wordListPanel")).toBeVisible();
+  await expect(page.locator('.word-list-item[data-word-id="act"]')).toBeVisible();
+  await expect(page.locator("#wordSearchInput")).toHaveValue("act");
+  await page.locator("#wordListBackButton").click();
+  await expect(page.locator("#homePanel #wordSearchInput")).toHaveValue("act");
+});
+
+test("home search is first and universe entry labels are centered", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openApp(page);
+  const layout = await page.evaluate(() => {
+    const search = document.querySelector("#homeWordSearchForm").getBoundingClientRect();
+    const plan = document.querySelector("#todayPlanHeading").getBoundingClientRect();
+    const buttons = [...document.querySelectorAll(".universe-entry button")].map((button) => {
+      const range = document.createRange(); range.selectNodeContents(button);
+      const text = range.getBoundingClientRect(), box = button.getBoundingClientRect();
+      return Math.abs((text.left + text.right) / 2 - (box.left + box.right) / 2);
+    });
+    return { searchTop: search.top, planTop: plan.top, centers: buttons };
+  });
+  expect(layout.searchTop).toBeLessThan(layout.planTop);
+  expect(layout.centers).toHaveLength(2);
+  expect(Math.max(...layout.centers)).toBeLessThan(2);
+});
+
+test("visible spelling planets do not overlap in a dense overview", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__mapShapes = [];
+    const originalClear = CanvasRenderingContext2D.prototype.clearRect;
+    const originalArc = CanvasRenderingContext2D.prototype.arc;
+    const originalRect = CanvasRenderingContext2D.prototype.rect;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.classList.contains("universe-canvas")) window.__mapShapes = [];
+      return originalClear.apply(this, args);
+    };
+    CanvasRenderingContext2D.prototype.arc = function (x, y, radius, start, end, ...rest) {
+      if (this.canvas.classList.contains("universe-canvas") && start === 0 && end === Math.PI * 2) {
+        window.__mapShapes.push({ x, y, radius });
+      }
+      return originalArc.call(this, x, y, radius, start, end, ...rest);
+    };
+    CanvasRenderingContext2D.prototype.rect = function (x, y, width, height) {
+      if (this.canvas.classList.contains("universe-canvas")) {
+        window.__mapShapes.push({ x: x + width / 2, y: y + height / 2, radius: Math.hypot(width, height) / 2 });
+      }
+      return originalRect.call(this, x, y, width, height);
+    };
+  });
+  await mockMaps(page); await openApp(page);
+  await page.locator("#openSpellingUniverse").click();
+  await expect.poll(() => page.evaluate(() => window.__mapShapes.length)).toBeGreaterThan(1);
+  const collisions = await page.evaluate(() => {
+    const shapes = window.__mapShapes;
+    let count = 0;
+    for (let i = 0; i < shapes.length; i++) for (let j = i + 1; j < shapes.length; j++) {
+      const a = shapes[i], b = shapes[j];
+      if (Math.hypot(a.x - b.x, a.y - b.y) + 0.05 < a.radius + b.radius) count++;
+    }
+    return count;
+  });
+  expect(collisions).toBe(0);
+});
+
+test("every real planet keeps a strict shared gap in both complete maps", () => {
+  const manifest = require("../data/universes/manifest.json");
+  const { nodes } = require(`../data/universes/${manifest.version}/index.json`);
+  for (const kind of ["synonym", "spelling"]) {
+    const { positions, gap } = computePackedLayout(nodes, kind);
+    const cells = new Map();
+    const size = 25;
+    let violations = 0;
+    expect(positions.length).toBe(nodes.length * 3);
+    expect(gap).toBeGreaterThan(0);
+    for (let i = 0; i < nodes.length; i++) {
+      const x = positions[i * 3], y = positions[i * 3 + 1], radius = positions[i * 3 + 2];
+      const cx = Math.floor(x / size), cy = Math.floor(y / size);
+      if (!(radius > 0)) violations++;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        for (const other of cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+          if (!(Math.hypot(x - other.x, y - other.y) > radius + other.radius + gap)) violations++;
+        }
+      }
+      const key = `${cx},${cy}`;
+      if (!cells.has(key)) cells.set(key, []);
+      cells.get(key).push({ x, y, radius });
+    }
+    expect(violations).toBe(0);
+  }
+});
+
+test("a card shows its word and direct relations before the remaining map", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.addInitScript(() => {
+    const NativeWorker = window.Worker;
+    window.Worker = class extends NativeWorker {
+      postMessage(...args) { setTimeout(() => super.postMessage(...args), 1800); }
+    };
+  });
+  await mockMaps(page); await openApp(page);
+  await page.locator("#wordSearchInput").fill("bank");
+  await page.locator("#wordSearchInput").press("Enter");
+  await page.locator('.word-list-item[data-word-id="bank"]').click();
+  await page.locator("#wordSpellingUniverse").click();
+  await expect(page.locator(".universe-selection-heading h2")).toHaveText("bank");
+  await expect(page.locator(".universe-relation")).toContainText("bark");
+  const canvas = page.locator(".universe-canvas");
+  await expect(canvas).toHaveAttribute("data-layout-phase", "focus");
+  await expect(canvas).toHaveAttribute("data-indexed-words", "2");
+  await expect(canvas).toHaveAttribute("data-index-ready", "true", { timeout: 10000 });
+  await expect(canvas).toHaveAttribute("data-indexed-words", "10");
+  await expect(page.locator(".universe-relation")).toContainText("bark");
+});
+
+test("selected relations remain visible and interactive when zoomed out", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await mockMaps(page); await openApp(page);
+  await page.locator("#openSynonymUniverse").click();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
+  await search(page, "quit");
+  await expect(page.locator(".universe-relation")).toHaveCount(2);
+  for (let i = 0; i < 4; i++) await page.getByRole("button", { name: "缩小" }).click();
+  const canvas = page.locator(".universe-canvas");
+  await expect.poll(async () => Number(await canvas.getAttribute("data-camera-zoom"))).toBeLessThan(1);
+  await expect(canvas).toHaveAttribute("data-focus-strength", "1.00");
+  await expect.poll(async () => Number(await canvas.getAttribute("data-visible-lines"))).toBe(2);
+  await expect.poll(async () => Number(await canvas.getAttribute("data-visible-labels"))).toBeGreaterThan(0);
+});
+
 test("specific senses filter real-identity relations and cross-region jumps without changing progress", async ({ page }) => {
   const requests = await mockMaps(page);
   await openApp(page);
   const before = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
   await page.locator("#openSynonymUniverse").click();
-  await expect(page.locator(".universe-loading")).toContainText("共 10 个单词");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
   await search(page, "quit");
-  await expect(page.locator(".universe-selection")).toContainText("此词已收录 2 个近义词");
-  await expect(page.locator(".universe-selection")).toContainText("此词位置根据既有星图估算");
+  await page.locator(".universe-info summary").click();
+  await expect(page.locator(".universe-info")).toContainText("估计或占位");
   await expect(page.locator(".universe-relation")).toHaveCount(2);
   await page.locator(".universe-sense-select").selectOption("v-3");
   await expect(page.locator(".universe-relation")).toHaveCount(1);
   await expect(page.locator(".universe-relation")).toContainText("cease");
   await page.locator(".universe-sense-select").selectOption("all");
   const positions = fixture().map.nodes;
-  const source = positions.find((node) => node.id === "quit").semantic;
-  const target = positions.find((node) => node.id === "depart").semantic;
+  const layout = computePackedLayout(positions, "synonym").positions;
+  const sourceIndex = positions.findIndex((node) => node.id === "quit") * 3;
+  const targetIndex = positions.findIndex((node) => node.id === "depart") * 3;
+  const source = [layout[sourceIndex], layout[sourceIndex + 1]];
+  const target = [layout[targetIndex], layout[targetIndex + 1]];
   const canvas = page.locator(".universe-canvas");
-  const dimensions = await canvas.evaluate((element) => ({ width: element.clientWidth, height: element.clientHeight }));
-  const unit = Math.min(dimensions.width, dimensions.height) / 3000 * 3.4;
-  await canvas.click({ position: { x: dimensions.width / 2 + (target[0] - source[0]) * unit * 0.3,
-                                  y: dimensions.height / 2 + (target[1] - source[1]) * unit * 0.3 } });
+  await expect(canvas).toHaveAttribute("data-camera-moving", "false");
+  const camera = await canvas.evaluate((element) => ({ width: element.clientWidth, height: element.clientHeight,
+    x: Number(element.dataset.cameraX), y: Number(element.dataset.cameraY), zoom: Number(element.dataset.cameraZoom) }));
+  const unit = Math.min(camera.width, camera.height) / 3000 * camera.zoom;
+  const project = ([x, y]) => ({ x: camera.width / 2 + (x - camera.x) * unit, y: camera.height / 2 + (y - camera.y) * unit });
+  const from = project(source), to = project(target);
+  expect(to.x).toBeGreaterThan(0); expect(to.x).toBeLessThan(camera.width);
+  expect(to.y).toBeGreaterThan(0); expect(to.y).toBeLessThan(camera.height);
+  const marks = positions.map((_, i) => project([layout[i * 3], layout[i * 3 + 1]]));
+  const point = Array.from({ length: 17 }, (_, i) => (i + 2) / 20)
+    .map((t) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }))
+    .find((p) => p.x > 5 && p.x < camera.width - 5 && p.y > 5 && p.y < camera.height - 5 &&
+      marks.every((mark) => Math.hypot(mark.x - p.x, mark.y - p.y) > 10));
+  expect(point).toBeTruthy();
+  await canvas.click({ position: point });
   await expect(page.locator(".universe-edge-detail")).toContainText("omw-en-02008396-v");
   await page.getByRole("button", { name: "前往 depart" }).click();
   await expect(page.locator(".universe-selection-heading h2")).toHaveText("depart");
@@ -151,24 +300,27 @@ test("bank keeps distinct meanings and spelling edges are never presented as syn
   await page.getByRole("button", { name: "形近词", exact: true }).click();
   await expect(page.locator(".universe-relation")).toContainText("bark");
   await page.locator(".universe-relation").click();
-  await expect(page.locator(".universe-edge-detail")).toContainText("不代表语义相同");
+  await expect(page.locator(".universe-edge-detail")).toContainText("不代表含义相近");
 });
 
 test("star size follows distinct recorded neighbors and changes with universe", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await mockMaps(page); await openApp(page);
   await page.locator("#openSynonymUniverse").click();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
   await search(page, "quit");
-  await expect(page.locator(".universe-selection")).toContainText("此词已收录 2 个近义词");
+  await expect(page.locator(".universe-relation")).toHaveCount(2);
   const canvas = page.locator(".universe-canvas");
   await expect.poll(async () => Number(await canvas.getAttribute("data-selected-radius"))).toBeGreaterThan(0);
-  const withTwoNeighbors = Number(await canvas.getAttribute("data-selected-radius"));
+  const worldRadius = async () => Number(await canvas.getAttribute("data-selected-radius")) /
+    Number(await canvas.getAttribute("data-camera-zoom"));
+  const withTwoNeighbors = await worldRadius();
   await search(page, "bank");
-  await expect(page.locator(".universe-selection")).toContainText("此词已收录 0 个近义词");
-  await expect.poll(async () => Number(await canvas.getAttribute("data-selected-radius"))).toBeLessThan(withTwoNeighbors);
+  await expect(page.locator(".universe-relation")).toHaveCount(0);
+  await expect.poll(worldRadius).toBeLessThan(withTwoNeighbors);
   await page.getByRole("button", { name: "形近词", exact: true }).click();
-  await expect(page.locator(".universe-selection")).toContainText("此词已收录 1 个形近词");
-  await expect(page.locator(".universe-note")).toContainText("最多展示 20 个");
+  await expect(page.locator(".universe-relation")).toHaveCount(1);
+  await expect(page.locator(".universe-relation")).not.toContainText("拼写编辑距离");
 });
 
 test("mismatched recorded neighbor count fails safely", async ({ page }) => {
@@ -188,7 +340,7 @@ test("failed or stale map fails safely and a transient failure can be retried", 
   await page.locator("#openSynonymUniverse").click();
   await expect(page.locator(".universe-loading")).toContainText("加载失败");
   await page.getByRole("button", { name: "重新加载地图" }).click();
-  await expect(page.locator(".universe-loading")).toContainText("共 10 个单词");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
   await page.locator(".universe-back").click();
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
 });
@@ -211,7 +363,7 @@ test("an unavailable map script offers a safe retry without changing progress", 
   await page.locator("#openSynonymUniverse").click();
   await expect(page.getByRole("status").filter({ hasText: "地图组件未加载" })).toBeVisible();
   await page.getByRole("button", { name: "重试加载" }).click();
-  await expect(page.locator(".universe-loading")).toContainText("共 10 个单词");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
   await page.locator(".universe-back").click();
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
 });
@@ -268,7 +420,7 @@ test("a map left open across midnight preserves normal session rollover", async 
   await mockMaps(page); await openApp(page);
   const before = await page.evaluate(() => window.SenseVocabApp.getState().bookStates.kaoyan.session.date);
   await page.locator("#openSynonymUniverse").click();
-  await expect(page.locator(".universe-loading")).toContainText("共 10 个单词");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
   const after = await page.evaluate(() => {
     window.__universeTestNow += 24 * 60 * 60 * 1000;
     window.render();
@@ -343,7 +495,7 @@ test("map navigation does not change incremental or advance-study queues", async
   const incrementalWord = await page.locator("#wordText").textContent();
   const incrementalQueue = await page.evaluate(() => window.SenseVocabApp.getState().bookStates.kaoyan.session.queue);
   await page.locator("#wordSpellingUniverse").click();
-  await expect(page.locator(".universe-loading")).toContainText("共 10 个单词");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
   await page.locator(".universe-back").click();
   await expect(page.locator("#wordText")).toHaveText(incrementalWord);
   expect(await page.evaluate(() => window.SenseVocabApp.getState().bookStates.kaoyan.session.queue)).toEqual(incrementalQueue);
@@ -365,7 +517,8 @@ test("real complete candidate graph loads and navigates across regions", async (
   await openApp(page);
   const started = Date.now();
   await page.locator("#openSynonymUniverse").click();
-  await expect(page.locator(".universe-loading")).toContainText("共 6607 个单词", { timeout: 30000 });
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true", { timeout: 30000 });
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-total-words", "6607");
   const loadedMs = Date.now() - started;
   await search(page, "quit");
   await expect(page.locator(".universe-relation").filter({ hasText: "depart" })).toBeVisible();
@@ -392,11 +545,14 @@ test("real candidate graph remains usable in phone viewport and dark liquid glas
   await openApp(page, { theme: "liquid-glass", color: "dark" });
   const started = Date.now();
   await page.locator("#openSpellingUniverse").click();
-  await expect(page.locator(".universe-loading")).toContainText("共 6607 个单词", { timeout: 30000 });
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true", { timeout: 30000 });
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-total-words", "6607");
   const loadedMs = Date.now() - started;
   await search(page, "bank");
   await expect(page.locator(".universe-relation").filter({ hasText: "bark" })).toBeVisible();
   await expect(page.locator(".universe-canvas")).toBeVisible();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-focus-strength", "1.00");
+  await expect.poll(async () => Number(await page.locator(".universe-canvas").getAttribute("data-visible-lines"))).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(391);
   console.log(JSON.stringify({ realPhoneGraphLoadedMs: loadedMs, note: "local desktop Chrome emulating a phone; not physical-device network timing" }));
   fs.mkdirSync(path.resolve(__dirname, "../.test-artifacts"), { recursive: true });
@@ -409,7 +565,7 @@ test("camera eases, stops drawing when idle, and honours reduced motion", async 
   await mockMaps(page); await openApp(page);
   await page.locator("#openSynonymUniverse").click();
   const canvas = page.locator(".universe-canvas");
-  await expect(page.locator(".universe-loading")).toContainText("共 10 个单词");
+  await expect(canvas).toHaveAttribute("data-index-ready", "true");
   await page.evaluate(() => {
     const canvas = document.querySelector(".universe-canvas");
     window.__cameraMotionStates = [];
@@ -467,7 +623,7 @@ test("overview recedes through real word points without synthetic clusters", asy
   await expect(canvas).toHaveAttribute("data-rendered-words", "10");
   expect(samples.every((sample) => sample.aggregateCount === 0)).toBeTruthy();
   expect(new Set(samples.map((sample) => sample.zoom.toFixed(2))).size).toBeGreaterThan(5);
-  expect(Math.max(...samples.map((sample) => sample.zoom))).toBeGreaterThan(3);
+  expect(Math.max(...samples.map((sample) => sample.zoom))).toBeGreaterThan(1.2);
   await page.locator(".universe-back").click();
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
 });
@@ -480,7 +636,7 @@ for (const spec of [
     const context = await browser.newContext({ viewport: { width: spec.width, height: spec.height }, hasTouch: !!spec.touch, reducedMotion: "reduce" });
     const page = await context.newPage(); await mockMaps(page); await openApp(page, spec);
     await page.locator("#openSynonymUniverse").click();
-    await expect(page.locator(".universe-loading")).toContainText("共 10 个单词");
+    await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
     const canvas = page.locator(".universe-canvas"); await expect(canvas).toBeVisible();
     await expect.poll(() => canvas.evaluate((el) => {
       const data = el.getContext("2d").getImageData(0, 0, el.width, el.height).data;

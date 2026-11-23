@@ -71,6 +71,9 @@ if (requireFreeze && candidate?.inputHash !== initialSource.hash) {
   block("Candidate is not frozen for the current relevant inputs. Run npm run op:freeze after targeted tests pass.", {
     inputHash: initialSource.hash,
   });
+} else if (process.argv.some((arg) => arg.startsWith("--reuse-version-only="))) {
+  const { runVersionOnlyRelease } = await import("./release-version-equivalence.mjs");
+  await runVersionOnlyRelease({ initialSource, candidate });
 } else {
   const priorSuccess = await readReceipt("release", initialSource.hash);
   if (priorSuccess?.result === "passed") {

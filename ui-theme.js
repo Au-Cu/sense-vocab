@@ -17,8 +17,13 @@
       try { window.localStorage.setItem(COLOR_KEY, colorMode); } catch { saved = false; }
     }
     document.querySelectorAll('input[name="colorMode"]').forEach((input) => { input.checked = input.value === colorMode; });
+    const options = document.querySelector("#colorModeOptions");
+    if (options) options.dataset.selected = colorMode;
     const message = document.querySelector("#colorModeMessage");
-    if (message) message.textContent = saved ? "仅保存在当前设备。" : "当前浏览器未允许保存，刷新后可能恢复浅色。";
+    if (message) {
+      message.hidden = saved;
+      message.textContent = saved ? "" : "当前浏览器未允许保存，刷新后可能恢复浅色。";
+    }
     updateBrowserChrome(getTheme());
   }
   const CLASSIC_THEME = "classic";
@@ -83,22 +88,14 @@
   }
 
   function syncThemeControl(detail = {}) {
-    const toggle = document.querySelector("#liquidGlassToggle");
-    const badge = document.querySelector("#uiThemeBadge");
-    const description = document.querySelector("#uiThemeDescription");
-    if (!toggle || !badge || !description) return;
-
     const theme = getTheme();
-    const liquidGlassEnabled = theme === LIQUID_GLASS_THEME;
-    toggle.checked = liquidGlassEnabled;
-    toggle.setAttribute("aria-checked", String(liquidGlassEnabled));
-    badge.textContent = liquidGlassEnabled ? "液态玻璃" : "经典";
-    description.textContent = liquidGlassEnabled
-      ? "液态玻璃界面已开启：导航与控件采用通透、浮动的光感层次。"
-      : "经典界面已开启：保持原有简洁、稳定的纸面风格。";
-
-    if (detail.persisted === false) {
-      description.textContent += " 当前浏览器未允许保存，刷新后可能恢复经典界面。";
+    document.querySelectorAll('input[name="uiTheme"]').forEach((input) => { input.checked = input.value === theme; });
+    const options = document.querySelector("#themeModeOptions");
+    if (options) options.dataset.selected = theme;
+    const message = document.querySelector("#uiThemeMessage");
+    if (message) {
+      message.hidden = detail.persisted !== false;
+      message.textContent = detail.persisted === false ? "当前浏览器未允许保存，刷新后可能恢复经典界面。" : "";
     }
   }
 
@@ -122,20 +119,19 @@
   });
 
   function bindThemeControl() {
-    const toggle = document.querySelector("#liquidGlassToggle");
-    if (!toggle) return;
+    const options = document.querySelectorAll('input[name="uiTheme"]');
+    if (!options.length) return;
     applyColor(colorMode);
     document.querySelectorAll('input[name="colorMode"]').forEach((input) => {
       input.addEventListener("change", () => { if (input.checked) applyColor(input.value, true); });
     });
-    syncThemeControl();
-    toggle.addEventListener("change", () => {
-      const nextTheme = toggle.checked ? LIQUID_GLASS_THEME : CLASSIC_THEME;
-      const detail = applyTheme(nextTheme, {
-        persist: true,
-        source: "control",
+    syncThemeControl({ persisted: document.documentElement.dataset.uiThemeStorage === "unavailable" ? false : null });
+    options.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        const detail = applyTheme(input.value, { persist: true, source: "control" });
+        syncThemeControl(detail);
       });
-      syncThemeControl(detail);
     });
   }
 

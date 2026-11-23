@@ -27,6 +27,65 @@ async function openMore(page) {
   await expect(page.locator("#interfacePanel")).toBeVisible();
 }
 
+test("classic dark mode keeps the startup background dark while loading", async ({ page }) => {
+  let releaseIndex;
+  const gate = new Promise((resolve) => { releaseIndex = resolve; });
+  await page.route("**/data/vocabulary-index.json", async (route) => {
+    await gate;
+    await route.continue();
+  });
+  await page.addInitScript(({ themeKey, tutorialKey }) => {
+    localStorage.clear();
+    localStorage.setItem(themeKey, "classic");
+    localStorage.setItem("sense-vocab-color-mode-v1", "dark");
+    localStorage.setItem(tutorialKey, "completed");
+  }, { themeKey: THEME_KEY, tutorialKey: TUTORIAL_KEY });
+  await page.goto(APP_URL);
+  const boot = page.locator("#bootScreen");
+  await expect(boot).toBeVisible();
+  const color = await boot.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const rgb = color.match(/\d+/g).slice(0, 3).map(Number);
+  releaseIndex();
+  expect(color).not.toBe("rgba(0, 0, 0, 0)");
+  expect(Math.max(...rgb)).toBeLessThan(70);
+});
+
+test("interface preferences use compact segmented choices without explanatory copy", async ({ page }) => {
+  await page.addInitScript(({ tutorialKey }) => {
+    localStorage.clear(); localStorage.setItem(tutorialKey, "completed");
+  }, { tutorialKey: TUTORIAL_KEY });
+  await page.goto(APP_URL); await waitForApp(page); await openMore(page);
+  const panel = page.locator("#interfacePanel");
+  await expect(panel.getByRole("radio", { name: "经典", exact: true })).toBeChecked();
+  await expect(panel.getByRole("radio", { name: "液态玻璃", exact: true })).toBeVisible();
+  await expect(panel.getByRole("radio", { name: "浅色", exact: true })).toBeChecked();
+  await expect(panel.getByRole("radio", { name: "深色", exact: true })).toBeVisible();
+  await expect(panel.getByRole("radio", { name: "跟随系统", exact: true })).toBeVisible();
+  await expect(panel).not.toContainText("保持原有简洁");
+  await expect(panel).not.toContainText("仅保存在当前设备");
+});
+
+test("interface section titles sit inside their cards", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(({ tutorialKey }) => {
+    localStorage.clear(); localStorage.setItem(tutorialKey, "completed");
+  }, { tutorialKey: TUTORIAL_KEY });
+  await page.goto(APP_URL); await waitForApp(page); await openMore(page);
+  await expect(page.getByRole("radiogroup", { name: "界面风格" })).toBeVisible();
+  await expect(page.getByRole("radiogroup", { name: "颜色模式" })).toBeVisible();
+  const positions = await page.locator(".interface-choice").evaluateAll((cards) => cards.map((card) => {
+    const title = card.querySelector("legend, .interface-choice-title").getBoundingClientRect();
+    const box = card.getBoundingClientRect();
+    return { topInset: title.top - box.top, leftInset: title.left - box.left, bottom: title.bottom - box.bottom };
+  }));
+  expect(positions).toHaveLength(2);
+  for (const title of positions) {
+    expect(title.topInset).toBeGreaterThan(6);
+    expect(title.leftInset).toBeGreaterThan(6);
+    expect(title.bottom).toBeLessThan(0);
+  }
+});
+
 test("interface preference defaults to classic, persists, and stays outside learning data", async ({ page }) => {
   await page.addInitScript(({ tutorialKey }) => {
     if (sessionStorage.getItem("sense-vocab-ui-theme-test-ready") !== "true") {
@@ -43,13 +102,12 @@ test("interface preference defaults to classic, persists, and stays outside lear
 
   const learningBefore = await page.evaluate((key) => localStorage.getItem(key), LEARNING_KEY);
   await openMore(page);
-  await expect(page.locator("#liquidGlassToggle")).not.toBeChecked();
-  await expect(page.locator("#uiThemeBadge")).toHaveText("经典");
+  await expect(page.getByRole("radio", { name: "经典", exact: true })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "液态玻璃", exact: true })).not.toBeChecked();
 
-  await page.locator(".ui-theme-switch").click();
-  await expect(page.locator("#liquidGlassToggle")).toBeChecked();
+  await page.getByRole("radio", { name: "液态玻璃", exact: true }).check();
+  await expect(page.getByRole("radio", { name: "液态玻璃", exact: true })).toBeChecked();
   await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "liquid-glass");
-  await expect(page.locator("#uiThemeBadge")).toHaveText("液态玻璃");
   await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), THEME_KEY))
     .toBe("liquid-glass");
   expect(await page.evaluate((key) => localStorage.getItem(key), LEARNING_KEY))
@@ -59,11 +117,11 @@ test("interface preference defaults to classic, persists, and stays outside lear
   await waitForApp(page);
   await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "liquid-glass");
   await openMore(page);
-  await expect(page.locator("#liquidGlassToggle")).toBeChecked();
+  await expect(page.getByRole("radio", { name: "液态玻璃", exact: true })).toBeChecked();
 
-  await page.locator("#liquidGlassToggle").focus();
+  await page.getByRole("radio", { name: "经典", exact: true }).focus();
   await page.keyboard.press("Space");
-  await expect(page.locator("#liquidGlassToggle")).not.toBeChecked();
+  await expect(page.getByRole("radio", { name: "经典", exact: true })).toBeChecked();
   await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "classic");
   await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), THEME_KEY))
     .toBe("classic");
@@ -80,7 +138,7 @@ test("invalid stored interface values fail safely to the classic theme", async (
   await waitForApp(page);
   await expect(page.locator("html")).toHaveAttribute("data-ui-theme", "classic");
   await openMore(page);
-  await expect(page.locator("#liquidGlassToggle")).not.toBeChecked();
+  await expect(page.getByRole("radio", { name: "经典", exact: true })).toBeChecked();
 });
 
 test("liquid glass remains contained and usable on desktop and phone viewports", async ({ browser }) => {
@@ -122,7 +180,7 @@ test("liquid glass remains contained and usable on desktop and phone viewports",
     expect(metrics.panel.right, viewport.name).toBeLessThanOrEqual(metrics.viewportWidth);
     expect(metrics.control.left, viewport.name).toBeGreaterThanOrEqual(metrics.panel.left);
     expect(metrics.control.right, viewport.name).toBeLessThanOrEqual(metrics.panel.right);
-    await expect(page.locator("#liquidGlassToggle")).toBeChecked();
+    await expect(page.getByRole("radio", { name: "液态玻璃", exact: true })).toBeChecked();
     await context.close();
   }
 });
@@ -133,7 +191,7 @@ test("colour mode follows system, persists separately, and retains the selected 
   await page.goto(APP_URL);
   await waitForApp(page);
   await openMore(page);
-  await page.locator('.ui-theme-switch').click();
+  await page.getByRole("radio", { name: "液态玻璃", exact: true }).check();
   await page.getByLabel("跟随系统").check();
   await expect(page.locator("html")).toHaveAttribute("data-color-mode", "light");
   await page.emulateMedia({ colorScheme: "dark" });

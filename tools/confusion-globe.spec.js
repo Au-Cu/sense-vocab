@@ -34,6 +34,123 @@ async function openGlobe(page) {
   await page.waitForTimeout(900);
 }
 
+test("dark mode keeps the card-to-globe transition dark", async ({ page }) => {
+  await prepareStudy(page);
+  await page.locator("#revealButton").click();
+  await expect(page.locator("#senseArea")).toBeVisible();
+  const samples = await page.evaluate(async () => {
+    document.documentElement.dataset.colorMode = "dark";
+    document.querySelector("#revealButton").click();
+    const colors = [];
+    const start = performance.now();
+    while (performance.now() - start < 1200) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const transition = document.querySelector(".word-globe-transition");
+      if (transition) colors.push(getComputedStyle(transition).backgroundColor);
+    }
+    return colors;
+  });
+  expect(samples.length).toBeGreaterThan(0);
+  for (const color of samples) {
+    const rgb = color.match(/\d+/g).slice(0, 3).map(Number);
+    expect(Math.max(...rgb)).toBeLessThan(100);
+  }
+});
+
+test("adding a confusion word yields the input frame and persists on pagehide", async ({ page }) => {
+  await prepareStudy(page); await openGlobe(page);
+  await page.locator("#confusionSearchInput").fill("abandon");
+  const result = await page.evaluate((storageKey) => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === storageKey) {
+        const until = performance.now() + 180;
+        while (performance.now() < until) { /* simulate a slow full-state write */ }
+      }
+      return original.call(this, key, value);
+    };
+    const button = document.querySelector('.confusion-search-action[data-word-id="abandon"]');
+    const start = performance.now();
+    button.click();
+    const clickMs = performance.now() - start;
+    window.dispatchEvent(new Event("pagehide"));
+    Storage.prototype.setItem = original;
+    const saved = JSON.parse(localStorage.getItem(storageKey));
+    return { clickMs, links: Object.values(saved.confusionLinks ?? {}) };
+  }, STORAGE_KEY);
+  expect(result.clickMs).toBeLessThan(100);
+  expect(result.links).toEqual(expect.arrayContaining([expect.objectContaining({ left: "act", right: "abandon" })]));
+});
+
+test("adding a confusion word updates the globe before a slow full-state write", async ({ page }) => {
+  await prepareStudy(page); await openGlobe(page);
+  await page.locator("#confusionSearchInput").fill("abandon");
+  const result = await page.evaluate((storageKey) => new Promise((resolve, reject) => {
+    const original = Storage.prototype.setItem;
+    const timer = setTimeout(() => { Storage.prototype.setItem = original; reject(new Error("save did not start")); }, 5000);
+    Storage.prototype.setItem = function (key, value) {
+      if (key === storageKey) {
+        const visibleBeforeWrite = Boolean(document.querySelector('.confusion-globe-word[data-word-id="abandon"]'));
+        const countBeforeWrite = document.querySelector("#confusionCount").textContent;
+        const until = performance.now() + 180;
+        while (performance.now() < until) { /* simulate a slow full-state write */ }
+        const result = original.call(this, key, value);
+        Storage.prototype.setItem = original; clearTimeout(timer);
+        resolve({ visibleBeforeWrite, countBeforeWrite });
+        return result;
+      }
+      return original.call(this, key, value);
+    };
+    document.querySelector('.confusion-search-action[data-word-id="abandon"]').click();
+  }), STORAGE_KEY);
+  expect(result.visibleBeforeWrite).toBe(true);
+  expect(result.countBeforeWrite).toBe("2 个词");
+});
+
+test("a pending confusion edit is saved before changing account scope", async ({ page }) => {
+  await prepareStudy(page); await openGlobe(page);
+  await page.locator("#confusionSearchInput").fill("abandon");
+  const result = await page.evaluate((storageKey) => {
+    document.querySelector('.confusion-search-action[data-word-id="abandon"]').click();
+    const switched = window.SenseVocabApp.activateAccount("confusion-scope-test");
+    const stored = JSON.parse(localStorage.getItem(storageKey));
+    const account = window.SenseVocabApp.getAccountState("confusion-scope-test");
+    return { switched, guestLinks: Object.values(stored.confusionLinks ?? stored.bookStates?.kaoyan?.confusionLinks ?? {}),
+      accountLinks: Object.values(account.bookStates?.kaoyan?.confusionLinks ?? {}) };
+  }, STORAGE_KEY);
+  expect(result.switched).not.toBe(false);
+  expect(result.guestLinks).toEqual(expect.arrayContaining([expect.objectContaining({ left: "act", right: "abandon" })]));
+  expect(result.accountLinks).not.toEqual(expect.arrayContaining([expect.objectContaining({ left: "act", right: "abandon" })]));
+});
+
+test("a failed confusion edit remains pending until local storage can save it", async ({ page }) => {
+  await prepareStudy(page); await openGlobe(page);
+  await page.locator("#confusionSearchInput").fill("abandon");
+  await page.evaluate((storageKey) => {
+    window.__originalSetItem = Storage.prototype.setItem;
+    window.__blockConfusionWrite = true;
+    window.__confusionStorageError = false;
+    window.addEventListener("sensevocab:storage-error", () => { window.__confusionStorageError = true; });
+    Storage.prototype.setItem = function (key, value) {
+      if (key === storageKey && window.__blockConfusionWrite) throw new DOMException("quota exceeded", "QuotaExceededError");
+      return window.__originalSetItem.call(this, key, value);
+    };
+    document.querySelector('.confusion-search-action[data-word-id="abandon"]').click();
+  }, STORAGE_KEY);
+  await expect.poll(() => page.evaluate(() => window.__confusionStorageError)).toBe(true);
+  await page.evaluate(() => document.querySelector("#confusionBackButton").click());
+  await expect(page.locator("#confusionPanel")).toBeVisible();
+  await page.evaluate(() => { window.__blockConfusionWrite = false; });
+  await page.evaluate(() => document.querySelector("#confusionBackButton").click());
+  await expect(page.locator("#studyPanel")).toBeVisible();
+  const links = await page.evaluate((key) => {
+    Storage.prototype.setItem = window.__originalSetItem;
+    const stored = JSON.parse(localStorage.getItem(key));
+    return Object.values(stored.confusionLinks ?? stored.bookStates?.kaoyan?.confusionLinks ?? {});
+  }, STORAGE_KEY);
+  expect(links).toEqual(expect.arrayContaining([expect.objectContaining({ left: "act", right: "abandon" })]));
+});
+
 test("globe loading feedback paints before the module arrives without rendering hidden study", async ({ page }) => {
   let releaseModule;
   const moduleGate = new Promise((resolve) => { releaseModule = resolve; });

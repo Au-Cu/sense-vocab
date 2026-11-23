@@ -6,9 +6,9 @@
     <meta name="theme-color" content="#f7f4ee" />
     <title>Sense Vocab MVP</title>
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
-    <script src="./ui-theme.js?v=20261122-1"></script>
+    <script src="./ui-theme.js?v=20261123-1"></script>
     <script src="./platform/durable-storage.js?v=20261010-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=20261122-2" />
+    <link rel="stylesheet" href="./styles.css?v=20261123-1" />
   </head>
   <body aria-busy="true">
     <div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-atomic="true">
@@ -44,6 +44,19 @@
     <main class="app-shell" id="appShell" hidden inert aria-hidden="true">
       <section class="study-panel" id="homePanel" aria-live="polite" aria-busy="true">
         <div class="home-summary">
+          <form class="home-word-search" id="homeWordSearchForm" role="search">
+            <div id="homeWordSearchHost" class="home-word-search-host">
+              <label class="word-search-field" for="wordSearchInput">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="m20 20-4-4"></path>
+                </svg>
+                <input id="wordSearchInput" type="search" inputmode="search" autocomplete="off"
+                  spellcheck="false" placeholder="搜索英文单词或中文义项" aria-label="搜索英文单词或中文义项" />
+              </label>
+            </div>
+            <button class="secondary-button home-word-search-submit" type="submit">搜索</button>
+          </form>
           <section class="home-card" aria-labelledby="todayPlanHeading">
             <p class="home-card-title" id="todayPlanHeading">今日计划</p>
             <div class="today-plan-grid" aria-label="今日计划">
@@ -70,8 +83,8 @@
             </div>
           </div>
           <div class="universe-entry" aria-label="词汇宇宙">
-            <button class="secondary-button" id="openSynonymUniverse" type="button">近义词宇宙 <span aria-hidden="true">↗</span></button>
-            <button class="secondary-button" id="openSpellingUniverse" type="button">形近词宇宙 <span aria-hidden="true">↗</span></button>
+            <button class="secondary-button" id="openSynonymUniverse" type="button">近义词宇宙</button>
+            <button class="secondary-button" id="openSpellingUniverse" type="button">形近词宇宙</button>
           </div>
           <p class="vocabulary-status" id="vocabularyStatus" role="status">
             正在加载词库索引和本地学习记录…
@@ -267,35 +280,25 @@
 
       <section class="study-panel data-panel" id="interfacePanel" aria-labelledby="interfaceSettingTitle" hidden>
         <header class="dashboard-page-header data-page-header"><div><p class="word-label">偏好与支持</p><h1 id="interfaceSettingTitle">用户界面</h1></div></header>
-        <section class="interface-setting" aria-label="界面风格">
-          <div class="interface-setting-copy">
-            <div class="interface-setting-heading">
-              <h2>界面风格</h2>
-              <span class="interface-theme-badge" id="uiThemeBadge">经典</span>
-            </div>
-            <p id="uiThemeDescription" aria-live="polite">
-              经典界面已开启：保持原有简洁、稳定的纸面风格。
-            </p>
-            <small>仅保存在当前设备，不影响学习记录或账户同步。</small>
+        <div class="interface-setting interface-choice">
+          <p class="home-card-title interface-choice-title" id="themeModeLabel">界面风格</p>
+          <div class="word-list-filters interface-segment" id="themeModeOptions" data-selected="classic" role="radiogroup" aria-labelledby="themeModeLabel">
+            <span class="interface-segment-indicator" aria-hidden="true"></span>
+            <label><input type="radio" name="uiTheme" value="classic"><span>经典</span></label>
+            <label><input type="radio" name="uiTheme" value="liquid-glass"><span>液态玻璃</span></label>
           </div>
-          <label class="ui-theme-switch" for="liquidGlassToggle">
-            <input
-              id="liquidGlassToggle"
-              type="checkbox"
-              role="switch"
-              aria-describedby="uiThemeDescription"
-            />
-            <span class="ui-theme-switch-track" aria-hidden="true">
-              <span class="ui-theme-switch-thumb"></span>
-            </span>
-            <span class="ui-theme-switch-label">液态玻璃</span>
-          </label>
-        </section>
-        <fieldset class="interface-setting color-setting"><legend>颜色模式</legend><div class="color-mode-options">
-          <label><input type="radio" name="colorMode" value="light">浅色</label>
-          <label><input type="radio" name="colorMode" value="dark">深色</label>
-          <label><input type="radio" name="colorMode" value="system">跟随系统</label>
-        </div><p id="colorModeMessage" aria-live="polite">仅保存在当前设备。</p></fieldset>
+          <p id="uiThemeMessage" class="interface-error" role="status" hidden></p>
+        </div>
+        <div class="interface-setting interface-choice">
+          <p class="home-card-title interface-choice-title" id="colorModeLabel">颜色模式</p>
+          <div class="word-list-filters interface-segment" id="colorModeOptions" data-selected="light" role="radiogroup" aria-labelledby="colorModeLabel">
+            <span class="interface-segment-indicator" aria-hidden="true"></span>
+            <label><input type="radio" name="colorMode" value="light"><span>浅色</span></label>
+            <label><input type="radio" name="colorMode" value="dark"><span>深色</span></label>
+            <label><input type="radio" name="colorMode" value="system"><span>跟随系统</span></label>
+          </div>
+          <p id="colorModeMessage" class="interface-error" role="status" hidden></p>
+        </div>
         <button class="secondary-button data-page-back-button" id="interfaceBackButton" type="button">返回</button>
       </section>
 
@@ -401,20 +404,7 @@
             </select>
           </label>
         </header>
-        <label class="word-search-field" for="wordSearchInput">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="11" cy="11" r="7"></circle>
-            <path d="m20 20-4-4"></path>
-          </svg>
-          <input
-            id="wordSearchInput"
-            type="search"
-            inputmode="search"
-            autocomplete="off"
-            spellcheck="false"
-            placeholder="搜索英文单词或中文义项"
-          />
-        </label>
+        <div id="wordListSearchHost"></div>
         <div class="word-list-filter-bar">
           <span class="word-list-filter-label">熟悉程度</span>
           <div class="word-list-filters" id="wordListFilters" role="group" aria-label="按熟悉程度筛选">
@@ -503,8 +493,8 @@
           </div>
 
           <div class="universe-word-entry" id="universeWordEntry" aria-label="从当前词探索">
-            <button id="wordSynonymUniverse" class="universe-word-button" type="button">近义词宇宙 ↗</button>
-            <button id="wordSpellingUniverse" class="universe-word-button" type="button">形近词宇宙 ↗</button>
+            <button id="wordSynonymUniverse" class="universe-word-button" type="button">近义词</button>
+            <button id="wordSpellingUniverse" class="universe-word-button" type="button">形近词</button>
           </div>
 
           <div class="sense-area" id="senseArea" hidden>
@@ -1111,8 +1101,8 @@
     <script src="./cloud-client.js?v=20261020-1"></script>
     <script src="./sync-state.js?v=20261017-2"></script>
     <script src="./dashboard-storage.js?v=20261018-1"></script>
-    <script src="./word-universe.js?v=20261122-1"></script>
-    <script src="./app.js?v=20261122-3"></script>
+    <script src="./word-universe.js?v=20261123-1"></script>
+    <script src="./app.js?v=20261123-1"></script>
     <script src="./account.js?v=20261020-1"></script>
   </body>
 </html>

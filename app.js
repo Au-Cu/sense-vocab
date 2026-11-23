@@ -374,6 +374,9 @@ if (dashboardHost && dashboardRoot && dashboardRoot.parentElement !== dashboardH
 const wordListPanel = document.querySelector("#wordListPanel");
 const wordSortSelect = document.querySelector("#wordSortSelect");
 const wordSearchInput = document.querySelector("#wordSearchInput");
+const wordSearchField = wordSearchInput.closest(".word-search-field");
+const homeWordSearchHost = document.querySelector("#homeWordSearchHost");
+const wordListSearchHost = document.querySelector("#wordListSearchHost");
 const wordListFilters = document.querySelector("#wordListFilters");
 const wordListEmpty = document.querySelector("#wordListEmpty");
 const wordList = document.querySelector("#wordList");
@@ -530,6 +533,7 @@ let confusionGlobeSignature = null;
 let confusionTransitioning = false;
 let confusionTransitionToken = 0;
 let confusionGlobeLoader = null;
+let pendingConfusionSave = null;
 let activeUiTransition = null;
 let commitActiveUiTransition = null;
 let cleanupActiveUiTransition = null;
@@ -3751,6 +3755,7 @@ function recoveryStateSignature(candidate) {
 }
 
 function applyStateToStorage(storageKey, nextState = null, options = {}) {
+  if (!flushPendingConfusionSave()) return false;
   if (tutorialRuntime?.active) {
     tutorialRuntime.realStorageKey = storageKey;
     tutorialRuntime.realRootState = nextState
@@ -3906,6 +3911,7 @@ window.SenseVocabApp = {
       stableStateStringify(compactLocalState(rootState));
   },
   replaceActiveState: (nextState, options = {}) => {
+    if (!flushPendingConfusionSave()) return false;
     if (tutorialRuntime?.active) {
       tutorialRuntime.realRootState = normalizeRootState(cloneSerializable(nextState));
       return true;
@@ -5123,6 +5129,8 @@ function render() {
     return;
   }
   universePanel.hidden = true;
+  const searchHost = state.view === "word-list" ? wordListSearchHost : homeWordSearchHost;
+  if (wordSearchField.parentElement !== searchHost) searchHost.append(wordSearchField);
 
   const session = ensureTodaySession();
   const studyCard = state.view === "study" ? currentCard() : null;
@@ -8799,7 +8807,7 @@ function openWordList(event) {
   commitUiTransition("forward", () => {
     state.wordBrowse = null;
     state.view = "word-list";
-    wordListQuery = "";
+    wordListQuery = wordSearchInput.value;
     wordListFilter = "all";
     render();
   }, {
@@ -8850,7 +8858,24 @@ function confusionWords(rootWordId) {
   ];
 }
 
-function setConfusionRelation(rootWordId, relatedWordId, enabled) {
+function flushPendingConfusionSave() {
+  const pending = pendingConfusionSave;
+  if (!pending) return true;
+  if (pending.storageKey !== activeStorageKey || pending.bookId !== activeBookId() || pending.state !== state) return false;
+  if (pending.frame !== null) cancelAnimationFrame(pending.frame);
+  pendingConfusionSave = null;
+  try {
+    if (saveState() !== true) { pendingConfusionSave = pending; return false; }
+  } catch (error) {
+    pendingConfusionSave = pending;
+    throw error;
+  }
+  if (state.view === "confusion" && !document.hidden) renderConfusionPanel();
+  return true;
+}
+
+function setConfusionRelation(rootWordId, relatedWordId, enabled, action) {
+  if (!flushPendingConfusionSave()) return;
   if (
     !wordById.has(rootWordId) ||
     !wordById.has(relatedWordId) ||
@@ -8866,8 +8891,24 @@ function setConfusionRelation(rootWordId, relatedWordId, enabled) {
   } else {
     delete state.confusionLinks[key];
   }
-  saveState();
-  renderConfusionPanel();
+  if (action) {
+    action.disabled = true;
+    action.textContent = enabled ? "正在添加" : "正在移除";
+    action.setAttribute("aria-busy", "true");
+  }
+  const pending = { storageKey: activeStorageKey, bookId: activeBookId(), state, frame: null };
+  pendingConfusionSave = pending;
+  if (document.hidden) { flushPendingConfusionSave(); return; }
+  pending.frame = requestAnimationFrame(() => {
+    if (pendingConfusionSave !== pending) return;
+    if (state.view === "confusion") renderConfusionPanel();
+    pending.frame = requestAnimationFrame(() => {
+      if (pendingConfusionSave !== pending) return;
+      pending.frame = requestAnimationFrame(() => {
+        if (pendingConfusionSave === pending) flushPendingConfusionSave();
+      });
+    });
+  });
 }
 
 function renderConfusionSearchResults() {
@@ -9059,6 +9100,12 @@ function animateFrameProgress(duration, onFrame) {
   });
 }
 
+function wordGlobeTransitionPalette() {
+  return document.documentElement.dataset.colorMode === "dark"
+    ? { card: [38, 52, 59], globe: [28, 50, 49], cardBorder: [66, 82, 89], globeBorder: [87, 157, 145], globeAlpha: 0.55 }
+    : { card: [251, 250, 247], globe: [231, 240, 237], cardBorder: [221, 218, 207], globeBorder: [15, 118, 110], globeAlpha: 0.24 };
+}
+
 async function animateCardIntoGlobe(
   transition,
   fromRect,
@@ -9070,6 +9117,7 @@ async function animateCardIntoGlobe(
     return;
   }
   const duration = 900;
+  const palette = wordGlobeTransitionPalette();
   await animateFrameProgress(duration, (overall) => {
     const morphLinear = Math.min(1, overall / 0.58);
     const morph = 1 - Math.pow(1 - morphLinear, 3);
@@ -9084,18 +9132,15 @@ async function animateCardIntoGlobe(
     const width = interpolateNumber(fromRect.width, toRect.width, morph);
     const height = interpolateNumber(fromRect.height, toRect.height, morph);
     const radius = interpolateNumber(8, Math.min(width, height) / 2, morph);
-    const background = [
-      interpolateNumber(251, 231, morph),
-      interpolateNumber(250, 240, morph),
-      interpolateNumber(247, 237, morph),
-    ].map(Math.round);
+    const background = palette.card.map((color, index) => Math.round(interpolateNumber(color, palette.globe[index], morph)));
+    const border = palette.cardBorder.map((color, index) => Math.round(interpolateNumber(color, palette.globeBorder[index], morph)));
     Object.assign(transition.style, {
       left: `${interpolateNumber(fromRect.left, toRect.left, morph)}px`,
       top: `${interpolateNumber(fromRect.top, toRect.top, morph)}px`,
       width: `${width}px`,
       height: `${height}px`,
       borderRadius: `${radius}px`,
-      borderColor: `rgba(${Math.round(interpolateNumber(221, 15, morph))}, ${Math.round(interpolateNumber(218, 118, morph))}, ${Math.round(interpolateNumber(207, 110, morph))}, ${interpolateNumber(1, 0.24, morph)})`,
+      borderColor: `rgba(${border.join(", ")}, ${interpolateNumber(1, palette.globeAlpha, morph)})`,
       background: `rgb(${background.join(", ")})`,
       boxShadow: `0 ${interpolateNumber(18, 10, morph)}px ${interpolateNumber(48, 30, morph)}px rgba(38, 47, 51, ${interpolateNumber(0.13, 0.1, morph)})`,
       fontSize: `${interpolateNumber(fromFontSize, toFontSize, morph)}px`,
@@ -9131,14 +9176,17 @@ async function flattenGlobeIntoTransition(
   rect,
   { fontSize, globe },
 ) {
+  const palette = wordGlobeTransitionPalette();
+  const globeBorder = `rgba(${palette.globeBorder.join(", ")}, ${palette.globeAlpha})`;
+  const globeBackground = `rgb(${palette.globe.join(", ")})`;
   Object.assign(transition.style, {
     left: `${rect.left}px`,
     top: `${rect.top}px`,
     width: `${rect.width}px`,
     height: `${rect.height}px`,
     borderRadius: "50%",
-    borderColor: "rgba(15, 118, 110, 0.24)",
-    background: "rgba(231, 240, 237, 1)",
+    borderColor: globeBorder,
+    background: globeBackground,
     boxShadow: "0 10px 30px rgba(38, 47, 51, 0.1)",
     fontSize: `${fontSize}px`,
     opacity: "0",
@@ -9146,8 +9194,8 @@ async function flattenGlobeIntoTransition(
   if (reducedMotionPreferred()) {
     globe?.setPresentationProgress?.(0);
     Object.assign(transition.style, {
-      borderColor: "rgba(15, 118, 110, 0.24)",
-      background: "rgba(231, 240, 237, 1)",
+      borderColor: globeBorder,
+      background: globeBackground,
       opacity: "1",
     });
     return;
@@ -9161,8 +9209,8 @@ async function flattenGlobeIntoTransition(
     globe?.setPresentationProgress?.(globeProgress);
   });
   Object.assign(transition.style, {
-    borderColor: "rgba(15, 118, 110, 0.24)",
-    background: "rgba(231, 240, 237, 1)",
+    borderColor: globeBorder,
+    background: globeBackground,
     boxShadow: "0 10px 30px rgba(38, 47, 51, 0.1)",
     opacity: "1",
   });
@@ -9178,6 +9226,7 @@ async function animateFlatCircleIntoCard(
     transition.remove();
     return;
   }
+  const palette = wordGlobeTransitionPalette();
   const animation = transition.animate(
     [
       {
@@ -9186,8 +9235,8 @@ async function animateFlatCircleIntoCard(
         width: `${fromRect.width}px`,
         height: `${fromRect.height}px`,
         borderRadius: "50%",
-        borderColor: "rgba(15, 118, 110, 0.24)",
-        background: "rgba(231, 240, 237, 1)",
+        borderColor: `rgba(${palette.globeBorder.join(", ")}, ${palette.globeAlpha})`,
+        background: `rgb(${palette.globe.join(", ")})`,
         boxShadow: "0 10px 30px rgba(38, 47, 51, 0.1)",
         fontSize: `${fromFontSize}px`,
       },
@@ -9197,8 +9246,8 @@ async function animateFlatCircleIntoCard(
         width: `${toRect.width}px`,
         height: `${toRect.height}px`,
         borderRadius: "8px",
-        borderColor: "rgba(221, 218, 207, 1)",
-        background: "rgba(251, 250, 247, 1)",
+        borderColor: `rgb(${palette.cardBorder.join(", ")})`,
+        background: `rgb(${palette.card.join(", ")})`,
         boxShadow: "0 18px 48px rgba(38, 47, 51, 0.13)",
         fontSize: `${toFontSize}px`,
       },
@@ -9218,20 +9267,12 @@ function cloneNullable(value) {
 }
 
 function universeScopeSnapshot() {
-  const inBook = new Map(words.map((word) => [word.id, new Set(word.senses.map((sense) => sense.id))]));
-  let total = 0;
-  let mastered = 0;
-  for (const word of words) {
-    for (const sense of word.senses) {
-      total += 1;
-      if (state.progress[senseKey(word.id, sense.id)]?.status === SENSE_STATUS.MASTERED) mastered += 1;
-    }
-  }
+  const inBook = wordById;
+  const progress = state.progress;
   return {
-    bookName: bookDisplayName(), total, mastered,
     senseStatus(wordId, senseId) {
-      if (!inBook.get(wordId)?.has(senseId)) return null;
-      return state.progress[senseKey(wordId, senseId)]?.status ?? SENSE_STATUS.NEW;
+      if (!inBook.get(wordId)?.senses.some((sense) => sense.id === senseId)) return null;
+      return progress[senseKey(wordId, senseId)]?.status ?? SENSE_STATUS.NEW;
     },
     senseMeaning(wordId, senseId) {
       return poolWordById.get(wordId)?.senses.find((sense) => sense.id === senseId)?.meaning ?? "释义暂不可用";
@@ -9425,6 +9466,7 @@ async function openConfusionGlobe(rootWordId = currentWord()?.id, options = {}) 
 }
 
 async function closeConfusionGlobe(options = {}) {
+  if (!flushPendingConfusionSave()) return;
   if (confusionTransitioning || !confusionRuntime) return;
   const runtime = confusionRuntime;
   const selectedWordId = options.back
@@ -11462,8 +11504,12 @@ confusionSearchResults.addEventListener("click", (event) => {
     confusionRuntime.rootWordId,
     action.dataset.wordId,
     action.dataset.action === "add",
+    action,
   );
 });
+window.addEventListener("pagehide", flushPendingConfusionSave);
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushPendingConfusionSave(); });
+document.addEventListener("freeze", flushPendingConfusionSave);
 
 wordListBackButton.addEventListener("click", closeWordList);
 dashboardBookSelect?.addEventListener("change", () => {
@@ -11482,7 +11528,12 @@ dashboardStartDate?.addEventListener("change", renderDashboard);
 dashboardEndDate?.addEventListener("change", renderDashboard);
 wordSearchInput.addEventListener("input", () => {
   wordListQuery = wordSearchInput.value;
-  renderWordList();
+  if (state?.view === "word-list") renderWordList();
+});
+document.querySelector("#homeWordSearchForm").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!state || wordListButton.disabled) return;
+  openWordList(event);
 });
 wordListFilters.addEventListener("click", (event) => {
   const button = event.target.closest(".word-list-filter");
