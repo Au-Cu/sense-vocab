@@ -14,6 +14,7 @@ import { constants as fsConstants, createWriteStream } from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { discoverUniverseSourcePaths } from "./universe-release-gate.mjs";
 
 export const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 export const rootDir = path.resolve(toolsDir, "..");
@@ -97,12 +98,12 @@ function isRelevantSource(relativePath) {
 }
 
 export async function computeSourceManifest() {
-  const listed = git(["ls-files", "-co", "--exclude-standard", "-z"])
+  const trackedAndUntracked = git(["ls-files", "-co", "--exclude-standard", "-z"])
     .split("\0")
     .filter(Boolean)
     .map((item) => item.replaceAll("\\", "/"))
-    .filter(isRelevantSource)
-    .sort();
+    .filter(isRelevantSource);
+  const listed = [...new Set([...trackedAndUntracked, ...await discoverUniverseSourcePaths(rootDir)])].sort();
   const files = [];
   for (const relativePath of listed) {
     const absolutePath = path.join(rootDir, relativePath);

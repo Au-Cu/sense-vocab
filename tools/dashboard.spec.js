@@ -1154,6 +1154,8 @@ test("floating dialogs cover navigation and expand from the trigger", async ({ p
   await openFreshApp(page);
   await page.locator("#globalHomeNavButton").click();
   await expect(page.locator("#homePanel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition ?? "")).toBe("");
+  await page.locator("#planButton").scrollIntoViewIfNeeded();
   const triggerCenter = await page.locator("#planButton").evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
@@ -1249,6 +1251,36 @@ test("floating dialogs cover navigation and expand from the trigger", async ({ p
   await expect(page.locator("html")).not.toHaveClass(/has-floating-dialog/);
   await expect.poll(() => page.locator("#mainAppNav").evaluate((nav) => nav.inert)).toBe(false);
   await expect(page.locator("#mainAppNav")).not.toHaveCSS("backdrop-filter", "none");
+});
+
+test("floating dialog keeps the activation origin if the trigger moves before the next frame", async ({ page }) => {
+  await openFreshApp(page);
+  await page.locator("#globalHomeNavButton").click();
+  await expect(page.locator("#homePanel")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.uiTransition ?? "")).toBe("");
+  const trigger = page.locator("#planButton");
+  await trigger.scrollIntoViewIfNeeded();
+  const center = await trigger.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await trigger.evaluate((element) => element.addEventListener("click", () => {
+    element.style.transition = "none";
+    element.style.transform = "translateY(18px)";
+  }, { once: true }));
+  await trigger.click();
+  await expect(page.locator("#planDialog")).toBeVisible();
+  await expect.poll(() => page.locator("#planDialog .reset-dialog").evaluate((surface) => (
+    surface.style.getPropertyValue("--modal-origin-y")
+  ))).not.toBe("");
+  const origin = await page.locator("#planDialog").evaluate((backdrop) => {
+    const surface = backdrop.querySelector(".reset-dialog");
+    const rect = backdrop.getBoundingClientRect(), style = getComputedStyle(surface);
+    return { x: Number.parseFloat(style.getPropertyValue("--modal-origin-x")) + rect.left + (backdrop.clientWidth - surface.offsetWidth) / 2,
+      y: Number.parseFloat(style.getPropertyValue("--modal-origin-y")) + rect.top + (backdrop.clientHeight - surface.offsetHeight) / 2 };
+  });
+  expect(Math.abs(origin.x - center.x)).toBeLessThanOrEqual(1.5);
+  expect(Math.abs(origin.y - center.y)).toBeLessThanOrEqual(1.5);
 });
 
 test("account, notifications, and feedback controls stay above the inert navigation", async ({ page }) => {

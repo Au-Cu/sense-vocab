@@ -30,6 +30,7 @@ module.exports = defineConfig({
     "public-attribution.spec.js",
     "dashboard.spec.js",
     "ui-theme.spec.js",
+    "word-universe.spec.js",
     "responsive-layout.spec.js",
   ],
   fullyParallel: false,

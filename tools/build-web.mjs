@@ -8,6 +8,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyUniverseForBuild } from "./universe-release-gate.mjs";
 
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(toolsDir, "..");
@@ -16,6 +17,10 @@ const distDir = path.join(rootDir, "dist");
 if (path.dirname(distDir) !== rootDir || path.basename(distDir) !== "dist") {
   throw new Error(`Refusing to clean unexpected output path: ${distDir}`);
 }
+
+// Validate before touching the previous release output.  Candidate data with
+// unresolved rights may be used locally, but cannot accidentally ship.
+const universe = await verifyUniverseForBuild(rootDir);
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(path.join(distDir, "data"), { recursive: true });
@@ -27,6 +32,7 @@ for (const file of [
   "ui-theme.js",
   "sync-state.js",
   "dashboard-storage.js",
+  "word-universe.js",
   "confusion-globe.js",
   "app.js",
   "account.js",
@@ -57,6 +63,14 @@ await copyFile(
 await cp(path.join(rootDir, "assets"), path.join(distDir, "assets"), {
   recursive: true,
 });
+await mkdir(path.join(distDir, "data", "universes"), { recursive: true });
+await copyFile(path.join(universe.directory, "manifest.json"), path.join(distDir, "data", "universes", "manifest.json"));
+for (const file of universe.files) {
+  const relative = file.path.split("/");
+  const target = path.join(distDir, "data", "universes", universe.version, ...relative);
+  await mkdir(path.dirname(target), { recursive: true });
+  await copyFile(path.join(universe.directory, universe.version, ...relative), target);
+}
 await copyFile(
   path.join(rootDir, "data", "vocabulary-index.json"),
   path.join(distDir, "data", "vocabulary-index.json"),

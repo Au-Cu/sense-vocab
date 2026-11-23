@@ -8,7 +8,7 @@
     <link rel="icon" href="./assets/app-icon-zoomed.png" />
     <script src="./ui-theme.js?v=20261122-1"></script>
     <script src="./platform/durable-storage.js?v=20261010-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=20261122-1" />
+    <link rel="stylesheet" href="./styles.css?v=20261122-2" />
   </head>
   <body aria-busy="true">
     <div class="boot-screen" id="bootScreen" role="status" aria-live="polite" aria-atomic="true">
@@ -68,6 +68,10 @@
               <button class="secondary-button" id="wordListButton" type="button" disabled>单词列表</button>
               <button class="primary-button" id="startStudyButton" type="button" disabled>开始学习</button>
             </div>
+          </div>
+          <div class="universe-entry" aria-label="词汇宇宙">
+            <button class="secondary-button" id="openSynonymUniverse" type="button">近义词宇宙 <span aria-hidden="true">↗</span></button>
+            <button class="secondary-button" id="openSpellingUniverse" type="button">形近词宇宙 <span aria-hidden="true">↗</span></button>
           </div>
           <p class="vocabulary-status" id="vocabularyStatus" role="status">
             正在加载词库索引和本地学习记录…
@@ -498,6 +502,11 @@
             </div>
           </div>
 
+          <div class="universe-word-entry" id="universeWordEntry" aria-label="从当前词探索">
+            <button id="wordSynonymUniverse" class="universe-word-button" type="button">近义词宇宙 ↗</button>
+            <button id="wordSpellingUniverse" class="universe-word-button" type="button">形近词宇宙 ↗</button>
+          </div>
+
           <div class="sense-area" id="senseArea" hidden>
             <section class="morphology-panel" id="morphologyPanel" aria-label="词形变化"></section>
             <p class="sense-hint" id="senseHint">点击熟知的义项</p>
@@ -515,6 +524,8 @@
           </div>
         </div>
       </section>
+
+      <section class="study-panel universe-panel" id="universePanel" aria-label="词汇宇宙" hidden></section>
 
       <section class="study-panel confusion-panel" id="confusionPanel" aria-live="polite" hidden>
         <header class="confusion-header">
@@ -1100,7 +1111,8 @@
     <script src="./cloud-client.js?v=20261020-1"></script>
     <script src="./sync-state.js?v=20261017-2"></script>
     <script src="./dashboard-storage.js?v=20261018-1"></script>
-    <script src="./app.js?v=20261122-2"></script>
+    <script src="./word-universe.js?v=20261122-1"></script>
+    <script src="./app.js?v=20261122-3"></script>
     <script src="./account.js?v=20261020-1"></script>
   </body>
 </html>

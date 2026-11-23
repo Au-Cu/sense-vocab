@@ -383,6 +383,7 @@ const wordListLoadMoreButton = document.querySelector("#wordListLoadMoreButton")
 const wordListBackButton = document.querySelector("#wordListBackButton");
 
 const confusionPanel = document.querySelector("#confusionPanel");
+const universePanel = document.querySelector("#universePanel");
 const confusionBackButton = document.querySelector("#confusionBackButton");
 const confusionTitle = document.querySelector("#confusionTitle");
 const confusionCount = document.querySelector("#confusionCount");
@@ -522,6 +523,8 @@ let tutorialOverlayGeometryKey = "";
 let tutorialLiveTarget = null;
 let initialGuestHadLearningData = null;
 let confusionRuntime = null;
+let universeSession = null;
+let universeController = null;
 let confusionGlobe = null;
 let confusionGlobeSignature = null;
 let confusionTransitioning = false;
@@ -5099,6 +5102,28 @@ function commitUiTransition(kind, update, {
 function render() {
   if (!state) return;
 
+  // The universe is a transient, read-only overlay. Never replace the
+  // persisted learning view, card, queue or progress with universe state.
+  if (universeSession && (universeSession.scopeKey !== activeStorageKey || universeSession.bookId !== activeBookId())) {
+    universeController?.destroy();
+    universeController = null;
+    universeSession = null;
+  }
+  if (universeSession) {
+    // The ordinary render path performs this even when the visible page does
+    // not change. Preserve midnight/session maintenance while the map is open.
+    ensureTodaySession();
+    [homePanel, studyPanel, wordListPanel, dashboardPanel, settingsPanel, interfacePanel, dataPanel, confusionPanel]
+      .forEach((panel) => { panel.hidden = true; });
+    universePanel.hidden = false;
+    mainAppNav.hidden = true;
+    appShell.classList.remove("is-study-view");
+    applyAccountBootstrapGate();
+    universeController?.refreshScope();
+    return;
+  }
+  universePanel.hidden = true;
+
   const session = ensureTodaySession();
   const studyCard = state.view === "study" ? currentCard() : null;
   const studyCardKey = state.view !== "study"
@@ -7374,7 +7399,7 @@ function renderDashboard() {
 
 function applyAccountBootstrapGate() {
   const pending = document.documentElement.dataset.accountReady !== "true";
-  [studyPanel, wordListPanel, dashboardPanel, settingsPanel, interfacePanel, dataPanel, confusionPanel]
+  [studyPanel, wordListPanel, dashboardPanel, settingsPanel, interfacePanel, dataPanel, confusionPanel, universePanel]
     .forEach((panel) => {
     panel.inert = pending;
   });
@@ -8160,6 +8185,7 @@ function renderStudy() {
   const fullyMastered = Boolean(card && isWordFullyMastered(card.wordId));
 
   studyFeedbackButton.hidden = !word;
+  document.querySelector("#universeWordEntry").hidden = !word;
   studyTopbar.hidden = browsing;
   studyProgressRow.hidden = false;
   queueProgress.hidden = browsing;
@@ -8584,16 +8610,21 @@ function updateFloatingDialogLayerState() {
   if (mainAppNav) mainAppNav.inert = hasOpenDialog;
 }
 
-function setFloatingDialogOrigin(dialog, originTarget = null) {
+function captureFloatingDialogOrigin(originTarget = null) {
+  const target = originTarget instanceof Element ? originTarget : document.activeElement;
+  const targetRect = target instanceof Element ? target.getBoundingClientRect() : null;
+  return {
+    x: targetRect ? targetRect.left + targetRect.width / 2 : innerWidth / 2,
+    y: targetRect ? targetRect.top + targetRect.height / 2 : innerHeight,
+  };
+}
+
+function setFloatingDialogOrigin(dialog, originPoint) {
   const surface = dialog?.querySelector(".reset-dialog");
   if (!surface) return;
-  const target = originTarget instanceof Element ? originTarget : document.activeElement;
   const surfaceRect = surface.getBoundingClientRect();
-  const targetRect = target instanceof Element ? target.getBoundingClientRect() : null;
-  const targetX = targetRect ? targetRect.left + targetRect.width / 2 : innerWidth / 2;
-  const targetY = targetRect ? targetRect.top + targetRect.height / 2 : innerHeight;
-  const originX = targetX - surfaceRect.left;
-  const originY = targetY - surfaceRect.top;
+  const originX = originPoint.x - surfaceRect.left;
+  const originY = originPoint.y - surfaceRect.top;
   surface.style.setProperty("--modal-origin-x", `${originX}px`);
   surface.style.setProperty("--modal-origin-y", `${originY}px`);
 }
@@ -8608,6 +8639,9 @@ function openFloatingDialog(dialog, originTarget = null) {
     updateFloatingDialogLayerState();
     return;
   }
+  // Capture the actual activation point before showing the modal or yielding
+  // to animation frames; the underlying layout can move in the meantime.
+  const originPoint = captureFloatingDialogOrigin(originTarget);
   dialog.hidden = false;
   updateFloatingDialogLayerState();
   dialog.classList.remove(
@@ -8616,7 +8650,7 @@ function openFloatingDialog(dialog, originTarget = null) {
     "is-modal-open",
   );
   if (prefersReducedMotion()) {
-    setFloatingDialogOrigin(dialog, originTarget);
+    setFloatingDialogOrigin(dialog, originPoint);
     dialog.classList.add("is-modal-open");
     return;
   }
@@ -8629,7 +8663,7 @@ function openFloatingDialog(dialog, originTarget = null) {
   };
   window.requestAnimationFrame(() => {
     if (floatingDialogTokens.get(dialog) !== token || dialog.hidden) return;
-    setFloatingDialogOrigin(dialog, originTarget);
+    setFloatingDialogOrigin(dialog, originPoint);
     dialog.classList.remove("is-modal-preparing");
     dialog.classList.add("is-modal-entering");
     const animation = [...(dialog.querySelector(".reset-dialog")?.getAnimations?.() ?? [])]
@@ -9181,6 +9215,86 @@ async function animateFlatCircleIntoCard(
 
 function cloneNullable(value) {
   return value == null ? null : cloneSerializable(value);
+}
+
+function universeScopeSnapshot() {
+  const inBook = new Map(words.map((word) => [word.id, new Set(word.senses.map((sense) => sense.id))]));
+  let total = 0;
+  let mastered = 0;
+  for (const word of words) {
+    for (const sense of word.senses) {
+      total += 1;
+      if (state.progress[senseKey(word.id, sense.id)]?.status === SENSE_STATUS.MASTERED) mastered += 1;
+    }
+  }
+  return {
+    bookName: bookDisplayName(), total, mastered,
+    senseStatus(wordId, senseId) {
+      if (!inBook.get(wordId)?.has(senseId)) return null;
+      return state.progress[senseKey(wordId, senseId)]?.status ?? SENSE_STATUS.NEW;
+    },
+    senseMeaning(wordId, senseId) {
+      return poolWordById.get(wordId)?.senses.find((sense) => sense.id === senseId)?.meaning ?? "释义暂不可用";
+    },
+  };
+}
+
+function closeWordUniverse() {
+  if (!universeSession) return;
+  const trigger = universeSession.trigger;
+  universeController?.destroy();
+  universeController = null;
+  universeSession = null;
+  universePanel.replaceChildren();
+  render();
+  if (trigger?.isConnected) trigger.focus();
+}
+
+function openWordUniverse(kind, fromWord = false) {
+  if (!state || universeSession || tutorialRuntime?.active) return;
+  const originWord = fromWord && state.view === "study" ? currentWord()?.id : null;
+  if (fromWord && !originWord) return;
+  universeSession = { scopeKey: activeStorageKey, bookId: activeBookId(), trigger: document.activeElement };
+  const openingSession = universeSession;
+  render();
+  const start = () => {
+    if (universeSession !== openingSession || !window.SenseVocabUniverse) return;
+    universeController = window.SenseVocabUniverse.create({
+      container: universePanel, kind, originWord, onClose: closeWordUniverse,
+      bundleVersion: vocabularyIndex?.bundleVersion,
+      scope: universeScopeSnapshot,
+    });
+  };
+  if (window.SenseVocabUniverse) { start(); return; }
+  const title = document.createElement("h1");
+  title.textContent = kind === "spelling" ? "形近词宇宙" : "近义词宇宙";
+  const message = document.createElement("p");
+  message.setAttribute("role", "status");
+  message.textContent = "地图组件未加载，学习记录不受影响。请重试。";
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "secondary-button";
+  retry.textContent = "重试加载";
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "secondary-button";
+  back.textContent = "返回";
+  back.addEventListener("click", closeWordUniverse);
+  retry.addEventListener("click", () => {
+    retry.disabled = true;
+    message.textContent = "正在重新加载地图组件…";
+    const script = document.createElement("script");
+    script.src = document.querySelector('script[src^="./word-universe.js"]')?.getAttribute("src") || "./word-universe.js";
+    script.onload = () => { script.remove(); start(); };
+    script.onerror = () => {
+      script.remove();
+      if (universeSession !== openingSession) return;
+      message.textContent = "地图组件仍无法加载，请检查网络后重试；学习记录未改动。";
+      retry.disabled = false;
+    };
+    document.head.append(script);
+  });
+  universePanel.replaceChildren(title, message, retry, back);
 }
 
 function confusionEntryForOpen(rootWordId, currentWordId) {
@@ -11264,6 +11378,10 @@ planButton.addEventListener("click", openPlanDialog);
 advanceStudyButton.addEventListener("click", startAdvanceStudy);
 wordListButton.addEventListener("click", openWordList);
 startStudyButton.addEventListener("click", startStudy);
+document.querySelector("#openSynonymUniverse").addEventListener("click", () => openWordUniverse("synonym"));
+document.querySelector("#openSpellingUniverse").addEventListener("click", () => openWordUniverse("spelling"));
+document.querySelector("#wordSynonymUniverse").addEventListener("click", () => openWordUniverse("synonym", true));
+document.querySelector("#wordSpellingUniverse").addEventListener("click", () => openWordUniverse("spelling", true));
 dashboardButton?.addEventListener("click", openDashboard);
 dashboardBackButton?.addEventListener("click", closeDashboard);
 globalDashboardNavButton?.addEventListener("click", openDashboard);

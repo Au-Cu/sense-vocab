@@ -21,6 +21,18 @@ test("Windows verification power assertion preserves command output and failure 
   }), error => error.status === 7);
 });
 
+test("release awake wrapper invokes the real npm test entry with reporter arguments", {
+  skip: process.platform !== "win32" || !process.env.npm_execpath,
+}, () => {
+  const output = execFileSync("powershell.exe", [
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tools/run-awake-command.ps1",
+    process.execPath, process.env.npm_execpath, "test", "--", "--list",
+    "--grep", "overview recedes", "--reporter=line",
+  ], { cwd: rootDir, encoding: "utf8", windowsHide: true });
+  assert.match(output, /overview recedes through real word points/);
+  assert.match(output, /Total:\s*1 test/);
+});
+
 test("package version changes invalidate verification inputs", () => {
   const left = normalizeManifestContent(
     "package.json",
@@ -49,6 +61,23 @@ test("package version changes invalidate verification inputs", () => {
     })),
   );
   assert.notDeepEqual(lockLeft, lockRight);
+});
+
+test("reviewed universe assets and evidence keep exact bytes through Git filters", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../data/universes/manifest.json", import.meta.url), "utf8"));
+  assert.match(manifest.version, /^[a-f0-9]{16}$/);
+  for (const file of [
+    "data/universes/manifest.json",
+    `data/universes/${manifest.version}/index.json`,
+    `data/universes/${manifest.version}/WORDNET-3.0-LICENSE.txt`,
+    "word-universe.js",
+    "docs/WORD_UNIVERSES_WORDNET_ONLY_CANDIDATE.md",
+  ]) {
+    const raw = execFileSync("git", ["hash-object", "--no-filters", file], { cwd: rootDir, encoding: "utf8" }).trim();
+    const filtered = execFileSync("git", ["-c", "core.autocrlf=true", "hash-object", `--path=${file}`, file],
+      { cwd: rootDir, encoding: "utf8" }).trim();
+    assert.equal(filtered, raw, `Git altered reviewed bytes: ${file}`);
+  }
 });
 
 test("risk classification preserves content, database, and release escalation", () => {

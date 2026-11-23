@@ -5426,3 +5426,62 @@ html[data-color-mode="dark"] .sense-item.is-collapsible::after { color: #a4e7c1;
 html[data-color-mode="dark"] .secondary-button:disabled,
 html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .secondary-button:disabled { background: #303c42; color: #99a5aa; border-color: #46575e; }
 html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .study-actions { background: #1b252e; box-shadow: 0 -8px 18px rgba(0, 0, 0, .2); }
+
+/* Read-only vocabulary universe, independent of the existing confusion globe. */
+.universe-entry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.universe-entry button { min-width: 0; display: flex; justify-content: space-between; align-items: center; text-align: left; }
+.universe-entry button span { opacity: .7; }
+.universe-word-entry { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
+.universe-word-button { border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; background: var(--surface); color: var(--accent-strong); font: inherit; font-size: .78rem; cursor: pointer; }
+.universe-word-button:hover, .universe-word-button:focus-visible { border-color: var(--accent); outline: 2px solid transparent; }
+.universe-panel { gap: 14px; }
+.universe-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.universe-header h1 { margin: 2px 0 0; font-size: clamp(1.45rem, 3vw, 2rem); }
+.universe-back { min-width: 82px; }
+.universe-kind { display: inline-flex; align-self: flex-start; padding: 4px; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.universe-kind button { min-height: 35px; padding: 5px 18px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; }
+.universe-kind button.is-active { color: #fff; background: #166b65; }
+.universe-summary, .universe-note, .universe-loading, .universe-legend { margin: 0; color: var(--muted); line-height: 1.5; font-size: .8rem; }
+.universe-search-wrap { position: relative; display: grid; gap: 6px; }
+.universe-search-wrap > label { font-size: .8rem; font-weight: 700; color: var(--muted); }
+.universe-search-wrap > input { width: 100%; min-height: 44px; padding: 9px 13px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--surface); font: inherit; }
+.universe-search-wrap > input:focus-visible, .universe-sense-select:focus-visible, .universe-canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.universe-search-results:not(:empty) { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; max-height: 220px; overflow: auto; display: grid; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.universe-search-result { min-height: 40px; border: 0; padding: 8px 10px; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.universe-search-result:hover, .universe-search-result:focus-visible { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); }
+.universe-map-wrap { position: relative; overflow: hidden; min-width: 0; border: 1px solid #42566a; border-radius: 20px; background: radial-gradient(ellipse at 18% 20%, #28485b 0%, transparent 48%), radial-gradient(ellipse at 85% 85%, #34304b 0%, transparent 48%), #111d2b; box-shadow: inset 0 1px 1px #ffffff16; }
+.universe-canvas { display: block; width: 100%; height: clamp(320px, 49vw, 490px); touch-action: none; cursor: grab; }
+.universe-canvas:active { cursor: grabbing; }
+.universe-map-controls { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 8px 0; }
+.universe-map-controls button { min-width: 38px; min-height: 38px; padding: 5px 10px; border: 1px solid #a4c0cd66; border-radius: 10px; color: #f1fbfa; background: #122634d9; font: inherit; font-weight: 700; cursor: pointer; }
+.universe-map-controls button:focus-visible { outline: 2px solid #b8fff0; outline-offset: 2px; }
+.universe-map-hint { position: absolute; left: 14px; bottom: 11px; margin: 0; padding: 4px 8px; border-radius: 8px; background: #122634cc; color: #c9dce2; font-size: .72rem; pointer-events: none; }
+.universe-selection { display: grid; gap: 10px; padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.universe-selection-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.universe-selection-heading h2 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+.universe-selection-status { color: var(--muted); font-size: .8rem; }
+.universe-uncertain, .universe-empty { margin: 0; color: var(--muted); font-size: .82rem; line-height: 1.5; }
+.universe-sense-label { display: grid; gap: 6px; font-size: .8rem; font-weight: 700; color: var(--muted); }
+.universe-sense-select { width: 100%; min-height: 42px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 9px; color: var(--ink); background: var(--surface); font: inherit; }
+.universe-senses { display: grid; gap: 5px; margin: 0; padding-left: 20px; color: var(--muted); font-size: .82rem; }
+.universe-relationships { display: grid; gap: 7px; max-height: 260px; overflow-y: auto; overscroll-behavior: contain; }
+.universe-relation { min-width: 0; display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.universe-relation[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent); }
+.universe-relation span { color: var(--muted); font-size: .76rem; line-height: 1.45; overflow-wrap: anywhere; }
+.universe-edge-detail { display: grid; gap: 8px; padding: 12px; border-left: 3px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 9%, var(--surface)); font-size: .82rem; line-height: 1.5; }
+.universe-edge-detail p { margin: 0; }
+.universe-edge-detail a { color: var(--accent-strong); }
+.universe-edge-detail button { justify-self: start; }
+html[data-ui-theme="liquid-glass"] .universe-selection { border: 1px solid var(--glass-border); background: var(--glass-fill-strong); }
+html[data-color-mode="dark"] .universe-selection, html[data-color-mode="dark"] .universe-kind,
+html[data-color-mode="dark"] .universe-word-button, html[data-color-mode="dark"] .universe-search-wrap > input,
+html[data-color-mode="dark"] .universe-search-results, html[data-color-mode="dark"] .universe-sense-select,
+html[data-color-mode="dark"] .universe-relation { background: #26343b; color: var(--ink); border-color: var(--line); }
+html[data-color-mode="dark"] .universe-kind button.is-active { background: #34776b; color: #fff; }
+@media (max-width: 560px) {
+  .universe-entry { gap: 8px; }
+  .universe-entry button { padding-inline: 12px; font-size: .82rem; }
+  .universe-panel { gap: 12px; }
+  .universe-canvas { height: 340px; }
+  .universe-selection { padding: 12px; }
+}

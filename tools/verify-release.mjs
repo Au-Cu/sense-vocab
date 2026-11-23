@@ -192,10 +192,15 @@ if (requireFreeze && candidate?.inputHash !== initialSource.hash) {
           });
         } else {
           const summaryPath = path.join(logDir, `${timestampToken()}-release-test-summary.json`);
-          const playwrightCli = path.join(rootDir, "node_modules", "@playwright", "test", "cli.js");
+          // Run the project's actual npm test script once, retaining the
+          // compact reporter and the Windows awake lease used by this gate.
+          // This keeps the declared release command and the receipt aligned.
+          const npmCli = process.env.npm_execpath;
+          if (!npmCli) throw new Error("npm_execpath is unavailable; run this gate through npm run verify:release.");
           const testCommand = [
-            playwrightCli,
+            npmCli,
             "test",
+            "--",
             "--reporter=dot,./tools/compact-playwright-reporter.cjs",
           ];
           const testInvocation = process.platform === "win32"
