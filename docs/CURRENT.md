@@ -88,7 +88,7 @@
 
 - 正式版本已包含 `op:snapshot`、`op:freeze`、`verify:compact`、`verify:targeted`、`verify:release` 和 `deploy:verified`。成功输出为单行结构化摘要；完整日志和验证凭据保存在 Git 忽略的 `.op-cache`，七天后清理。
 - `verify:release` 绑定相关文件哈希、规范化依赖锁和配置、命令、时间、结果及 `dist` 哈希；同一输入成功时复用，真实用例失败时禁止原样重跑。测试服务器在零用例阶段启动失败且没有失败文件/用例时，可在基础设施恢复后重试。`deploy:verified` 不重新构建，只接受与成功凭据完全一致的 `dist`。
-- Windows ARM64 上的 Wrangler 部署使用 D 盘 `.tooling/node-v24.14.1-win-x64/node.exe`；该官方 Node 24.14.1 x64 可执行文件已核对官方 SHA-256 `58e74bf02fc5bbacc41dcb8bef089961cd5bddd37830b87784e4fc624d145d1f`。它只作为部署工具运行时，不改变产品测试使用的 ARM64 Node。
+- Windows ARM64 上的 Wrangler 部署使用 D 盘 `.tooling/node-v24.14.1-win-x64/node.exe`；该官方 Node 24.14.1 x64 可执行文件已核对官方 SHA-256 `58e74bf02fc5bbacc41dcb8bef089961cd5bddd37830b87784e4fc624d145d1f`。部署时需将环境变量 `SENSE_VOCAB_X64_NODE` 指向该文件；它只作为部署工具运行时，不改变产品测试使用的 ARM64 Node。
 - Windows 完整测试通过进程级临时电源断言避免空闲休眠打断浏览器，结束时释放，不更改系统电源计划或强制显示器常亮；输出与非零退出码保持不变，工具专项 7/7 通过。
 - 新增迁移 `20260822144248_admin_feedback_triage_readonly.sql`，提供只返回数量、匿名 ID、类型和内容 ID 的只读 triage RPC，以及按匿名 ID 读取单项详情的 RPC；管理员校验和显式函数权限保留。
 - 反馈状态继续使用现有 `new`、`in_progress`、`resolved`：每日集中处理 `new` 与 `in_progress`，未完成项留在 `in_progress` 作为待解决队列，不新增状态或迁移。
