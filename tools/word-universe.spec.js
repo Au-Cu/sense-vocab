@@ -3,10 +3,12 @@ const fs = require("node:fs");
 const path = require("node:path");
 const bundle = require("../data/vocabulary-bundle.json");
 const index = require("../data/vocabulary-index.json");
-const { computePackedLayout } = require("../word-universe.js");
+const { computePackedLayout, chooseRelatedTarget } = require("../word-universe.js");
 
 const APP_URL = process.env.APP_URL || "http://127.0.0.1:4173/";
 const VERSION = "0123456789abcdef";
+const DERIVATION_VERSION = "fedcba9876543210";
+const WORDNET_SHA256 = "cbda5ea6eef7f36a97a43d4a75f85e07fccbb4f23657d27b4ccbc93e2646ab59";
 const STORAGE_KEY = "sense-vocab-mvp-kaoyan-plan-v1";
 test.use({ launchOptions: { executablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" } });
 
@@ -59,8 +61,36 @@ function fixture() {
       shards[key].adjacency[node.id] = relationships[kind].get(node.id) || [];
     }
   }
+  const formSense = byId.get("form").senses.find((sense) => sense.id === "n-1");
+  const reformSense = byId.get("reform").senses.find((sense) => sense.id === "n-1");
+  // These two relations are a synthetic transport fixture, not a claim that
+  // WordNet contains them. Real-data tests exercise the actual source below.
+  const derivations = {
+    form: [
+      { id: `wn-deriv-${"a".repeat(24)}`, to: "reform", word: "reform", sourceSense: formSense.id,
+        targetSense: reformSense.id, sourceSynset: formSense.synsetId, targetSynset: reformSense.synsetId,
+        sourcePos: "n.", targetPos: "n.", sourceKey: "form%1:00:00::", targetKey: "reform%1:00:00::" },
+      { id: `wn-deriv-${"b".repeat(24)}`, to: null, word: "formation", sourceSense: formSense.id,
+        targetSense: null, sourceSynset: formSense.synsetId, targetSynset: "omw-en-00000001-n",
+        sourcePos: "n.", targetPos: "n.", sourceKey: "form%1:00:00::", targetKey: "formation%1:00:00::" },
+    ],
+    reform: [{ id: `wn-deriv-${"c".repeat(24)}`, to: "form", word: "form", sourceSense: reformSense.id,
+      targetSense: formSense.id, sourceSynset: reformSense.synsetId, targetSynset: formSense.synsetId,
+      sourcePos: "n.", targetPos: "n.", sourceKey: "reform%1:00:00::", targetKey: "form%1:00:00::" }],
+  };
+  const counts = Object.fromEntries(nodes.map((node) => [node.id, (derivations[node.id] || []).filter((edge) => edge.to && edge.to !== node.id).length]));
+  const derivationShards = {};
+  for (const node of nodes) {
+    const tile = node.spellingTile;
+    derivationShards[tile] ||= { schema: 1, version: DERIVATION_VERSION, kind: "derivation", tile, adjacency: {} };
+    derivationShards[tile].adjacency[node.id] = derivations[node.id] || [];
+  }
   return { manifest: { schema: 1, version: VERSION, index: `./${VERSION}/index.json`, bundleSha256: index.bundleVersion },
-    map: { schema: 1, version: VERSION, bundleSha256: index.bundleVersion, nodes }, shards };
+    map: { schema: 1, version: VERSION, bundleSha256: index.bundleVersion, nodes }, shards,
+    derivationManifest: { schema: 1, version: DERIVATION_VERSION, index: `./${DERIVATION_VERSION}/index.json`,
+      bundleSha256: index.bundleVersion, baseUniverseVersion: VERSION, source: { archiveSha256: WORDNET_SHA256 } },
+    derivationIndex: { schema: 1, version: DERIVATION_VERSION, bundleSha256: index.bundleVersion,
+      baseUniverseVersion: VERSION, wordnetSha256: WORDNET_SHA256, counts }, derivationShards };
 }
 
 async function mockMaps(page, options = {}) {
@@ -78,9 +108,22 @@ async function mockMaps(page, options = {}) {
       const manifest = options.badVersion ? { ...data.manifest, bundleSha256: "0".repeat(64) } : data.manifest;
       await route.fulfill({ json: manifest }); return;
     }
-    if (pathname.endsWith("index.json")) { await route.fulfill({ json: data.map }); return; }
+    if (pathname.endsWith("index.json")) { if (options.waitForIndex) await options.waitForIndex; await route.fulfill({ json: data.map }); return; }
     const match = pathname.match(/\/(synonym|spelling)\/(\d-\d)\.json$/);
     const shard = match && data.shards[`${match[1]}/${match[2]}`];
+    if (shard) await route.fulfill({ json: shard }); else await route.fulfill({ status: 404 });
+  });
+  let derivationFailed = false;
+  await page.route("**/data/derivations/**", async (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    requests.push(pathname);
+    if (options.failDerivationOnce && !derivationFailed && pathname.endsWith("manifest.json")) {
+      derivationFailed = true; await route.fulfill({ status: 503, body: "test failure" }); return;
+    }
+    if (pathname.endsWith("manifest.json")) { await route.fulfill({ json: data.derivationManifest }); return; }
+    if (pathname.endsWith("index.json")) { await route.fulfill({ json: data.derivationIndex }); return; }
+    const match = pathname.match(/\/derivation\/(\d-\d)\.json$/);
+    const shard = match && data.derivationShards[match[1]];
     if (shard) await route.fulfill({ json: shard }); else await route.fulfill({ status: 404 });
   });
   return requests;
@@ -110,6 +153,109 @@ async function search(page, word) {
   await expect(page.locator(".universe-canvas")).toHaveAttribute("data-camera-moving", "false");
 }
 
+test("related hit areas prefer the visible label and nearest connected star", () => {
+  const targets = [
+    { node: { id: "background" }, x: 14, y: 0, radius: 8, related: false },
+    { node: { id: "near" }, x: 0, y: 0, radius: 8, related: true, label: { left: -20, right: 20, top: -24, bottom: -12 } },
+    { node: { id: "far" }, x: 34, y: 0, radius: 8, related: true, label: { left: 23, right: 45, top: -24, bottom: -12 } },
+  ];
+  expect(chooseRelatedTarget({ x: 14, y: 0 }, targets).node.id).toBe("near");
+  expect(chooseRelatedTarget({ x: 22, y: 0 }, targets).node.id).toBe("far");
+  expect(chooseRelatedTarget({ x: 38, y: -18 }, targets).node.id).toBe("far");
+  expect(chooseRelatedTarget({ x: 90, y: 90 }, targets)).toBeNull();
+});
+
+for (const viewport of [
+  { name: "desktop", width: 1200, height: 900, touch: false },
+  { name: "phone touch", width: 390, height: 844, touch: true },
+]) {
+  test(`connected words support enlarged direct hits in ${viewport.name}`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, hasTouch: viewport.touch, reducedMotion: "reduce" });
+    const page = await context.newPage();
+    await page.addInitScript(() => {
+      const clear = CanvasRenderingContext2D.prototype.clearRect;
+      const fill = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+        if (this.canvas.classList.contains("universe-canvas")) window.__testMapLabels = [];
+        return clear.apply(this, args);
+      };
+      CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...args) {
+        if (this.canvas.classList.contains("universe-canvas")) window.__testMapLabels.push({ text, x, y, width: this.measureText(text).width });
+        return fill.call(this, text, x, y, ...args);
+      };
+    });
+    try {
+      await mockMaps(page); await openApp(page);
+      await page.locator("#openSynonymUniverse").click();
+      await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
+      const canvas = page.locator(".universe-canvas");
+      const nodes = fixture().map.nodes;
+      for (const scenario of [
+        { mode: "近义词", source: "quit", target: "depart", layout: "synonym" },
+        { mode: "形近词", source: "bank", target: "bark", layout: "spelling" },
+        { mode: "派生词", source: "form", target: "reform", layout: "spelling" },
+      ]) {
+        await page.getByRole("button", { name: scenario.mode, exact: true }).click();
+        await search(page, scenario.source);
+        await expect(page.locator(".universe-relation").filter({ hasText: scenario.target })).toBeVisible();
+        const layout = computePackedLayout(nodes, scenario.layout).positions;
+        const i = nodes.findIndex((node) => node.id === scenario.target) * 3;
+        const camera = await canvas.evaluate((element) => ({ width: element.clientWidth, height: element.clientHeight,
+          x: Number(element.dataset.cameraX), y: Number(element.dataset.cameraY), zoom: Number(element.dataset.cameraZoom) }));
+        const unit = Math.min(camera.width, camera.height) / 3000 * camera.zoom;
+        const point = { x: camera.width / 2 + (layout[i] - camera.x) * unit,
+          y: camera.height / 2 + (layout[i + 1] - camera.y) * unit };
+        expect(point.x + 15).toBeLessThan(camera.width);
+        const rect = await canvas.boundingBox();
+        if (viewport.touch) await page.touchscreen.tap(rect.x + point.x + 15, rect.y + point.y);
+        else await canvas.click({ position: { x: point.x + 15, y: point.y } });
+        await expect(page.locator(".universe-selection-heading h2")).toHaveText(scenario.target);
+      }
+      await page.getByRole("button", { name: "近义词", exact: true }).click();
+      await search(page, "quit");
+      await expect.poll(() => page.evaluate(() => window.__testMapLabels?.some((label) => label.text === "depart"))).toBe(true);
+      const label = await page.evaluate(() => window.__testMapLabels.find((item) => item.text === "depart"));
+      const rect = await canvas.boundingBox();
+      const point = { x: label.x + Math.max(0, label.width / 2 - 2), y: label.y - 6 };
+      if (viewport.touch) await page.touchscreen.tap(rect.x + point.x, rect.y + point.y);
+      else await canvas.click({ position: point });
+      await expect(page.locator(".universe-selection-heading h2")).toHaveText("depart");
+    } finally { await context.close(); }
+  });
+}
+
+test("real highlighted word label supports direct phone touch", async ({ browser }) => {
+  test.skip(process.env.SENSE_VOCAB_UNIVERSE_REALDATA !== "1", "requires the locally generated derivation candidate");
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, reducedMotion: "reduce" });
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    const clear = CanvasRenderingContext2D.prototype.clearRect;
+    const fill = CanvasRenderingContext2D.prototype.fillText;
+    CanvasRenderingContext2D.prototype.clearRect = function (...args) {
+      if (this.canvas.classList.contains("universe-canvas")) window.__testRealLabels = [];
+      return clear.apply(this, args);
+    };
+    CanvasRenderingContext2D.prototype.fillText = function (text, x, y, ...args) {
+      if (this.canvas.classList.contains("universe-canvas")) window.__testRealLabels.push({ text, x, y, width: this.measureText(text).width });
+      return fill.call(this, text, x, y, ...args);
+    };
+  });
+  try {
+    await openApp(page, { theme: "classic", color: "light" });
+    await page.locator("#openSynonymUniverse").click();
+    await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true", { timeout: 45000 });
+    await page.getByLabel("迷雾模式").check();
+    await search(page, "aim");
+    await expect(page.locator(".universe-relation").filter({ hasText: "purpose" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__testRealLabels?.some((item) => item.text === "purpose")), { timeout: 10000 }).toBe(true);
+    const label = await page.evaluate(() => window.__testRealLabels.find((item) => item.text === "purpose"));
+    const canvas = page.locator(".universe-canvas"), rect = await canvas.boundingBox();
+    await page.touchscreen.tap(rect.x + label.x + label.width / 2 - 1, rect.y + label.y - 6);
+    await expect(page.locator(".universe-selection-heading h2")).toHaveText("purpose");
+    await expect(page.locator(".universe-selection")).not.toContainText(/synset|余弦|WordNet|已掌握/);
+  } finally { await context.close(); }
+});
+
 test("home search opens filtered word list and retains the query", async ({ page }) => {
   await openApp(page);
   const searchInput = page.locator("#homePanel #wordSearchInput");
@@ -137,7 +283,7 @@ test("home search is first and universe entry labels are centered", async ({ pag
     return { searchTop: search.top, planTop: plan.top, centers: buttons };
   });
   expect(layout.searchTop).toBeLessThan(layout.planTop);
-  expect(layout.centers).toHaveLength(2);
+  expect(layout.centers).toHaveLength(3);
   expect(Math.max(...layout.centers)).toBeLessThan(2);
 });
 
@@ -277,10 +423,12 @@ test("specific senses filter real-identity relations and cross-region jumps with
   const point = Array.from({ length: 17 }, (_, i) => (i + 2) / 20)
     .map((t) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t }))
     .find((p) => p.x > 5 && p.x < camera.width - 5 && p.y > 5 && p.y < camera.height - 5 &&
-      marks.every((mark) => Math.hypot(mark.x - p.x, mark.y - p.y) > 10));
+      marks.every((mark) => Math.hypot(mark.x - p.x, mark.y - p.y) > 24));
   expect(point).toBeTruthy();
   await canvas.click({ position: point });
-  await expect(page.locator(".universe-edge-detail")).toContainText("omw-en-02008396-v");
+  await expect(page.locator(".universe-edge-detail")).toContainText("quit ↔ depart");
+  await expect(page.locator(".universe-edge-detail")).not.toContainText(/WordNet|synset|余弦|已掌握|待新学/);
+  await expect(page.locator(".universe-edge-detail a")).toHaveCount(0);
   await page.getByRole("button", { name: "前往 depart" }).click();
   await expect(page.locator(".universe-selection-heading h2")).toHaveText("depart");
   await expect.poll(() => requests.some((url) => url.endsWith("/synonym/1-5.json"))).toBe(true);
@@ -345,6 +493,19 @@ test("failed or stale map fails safely and a transient failure can be retried", 
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
 });
 
+test("search entered while the map index loads appears automatically", async ({ page }) => {
+  let releaseIndex;
+  const waitForIndex = new Promise((resolve) => { releaseIndex = resolve; });
+  await mockMaps(page, { waitForIndex }); await openApp(page);
+  await page.locator("#openSynonymUniverse").click();
+  await page.locator("#universeSearch").fill("shore");
+  await expect(page.locator(".universe-search-results")).toContainText("正在加载单词");
+  releaseIndex();
+  await expect(page.getByRole("button", { name: "shore", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "shore", exact: true }).click();
+  await expect(page.locator(".universe-selection-heading h2")).toHaveText("shore");
+});
+
 test("mismatched vocabulary versions are rejected instead of misbinding senses", async ({ page }) => {
   await mockMaps(page, { badVersion: true }); await openApp(page);
   await page.locator("#openSynonymUniverse").click();
@@ -368,6 +529,180 @@ test("an unavailable map script offers a safe retry without changing progress", 
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
 });
 
+test("fog leaves unexplored words, search and relationship lines available", async ({ page }) => {
+  await mockMaps(page); await openApp(page);
+  const before = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+  await page.locator("#openSynonymUniverse").click();
+  const canvas = page.locator(".universe-canvas");
+  await expect(canvas).toHaveAttribute("data-index-ready", "true");
+  await expect(canvas).toHaveAttribute("data-rendered-words", "10");
+  await page.getByLabel("迷雾模式").check();
+  await expect(canvas).toHaveAttribute("data-fog", "true");
+  await expect(canvas).toHaveAttribute("data-rendered-words", "10");
+  await expect(canvas).toHaveAttribute("data-fogged-words", "10");
+  await expect(page.locator(".universe-fog-progress")).toContainText("已点亮 0 /");
+  await search(page, "quit");
+  await expect(page.locator(".universe-selection")).toContainText("待点亮");
+  await expect(page.locator(".universe-relation").filter({ hasText: "cease" })).toBeVisible();
+  await expect.poll(async () => Number(await canvas.getAttribute("data-visible-lines"))).toBeGreaterThan(0);
+  await page.locator(".universe-back").click();
+  await page.locator("#openSpellingUniverse").click();
+  await expect(page.getByLabel("迷雾模式")).toBeChecked();
+  await search(page, "bank");
+  await expect(page.locator(".universe-relation").filter({ hasText: "bark" })).toBeVisible();
+  await page.locator(".universe-back").click();
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
+});
+
+test("fog lights words from the current account and book without copying guest progress", async ({ page }) => {
+  await mockMaps(page); await openApp(page);
+  const guestBefore = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+  await page.locator("#openSynonymUniverse").click();
+  await page.getByLabel("迷雾模式").check();
+  await page.locator(".universe-back").click();
+  await page.evaluate(() => {
+    const app = window.SenseVocabApp;
+    const account = structuredClone(app.getGuestState());
+    const progress = { ...account.bookStates.kaoyan.progress, "bank:n-1": { status: "reinforce" } };
+    account.bookStates.kaoyan.progress = progress; account.progress = progress;
+    app.activateAccount("fog-test-user", account);
+  });
+  await page.locator("#openSynonymUniverse").click();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-revealed-words", "1");
+  await search(page, "bank");
+  await expect(page.locator(".universe-selection")).not.toContainText("待点亮：");
+  await page.locator(".universe-back").click();
+  await page.locator("#planButton").click();
+  await page.locator("#bookSelect").selectOption("ielts");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#openSynonymUniverse").click();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-revealed-words", "0");
+  await page.locator(".universe-back").click();
+  await page.locator("#planButton").click();
+  await page.locator("#bookSelect").selectOption("kaoyan");
+  await page.locator("#savePlanButton").click();
+  await page.locator("#openSynonymUniverse").click();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-revealed-words", "1");
+  await page.locator(".universe-back").click();
+  await page.evaluate(() => window.SenseVocabApp.activateGuest());
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(guestBefore);
+  await page.locator("#openSynonymUniverse").click();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-revealed-words", "0");
+});
+
+test("fog remains usable when device preference cannot be saved", async ({ page }) => {
+  await mockMaps(page); await openApp(page);
+  const before = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+  await page.evaluate(() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "sense-vocab-universe-fog-v1") throw new DOMException("blocked", "QuotaExceededError");
+      return original.call(this, key, value);
+    };
+  });
+  await page.locator("#openSynonymUniverse").click();
+  await page.getByLabel("迷雾模式").check();
+  await expect(page.locator(".universe-fog-notice[role=status]")).toContainText("未允许保存");
+  await search(page, "quit");
+  await expect(page.locator(".universe-relation").filter({ hasText: "cease" })).toBeVisible();
+  await page.locator(".universe-back").click();
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
+});
+
+test("derivation universe keeps sense provenance and labels words outside the vocabulary", async ({ page }) => {
+  await mockMaps(page); await openApp(page);
+  const before = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+  await page.locator("#openDerivationUniverse").click();
+  await expect(page.getByRole("heading", { name: "派生词宇宙" })).toBeVisible();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-index-ready", "true");
+  await page.getByLabel("迷雾模式").check();
+  await search(page, "form");
+  await expect(page.locator(".universe-relation").filter({ hasText: "reform" })).toBeVisible();
+  const external = page.locator(".universe-relation").filter({ hasText: "formation" });
+  await expect(external).toContainText("词库外补充");
+  await external.click();
+  await expect(page.locator(".universe-edge-detail")).toContainText("词库外补充");
+  await expect(page.locator(".universe-edge-detail")).not.toContainText(/WordNet|synset|余弦|已掌握|待新学/);
+  await expect(page.locator(".universe-edge-detail a")).toHaveCount(0);
+  await page.locator(".universe-relation").filter({ hasText: "reform" }).click();
+  await page.getByRole("button", { name: "前往 reform" }).click();
+  await expect(page.locator(".universe-selection-heading h2")).toHaveText("reform");
+  await expect(page.locator(".universe-relation").filter({ hasText: "form" })).toBeVisible();
+  await page.locator(".universe-back").click();
+  expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
+});
+
+test("a failed derivation dataset can retry without disabling the other maps", async ({ page }) => {
+  await mockMaps(page, { failDerivationOnce: true }); await openApp(page);
+  await page.locator("#openDerivationUniverse").click();
+  await expect(page.locator(".universe-loading")).toContainText("派生词资料加载失败");
+  await page.getByRole("button", { name: "重试派生词资料" }).click();
+  await expect(page.locator(".universe-loading")).not.toContainText("加载失败");
+  await search(page, "form");
+  await expect(page.locator(".universe-relation").filter({ hasText: "reform" })).toBeVisible();
+  await page.getByRole("button", { name: "形近词", exact: true }).click();
+  await search(page, "bank");
+  await expect(page.locator(".universe-relation").filter({ hasText: "bark" })).toBeVisible();
+});
+
+for (const view of [
+  { name: "desktop", width: 1440, height: 1000, theme: "classic", color: "light" },
+  { name: "phone", width: 390, height: 844, theme: "liquid-glass", color: "dark" },
+]) {
+  test(`real WordNet derivations and explorable fog in ${view.name} viewport`, async ({ page }) => {
+    test.skip(process.env.SENSE_VOCAB_UNIVERSE_REALDATA !== "1", "requires the locally generated derivation candidate");
+    await page.setViewportSize({ width: view.width, height: view.height });
+    const errors = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await openApp(page, view);
+    const before = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+    await page.locator("#openDerivationUniverse").click();
+    const canvas = page.locator(".universe-canvas");
+    await expect(canvas).toHaveAttribute("data-index-ready", "true", { timeout: 45000 });
+    await page.getByLabel("迷雾模式").check();
+    await expect(canvas).toHaveAttribute("data-rendered-words", "6607");
+    await expect(canvas).toHaveAttribute("data-fogged-words", "6607");
+    await page.screenshot({ path: path.resolve(__dirname, `../.test-artifacts/derivation-fog-${view.name}.png`), fullPage: true });
+    await page.locator("#universeSearch").fill("目的");
+    const results = page.locator(".universe-search-results");
+    for (const word of ["purpose", "objective", "aim", "intention"]) {
+      await expect(results.locator(".universe-search-result strong").getByText(word, { exact: true })).toBeVisible({ timeout: 30000 });
+    }
+    await expect(results).toContainText("不能保证语境可互换");
+    await page.screenshot({ path: path.resolve(__dirname, `../.test-artifacts/derivation-chinese-search-${view.name}.png`), fullPage: true });
+    await results.locator(".universe-search-result").filter({ has: page.getByText("aim", { exact: true }) }).click();
+    await expect(page.locator(".universe-selection-heading h2")).toHaveText("aim");
+    await page.getByRole("button", { name: "近义词", exact: true }).click();
+    await expect(page.locator(".universe-relation").filter({ hasText: "purpose" })).toBeVisible();
+    await expect(page.locator(".universe-relation").filter({ hasText: "objective" })).toHaveCount(0);
+    await page.locator(".universe-meaning-explorer summary").click();
+    await page.getByRole("button", { name: "搜索目的的相关单词" }).click();
+    await expect(results.locator(".universe-search-result strong").getByText("objective", { exact: true })).toBeVisible();
+    await page.locator("#universeSearch").fill("a");
+    await expect(results.locator(".universe-search-result")).toHaveCount(40);
+    await results.getByRole("button", { name: /显示更多/ }).click();
+    await expect(results.locator(".universe-search-result")).toHaveCount(80);
+    await page.getByRole("button", { name: "派生词", exact: true }).click();
+    await search(page, "create");
+    await expect(page.locator(".universe-relation").filter({ hasText: "creation" }).first()).toBeVisible();
+    await expect.poll(async () => Number(await canvas.getAttribute("data-visible-lines"))).toBeGreaterThan(0);
+    await search(page, "happy");
+    const external = page.locator(".universe-relation").filter({ hasText: "happiness" }).first();
+    await expect(external).toContainText("词库外补充");
+    await external.click();
+    await expect(page.locator(".universe-edge-detail")).toContainText("happiness");
+    await expect(page.locator(".universe-edge-detail a")).toHaveCount(0);
+    await page.screenshot({ path: path.resolve(__dirname, `../.test-artifacts/derivation-detail-${view.name}.png`), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(view.width + 1);
+    await page.locator(".universe-back").click();
+    expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(before);
+    expect(errors).toEqual([]);
+  });
+}
+
 test("study entry returns to the same card and preserves the learning record", async ({ page }) => {
   await mockMaps(page); await openApp(page);
   await page.locator("#planButton").click();
@@ -388,7 +723,9 @@ test("book and account overlays remain separate, including a partially mastered 
   const guestBefore = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
   await page.locator("#openSynonymUniverse").click();
   await search(page, "bank");
-  await expect(page.locator(".universe-selection-status")).toHaveText("0 / 2 义项已掌握");
+  await page.getByLabel("迷雾模式").check();
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-revealed-words", "0");
+  await expect(page.locator(".universe-selection-status")).toHaveCount(0);
   await page.evaluate(() => {
     const app = window.SenseVocabApp;
     const account = structuredClone(app.getGuestState());
@@ -400,9 +737,9 @@ test("book and account overlays remain separate, including a partially mastered 
   });
   await expect(page.locator("#homePanel")).toBeVisible();
   await page.locator("#openSynonymUniverse").click(); await search(page, "bank");
-  await expect(page.locator(".universe-selection-status")).toHaveText("1 / 2 义项已掌握");
-  await expect(page.locator(".universe-sense-select")).toContainText("已掌握");
-  await expect(page.locator(".universe-sense-select")).toContainText("待强化");
+  await expect(page.locator(".universe-canvas")).toHaveAttribute("data-revealed-words", "1");
+  await expect(page.locator(".universe-selection-status")).toHaveCount(0);
+  await expect(page.locator(".universe-sense-select")).not.toContainText(/已掌握|待强化/);
   await page.evaluate(() => window.SenseVocabApp.activateGuest());
   await expect(page.locator("#homePanel")).toBeVisible();
   expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(guestBefore);

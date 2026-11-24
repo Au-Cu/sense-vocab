@@ -1,0 +1,81 @@
+{
+  "artifactListSha256": "abe7d9e4086cb45a3c7d41ef0f4c3dd78f8d3800f9023a116a8fe1625115a30b",
+  "baseUniverseVersion": "0a07d3bce8f9b09a",
+  "bundleSha256": "f16ddf0ce69d22cad3833a3c07430e1aef748105e0583c19d9941b56a986d6fc",
+  "distribution": "cleared-for-release",
+  "files": [
+    {
+      "bytes": 1889673,
+      "path": "derivation/3-3.json",
+      "sha256": "ee60fb025e80fa51893a3bbb3a9196b09c267a574759778c3966355b67326215"
+    },
+    {
+      "bytes": 787755,
+      "path": "derivation/3-4.json",
+      "sha256": "b579bf2fe9759d014b5a54d77a511d49e28610f0fc084141702af85ba66a16c3"
+    },
+    {
+      "bytes": 32400,
+      "path": "derivation/3-5.json",
+      "sha256": "05bc2981570564d477e2217304e266317642e2167393c90d092f26ebda045029"
+    },
+    {
+      "bytes": 710328,
+      "path": "derivation/4-3.json",
+      "sha256": "8ec54fadef53bcd964414465acaf87f7fafebbb70c55a47f06cd5a670b176935"
+    },
+    {
+      "bytes": 387859,
+      "path": "derivation/4-4.json",
+      "sha256": "b39e66eee0dbf43a426a57cf69f8961c5843091234914a1571bc7c11eb119017"
+    },
+    {
+      "bytes": 61792,
+      "path": "derivation/4-5.json",
+      "sha256": "e46c60ce3f2b9fdd0ab464330ff1bac96d47146fd11d9301a94de1d29247f27c"
+    },
+    {
+      "bytes": 76777,
+      "path": "derivation/5-3.json",
+      "sha256": "c2ccc9b24e35782f6569106bec3e3e0003b88eaedc5ca1b2f8e38985be747940"
+    },
+    {
+      "bytes": 88509,
+      "path": "derivation/5-4.json",
+      "sha256": "fd03477f668cd8c85abef1ef98c46bdbd69be73de908a0faa24b415e63abc15c"
+    },
+    {
+      "bytes": 985,
+      "path": "derivation/6-3.json",
+      "sha256": "abf39c3e829a2a6a1fbdcdad2870977aaa9f1b67c21894f0f60b9630f719c2d3"
+    },
+    {
+      "bytes": 4469,
+      "path": "derivation/6-4.json",
+      "sha256": "6052340847b0d32c41b61df1b661427e9b4be71c430478c49df55b6377e3ffa4"
+    },
+    {
+      "bytes": 78877,
+      "path": "index.json",
+      "sha256": "7e1c9f280b4ab8917d09ba69f6e9d02befff7eec62dab156aeaed884e3ab0570"
+    }
+  ],
+  "index": "./60051234b766bae8/index.json",
+  "review": {
+    "status": "approved",
+    "reviewer": "用户",
+    "reviewedAt": "2026-11-24T07:33:03Z",
+    "scope": "当前免费 Web 测试，包含词库外派生词形补充；不代表逐条语境审核、权利人授权或收费商业清关",
+    "artifactListSha256": "abe7d9e4086cb45a3c7d41ef0f4c3dd78f8d3800f9023a116a8fe1625115a30b",
+    "evidence": ["docs/WORD_UNIVERSES_DERIVATION_CANDIDATE.md", "https://wordnet.princeton.edu/license-and-commercial-use", "https://wordnet.princeton.edu/documentation/wninput5wn"]
+  },
+  "schema": 1,
+  "source": {
+    "archiveSha256": "cbda5ea6eef7f36a97a43d4a75f85e07fccbb4f23657d27b4ccbc93e2646ab59",
+    "baseIndexSha256": "6f13d3b6414dd28f666417f8b93cde2efd7dc0501fe98e49b3874b2d40b927cf",
+    "generatorSha256": "37b330a77a4cdc98d1a13d15c53a076b78779ea1c2aba9eb12eaf8ba1f4c5408",
+    "license": "https://wordnet.princeton.edu/license-and-commercial-use",
+    "name": "Princeton WordNet 3.0"
+  },
+  "version": "60051234b766bae8"
+}

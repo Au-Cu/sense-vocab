@@ -9,6 +9,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyUniverseForBuild } from "./universe-release-gate.mjs";
+import { verifyDerivationsForBuild } from "./derivation-release-gate.mjs";
 
 const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(toolsDir, "..");
@@ -21,6 +22,7 @@ if (path.dirname(distDir) !== rootDir || path.basename(distDir) !== "dist") {
 // Validate before touching the previous release output.  Candidate data with
 // unresolved rights may be used locally, but cannot accidentally ship.
 const universe = await verifyUniverseForBuild(rootDir);
+const derivation = await verifyDerivationsForBuild(rootDir);
 
 await rm(distDir, { recursive: true, force: true });
 await mkdir(path.join(distDir, "data"), { recursive: true });
@@ -70,6 +72,14 @@ for (const file of universe.files) {
   const target = path.join(distDir, "data", "universes", universe.version, ...relative);
   await mkdir(path.dirname(target), { recursive: true });
   await copyFile(path.join(universe.directory, universe.version, ...relative), target);
+}
+await mkdir(path.join(distDir, "data", "derivations"), { recursive: true });
+await copyFile(path.join(derivation.directory, "manifest.json"), path.join(distDir, "data", "derivations", "manifest.json"));
+for (const file of derivation.files) {
+  const relative = file.path.split("/");
+  const target = path.join(distDir, "data", "derivations", derivation.version, ...relative);
+  await mkdir(path.dirname(target), { recursive: true });
+  await copyFile(path.join(derivation.directory, derivation.version, ...relative), target);
 }
 await copyFile(
   path.join(rootDir, "data", "vocabulary-index.json"),

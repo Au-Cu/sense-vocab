@@ -5452,7 +5452,7 @@ html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .secondary-button:dis
 html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .study-actions { background: #1b252e; box-shadow: 0 -8px 18px rgba(0, 0, 0, .2); }
 
 /* Read-only vocabulary universe, independent of the existing confusion globe. */
-.universe-entry { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.universe-entry { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .universe-entry button { min-width: 0; display: flex; justify-content: center; align-items: center; text-align: center; }
 .universe-entry button span { opacity: .7; }
 .universe-word-entry { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 10px 0 6px; }
@@ -5465,6 +5465,12 @@ html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .study-actions { back
 .universe-kind { display: inline-flex; align-self: flex-start; padding: 4px; gap: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
 .universe-kind button { min-height: 35px; padding: 5px 18px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; }
 .universe-kind button.is-active { color: #fff; background: #166b65; }
+.universe-fog-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.universe-fog-toggle { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); font-size: .82rem; font-weight: 700; cursor: pointer; }
+.universe-fog-toggle input { width: 18px; height: 18px; accent-color: var(--accent-strong); }
+.universe-fog-progress, .universe-fog-notice { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.45; }
+.universe-fog-notice { flex-basis: 100%; }
+.universe-fog-meter { width: min(140px, 100%); height: 6px; accent-color: var(--accent-strong); }
 .universe-summary, .universe-note, .universe-loading, .universe-legend { margin: 0; color: var(--muted); line-height: 1.5; font-size: .8rem; }
 .universe-search-wrap { position: relative; display: grid; gap: 6px; }
 .universe-search-wrap > label { font-size: .8rem; font-weight: 700; color: var(--muted); }
@@ -5472,9 +5478,17 @@ html[data-ui-theme="liquid-glass"][data-color-mode="dark"] .study-actions { back
 .universe-search-wrap > input:focus-visible, .universe-sense-select:focus-visible, .universe-canvas:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .universe-search-results:not(:empty) { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; max-height: 220px; overflow: auto; display: grid; padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
 .universe-search-result { min-height: 40px; border: 0; padding: 8px 10px; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; font: inherit; cursor: pointer; }
+.universe-search-result strong, .universe-search-result span { display: block; }
+.universe-search-result span, .universe-search-explanation { color: var(--muted); font-size: .76rem; line-height: 1.4; }
+.universe-search-explanation { margin: 3px 10px 6px; }
+.universe-search-more, .universe-meaning-choice { min-height: 38px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.universe-meaning-explorer { margin: 10px 0; color: var(--muted); font-size: .82rem; }
+.universe-meaning-explorer summary { width: fit-content; cursor: pointer; }
+.universe-meaning-choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .universe-search-result:hover, .universe-search-result:focus-visible { background: color-mix(in srgb, var(--accent) 15%, var(--surface)); }
 .universe-map-wrap { position: relative; overflow: hidden; min-width: 0; border: 1px solid #42605c; border-radius: 20px; background: radial-gradient(ellipse at 20% 18%, #274b48 0%, transparent 48%), radial-gradient(ellipse at 82% 84%, #343a2e 0%, transparent 46%), linear-gradient(145deg, #12282d, #0e1c24 60%, #172b29); box-shadow: inset 0 1px 1px #ffffff16; }
 .universe-map-wrap::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .34; background-image: radial-gradient(circle, #c4e7df 0 0.6px, transparent 1px), radial-gradient(circle, #f3d4a0 0 0.7px, transparent 1.2px); background-size: 67px 73px, 113px 127px; background-position: 17px 13px, 41px 56px; }
+.universe-map-wrap.is-fog::before { opacity: .85; background-image: radial-gradient(ellipse at 24% 32%, #aacdc83b, transparent 42%), radial-gradient(ellipse at 72% 42%, #b9bfd438, transparent 40%), radial-gradient(ellipse at 51% 76%, #a0b9ca30, transparent 42%); background-size: 100% 100%; background-position: center; }
 .universe-canvas { position: relative; display: block; width: 100%; height: clamp(320px, 49vw, 490px); touch-action: none; cursor: grab; }
 .universe-canvas:active { cursor: grabbing; }
 .universe-map-controls { position: relative; display: flex; justify-content: flex-end; gap: 6px; padding: 8px 8px 0; }
@@ -5508,7 +5522,7 @@ html[data-color-mode="dark"] .universe-relation { background: #26343b; color: va
 html[data-color-mode="dark"] .universe-kind button.is-active { background: #34776b; color: #fff; }
 @media (max-width: 560px) {
   .universe-entry { gap: 8px; }
-  .universe-entry button { padding-inline: 12px; font-size: .82rem; }
+  .universe-entry button { padding-inline: 5px; font-size: .8rem; }
   .universe-panel { gap: 12px; }
   .universe-canvas { height: 340px; }
   .universe-selection { padding: 12px; }

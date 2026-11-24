@@ -15,6 +15,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { discoverUniverseSourcePaths } from "./universe-release-gate.mjs";
+import { discoverDerivationSourcePaths } from "./derivation-release-gate.mjs";
 
 export const toolsDir = path.dirname(fileURLToPath(import.meta.url));
 export const rootDir = path.resolve(toolsDir, "..");
@@ -103,7 +104,8 @@ export async function computeSourceManifest() {
     .filter(Boolean)
     .map((item) => item.replaceAll("\\", "/"))
     .filter(isRelevantSource);
-  const listed = [...new Set([...trackedAndUntracked, ...await discoverUniverseSourcePaths(rootDir)])].sort();
+  const listed = [...new Set([...trackedAndUntracked, ...await discoverUniverseSourcePaths(rootDir),
+    ...await discoverDerivationSourcePaths(rootDir)])].sort();
   const files = [];
   for (const relativePath of listed) {
     const absolutePath = path.join(rootDir, relativePath);

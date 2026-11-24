@@ -9277,6 +9277,24 @@ function universeScopeSnapshot() {
     senseMeaning(wordId, senseId) {
       return poolWordById.get(wordId)?.senses.find((sense) => sense.id === senseId)?.meaning ?? "释义暂不可用";
     },
+    searchChinese(query) {
+      // Use the same direct, fuzzy and recorded-synset search as the word
+      // list, but allow the entire existing universe to be explored.
+      const pool = [...poolWordById.values()];
+      const scores = chineseWordSearchScores(pool, query);
+      return pool.flatMap((word) => {
+        const score = scores.get(word.id) ?? 0;
+        if (score < 0.35) return [];
+        let bestSense = null, bestScore = 0;
+        for (const sense of word.senses) {
+          const direct = chineseSenseDirectScore(query, sense);
+          if (direct > bestScore) { bestSense = sense; bestScore = direct; }
+        }
+        return [{ id: word.id, word: word.word, score,
+          detail: bestSense && bestScore >= 0.35 ? `${bestSense.pos ? `${bestSense.pos} ` : ""}${bestSense.meaning}` : "相关意象候选",
+          outside: !inBook.has(word.id) }];
+      }).sort((a, b) => b.score - a.score || a.word.localeCompare(b.word, "en", { sensitivity: "base" }));
+    },
   };
 }
 
@@ -9308,7 +9326,7 @@ function openWordUniverse(kind, fromWord = false) {
   };
   if (window.SenseVocabUniverse) { start(); return; }
   const title = document.createElement("h1");
-  title.textContent = kind === "spelling" ? "形近词宇宙" : "近义词宇宙";
+  title.textContent = kind === "spelling" ? "形近词宇宙" : kind === "derivation" ? "派生词宇宙" : "近义词宇宙";
   const message = document.createElement("p");
   message.setAttribute("role", "status");
   message.textContent = "地图组件未加载，学习记录不受影响。请重试。";
@@ -11422,8 +11440,10 @@ wordListButton.addEventListener("click", openWordList);
 startStudyButton.addEventListener("click", startStudy);
 document.querySelector("#openSynonymUniverse").addEventListener("click", () => openWordUniverse("synonym"));
 document.querySelector("#openSpellingUniverse").addEventListener("click", () => openWordUniverse("spelling"));
+document.querySelector("#openDerivationUniverse").addEventListener("click", () => openWordUniverse("derivation"));
 document.querySelector("#wordSynonymUniverse").addEventListener("click", () => openWordUniverse("synonym", true));
 document.querySelector("#wordSpellingUniverse").addEventListener("click", () => openWordUniverse("spelling", true));
+document.querySelector("#wordDerivationUniverse").addEventListener("click", () => openWordUniverse("derivation", true));
 dashboardButton?.addEventListener("click", openDashboard);
 dashboardBackButton?.addEventListener("click", closeDashboard);
 globalDashboardNavButton?.addEventListener("click", openDashboard);
