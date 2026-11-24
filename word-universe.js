@@ -140,8 +140,8 @@
         <p class="universe-fog-notice" data-u="fogSave" role="status" hidden></p>
       </div>
       <div class="universe-search-wrap">
-        <label for="universeSearch">搜索单词或中文意象</label>
-        <input id="universeSearch" type="search" autocomplete="off" spellcheck="false" placeholder="输入英文单词或中文意象" data-u="search" />
+        <label for="universeSearch">搜索单词或中文义项</label>
+        <input id="universeSearch" type="search" autocomplete="off" spellcheck="false" placeholder="输入英文单词或中文义项" data-u="search" />
         <div class="universe-search-results" data-u="results" aria-label="搜索结果" aria-live="polite"></div>
       </div>
       <div class="universe-map-wrap" data-u="mapWrap">
@@ -431,7 +431,10 @@
       if (!nodes.length) { ui.canvas.dataset.renderedWords = "0"; return; }
       const focus = byId.get(selectedId) || departingFocus?.node;
       const links = selectedId ? relevantEdges() : departingFocus?.links || [];
-      const neighborIds = new Set(links.map((edge) => edge.to));
+      // A word can have same-spelling derivations in another part of speech.
+      // Keep those relationships in the list, but never label the focused
+      // planet a second time as if it were a separate neighbor.
+      const neighborIds = new Set(links.map((edge) => edge.to).filter((id) => id && id !== focus?.id));
       const focusStrength = focus ? (selectedId ? 1 : Math.max(0, Math.min(1, (camera.zoom - 1) / 1.8))) : 0;
       ui.canvas.dataset.focusStrength = focusStrength.toFixed(2);
       ui.canvas.dataset.visibleLines = "0";
@@ -645,7 +648,7 @@
           .split(/[,，、;；|\/]+/u).map((part) => part.trim()).filter((part) => /[\u3400-\u9fff]/u.test(part) && part !== "释义暂不可用")))];
         if (meanings.length) {
           const explorer = element("details", "universe-meaning-explorer");
-          explorer.append(element("summary", "", "按中文意象探索更多候选"));
+          explorer.append(element("summary", "", "按中文义项探索更多候选"));
           explorer.append(element("p", "universe-uncertain", "根据中文释义和已有词义关系搜索；候选不等于已核验的近义关系，具体语境可能不同。"));
           const choices = element("div", "universe-meaning-choices");
           for (const meaning of meanings) {
@@ -952,7 +955,7 @@
         }
         if (!chinese) matches.sort((a, b) => Number(b.word.toLowerCase().startsWith(query)) - Number(a.word.toLowerCase().startsWith(query)) || a.word.localeCompare(b.word));
         if (!matches.length) { ui.results.append(element("span", "universe-empty", "没有找到相关单词")); return; }
-        if (chinese) ui.results.append(element("p", "universe-search-explanation", `找到 ${matches.length} 个意象候选；包含模糊及词义关联结果，不能保证语境可互换。`));
+        if (chinese) ui.results.append(element("p", "universe-search-explanation", `找到 ${matches.length} 个相关单词；包含模糊及词义关联结果，不能保证语境可互换。`));
         let shown = 0;
         const more = element("button", "universe-search-more", ""); more.type = "button";
         const appendBatch = () => {
@@ -969,7 +972,7 @@
         listenTemporary(more, "click", appendBatch); appendBatch();
       };
       if (chinese && !immediate) {
-        ui.results.append(element("span", "universe-empty", "正在搜索中文意象…"));
+        ui.results.append(element("span", "universe-empty", "正在搜索中文义项…"));
         searchTimer = setTimeout(render, 120);
       } else {
         render();

@@ -9291,7 +9291,7 @@ function universeScopeSnapshot() {
           if (direct > bestScore) { bestSense = sense; bestScore = direct; }
         }
         return [{ id: word.id, word: word.word, score,
-          detail: bestSense && bestScore >= 0.35 ? `${bestSense.pos ? `${bestSense.pos} ` : ""}${bestSense.meaning}` : "相关意象候选",
+          detail: bestSense && bestScore >= 0.35 ? `${bestSense.pos ? `${bestSense.pos} ` : ""}${bestSense.meaning}` : "相关义项候选",
           outside: !inBook.has(word.id) }];
       }).sort((a, b) => b.score - a.score || a.word.localeCompare(b.word, "en", { sensitivity: "base" }));
     },

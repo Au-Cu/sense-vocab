@@ -253,6 +253,10 @@ test("real highlighted word label supports direct phone touch", async ({ browser
     await page.touchscreen.tap(rect.x + label.x + label.width / 2 - 1, rect.y + label.y - 6);
     await expect(page.locator(".universe-selection-heading h2")).toHaveText("purpose");
     await expect(page.locator(".universe-selection")).not.toContainText(/synset|余弦|WordNet|已掌握/);
+    await page.getByRole("button", { name: "派生词", exact: true }).click();
+    await search(page, "abuse");
+    await expect(page.locator(".universe-relation").filter({ hasText: "同形词性变化" }).first()).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__testRealLabels?.filter((item) => item.text === "abuse").length)).toBe(1);
   } finally { await context.close(); }
 });
 
@@ -665,6 +669,8 @@ for (const view of [
     await page.getByLabel("迷雾模式").check();
     await expect(canvas).toHaveAttribute("data-rendered-words", "6607");
     await expect(canvas).toHaveAttribute("data-fogged-words", "6607");
+    await expect(page.locator("label[for=universeSearch]")).toHaveText("搜索单词或中文义项");
+    await expect(page.locator("#universeSearch")).toHaveAttribute("placeholder", "输入英文单词或中文义项");
     await page.screenshot({ path: path.resolve(__dirname, `../.test-artifacts/derivation-fog-${view.name}.png`), fullPage: true });
     await page.locator("#universeSearch").fill("目的");
     const results = page.locator(".universe-search-results");
